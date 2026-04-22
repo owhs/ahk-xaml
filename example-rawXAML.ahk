@@ -2,14 +2,14 @@
 #SingleInstance Force
 #Include "xaml.ahk"
 
-myXaml := StrReplace(XAML_TEMPLATE, "%app%", FileRead(A_ScriptDir "\eg.xaml", "UTF-8"))
+myXaml := StrReplace(XAML_TEMPLATE, "%app%", FileRead(A_ScriptDir "\example-rawXAML.xaml", "UTF-8"))
 
 ; ==============================================================================
 ; 2. INSTANTIATE & BIND AHK LOGIC
 ; ==============================================================================
 
-;global ui := ModernXAML(myXaml)
-global ui := ModernXAML(myXaml, A_ScriptDir "\egFrame.exe")
+;global ui := XAMLGUI(myXaml)
+global ui := XAMLGUI(myXaml, A_ScriptDir "\rawXAML.exe")
 
 ui.OnEvent("RadDarkMica", "Checked", ThemeChanged)
 ui.OnEvent("RadDarkAcrylic", "Checked", ThemeChanged)

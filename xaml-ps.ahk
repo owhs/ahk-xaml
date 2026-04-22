@@ -1,13 +1,13 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-class ModernXAML {
+class XAMLGUI {
     static _instances := Map()
     static _msgHooked := false
 
     __New(xaml) {
         this.id := "WPF_" A_TickCount "_" Random(1000, 9999)
-        ModernXAML._instances[this.id] := this
+        XAMLGUI._instances[this.id] := this
         this.xaml := xaml
         this.events := Map()
         this.wpfHwnd := 0
@@ -18,9 +18,9 @@ class ModernXAML {
         this.receiver := Gui()
         DllCall("user32\ChangeWindowMessageFilterEx", "Ptr", this.receiver.Hwnd, "UInt", 0x004A, "UInt", 1, "Ptr", 0)
 
-        if (!ModernXAML._msgHooked) {
-            OnMessage(0x004A, ObjBindMethod(ModernXAML, "OnCopyData"))
-            ModernXAML._msgHooked := true
+        if (!XAMLGUI._msgHooked) {
+            OnMessage(0x004A, ObjBindMethod(XAMLGUI, "OnCopyData"))
+            XAMLGUI._msgHooked := true
         }
     }
 
@@ -87,7 +87,7 @@ class ModernXAML {
             eventBindings .= "}`n"
         }
 
-        b64Xaml := ModernXAML.Base64Encode(this.xaml)
+        b64Xaml := XAMLGUI.Base64Encode(this.xaml)
 
         psScript := '
         (
@@ -275,10 +275,10 @@ class ModernXAML {
             return 0
 
         winId := parts[2], ctrlName := parts[3], eventName := parts[4]
-        if !ModernXAML._instances.Has(winId)
+        if !XAMLGUI._instances.Has(winId)
             return 0
 
-        instance := ModernXAML._instances[winId]
+        instance := XAMLGUI._instances[winId]
 
         if (ctrlName == "Window" && eventName == "Loaded") {
             instance.wpfHwnd := Integer(parts[5])
@@ -295,7 +295,7 @@ class ModernXAML {
             pos := InStr(lines[A_Index], "=")
             if pos {
                 k := SubStr(lines[A_Index], 1, pos - 1)
-                stateMap[k] := ModernXAML.Base64Decode(SubStr(lines[A_Index], pos + 1))
+                stateMap[k] := XAMLGUI.Base64Decode(SubStr(lines[A_Index], pos + 1))
             }
         }
 
