@@ -8,8 +8,8 @@ myXaml := StrReplace(XAML_TEMPLATE, "%app%", FileRead(A_ScriptDir "\eg.xaml", "U
 ; 2. INSTANTIATE & BIND AHK LOGIC
 ; ==============================================================================
 
-global ui := ModernXAML(myXaml)
-;global ui := ModernXAML(myXaml, A_ScriptDir "\egFrame.exe")
+;global ui := ModernXAML(myXaml)
+global ui := ModernXAML(myXaml, A_ScriptDir "\egFrame.exe")
 
 ui.OnEvent("RadDarkMica", "Checked", ThemeChanged)
 ui.OnEvent("RadDarkAcrylic", "Checked", ThemeChanged)
@@ -19,9 +19,9 @@ ui.OnEvent("RadCyber", "Checked", ThemeChanged)
 ui.OnEvent("BtnExecute", "Click", ExecuteProcess)
 ui.OnEvent("Window", "Loaded", OnUIReady)
 
-;ui.Track("TxtUser") ;; COMMENT OUT FOR PS
-;ui.Track("ComboRegion") ;; COMMENT OUT FOR PS
-;ui.Track("TglProxy") ;; COMMENT OUT FOR PS
+ui.Track("TxtUser") ;; COMMENT OUT FOR PS
+ui.Track("ComboRegion") ;; COMMENT OUT FOR PS
+ui.Track("TglProxy") ;; COMMENT OUT FOR PS
 
 ui.Show()
 Persistent()
