@@ -1,0 +1,240 @@
+<Grid Name="AppGrid" Background="{DynamicResource BgColor}">
+    <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="240"/>
+        <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <Border Name="SidebarBorder" Grid.Column="0" Background="{DynamicResource SidebarColor}" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="0,0,1,0">
+        <StackPanel Margin="25,35,25,25">
+            <TextBlock Name="TxtLogo" Text="✦ FLUID UI" FontSize="22" FontWeight="Black" Foreground="{DynamicResource TextMain}" Margin="0,0,0,40" />
+            
+            <TextBlock Text="THEME ENGINE" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,12"/>
+            <RadioButton Name="RadDarkMica" Content="Dark Mica (Win 11)" IsChecked="True"/>
+            <RadioButton Name="RadDarkAcrylic" Content="Dark Acrylic (Win 10)"/>
+            <RadioButton Name="RadLightMica" Content="Light Frosted Mode"/>
+            <RadioButton Name="RadCyber" Content="Cyberpunk Neon"/>
+
+            <TextBlock Text="SYSTEM TOGGLES" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,15,0,15"/>
+            <Grid Margin="0,0,0,15">
+                <TextBlock Text="Overdrive Mode" Foreground="{DynamicResource TextMain}" VerticalAlignment="Center"/>
+                <CheckBox Name="TglOverdrive" Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right" IsChecked="True" ToolTip="Accelerate packet processing natively."/>
+            </Grid>
+            <Grid Margin="0,0,0,15">
+                <TextBlock Text="Anonymous Proxy" Foreground="{DynamicResource TextMain}" VerticalAlignment="Center"/>
+                <CheckBox Name="TglProxy" Style="{StaticResource ToggleSwitch}" HorizontalAlignment="Right"/>
+            </Grid>
+        </StackPanel>
+    </Border>
+
+    <Grid Grid.Column="1">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="50"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="90"/>
+        </Grid.RowDefinitions>
+
+        <Border Name="DragArea" Grid.Row="0" Background="Transparent" Cursor="SizeAll">
+            <Button Name="BtnClose" Width="45" Height="35" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,10,10,0" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip="Close Application">
+                <TextBlock Text="✕" Foreground="{DynamicResource TextSub}" FontSize="16" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+            </Button>
+        </Border>
+
+        <TabControl Grid.Row="1" Margin="40,0,40,10">
+            <TabItem Header="DEPLOYMENT">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                    <StackPanel Margin="0,10,15,20">
+                        
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                            <TextBlock Text="Interactive Components" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" VerticalAlignment="Center"/>
+                            <Border Background="#200A84FF" CornerRadius="10" Padding="10,4" Margin="15,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="v2.0 ACTIVE" Foreground="{DynamicResource Accent}" FontSize="10" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                        
+                        <TextBlock Text="XAML natively binds elements. DynamicResources theme everything instantly." Foreground="{DynamicResource TextSub}" FontSize="13" Margin="0,0,0,25" TextWrapping="Wrap"/>
+
+                        <Grid Margin="0,0,0,25">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="USERNAME" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,8"/>
+                                <TextBox Name="TxtUser" Text="Administrator" ToolTip="Must be an Active Directory alias"/>
+                            </StackPanel>
+                            
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="SECURITY PIN" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,8"/>
+                                <PasswordBox Name="TxtPass" Password="hiddenpassword"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <StackPanel Margin="0,0,0,25">
+                            <TextBlock Text="SERVER REGION" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,8"/>
+                            <ComboBox Name="ComboRegion" SelectedIndex="0" Height="40">
+                                <ComboBoxItem Content="US-East-1 (N. Virginia)"/>
+                                <ComboBoxItem Content="EU-West-2 (London)"/>
+                                <ComboBoxItem Content="AP-Northeast-1 (Tokyo)"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <TextBlock Text="PRIORITY TIER" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Border BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" CornerRadius="6" HorizontalAlignment="Left" Margin="0,0,0,25">
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton Style="{StaticResource SegmentedBtn}" Content="LOW" GroupName="Priority" BorderThickness="0,0,1,0"/>
+                                <RadioButton Style="{StaticResource SegmentedBtn}" Content="BALANCED" GroupName="Priority" IsChecked="True" BorderThickness="0,0,1,0"/>
+                                <RadioButton Style="{StaticResource SegmentedBtn}" Content="MAXIMUM" GroupName="Priority" BorderThickness="0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Expander Margin="0,0,0,25">
+                            <Expander.Header>
+                                <TextBlock Text="Advanced Connection Settings" FontWeight="SemiBold" FontSize="13"/>
+                            </Expander.Header>
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Text="ENCRYPTION ALGORITHM" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,8"/>
+                                <ComboBox SelectedIndex="1" Height="40">
+                                    <ComboBoxItem Content="AES-128-GCM"/>
+                                    <ComboBoxItem Content="AES-256-CBC (Recommended)"/>
+                                    <ComboBoxItem Content="ChaCha20-Poly1305"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Expander>
+
+                        <TextBlock Text="PROCESSING POWER" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,12"/>
+                        <Grid Margin="0,0,0,10">
+                            <Slider Name="SldPower" Minimum="0" Maximum="100" Value="45" Margin="0,0,60,0" ToolTip="Adjust the thread workload priority."/>
+                            <TextBlock Text="{Binding Value, ElementName=SldPower, StringFormat={}{0:0}%}" Foreground="{DynamicResource Accent}" FontSize="20" FontWeight="Bold" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ProgressBar Name="ProgBar" Value="{Binding Value, ElementName=SldPower}" Maximum="100" Height="8" BorderThickness="0" Background="{DynamicResource ControlBorder}" Foreground="{DynamicResource Accent}" Margin="0,0,0,10">
+                            <ProgressBar.Resources>
+                                <Style TargetType="Border"><Setter Property="CornerRadius" Value="4"/></Style>
+                            </ProgressBar.Resources>
+                        </ProgressBar>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem Header="DATA GRID">
+                <StackPanel Margin="0,20,0,0">
+                    <TextBlock Text="Live Telemetry Grid" FontSize="28" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}" Margin="0,0,0,5"/>
+                    <TextBlock Text="A fully styled Grid layout showcasing server nodes." Foreground="{DynamicResource TextSub}" FontSize="13" Margin="0,0,0,20" TextWrapping="Wrap"/>
+                    
+                    <Border BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" CornerRadius="8" Background="{DynamicResource ControlBg}" Margin="0,0,0,15">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="35"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            
+                            <Grid Grid.Row="0" Background="{DynamicResource ControlBorder}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="170"/>
+                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="SERVER ID" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="15,0,0,0"/>
+                                <TextBlock Grid.Column="1" Text="LOCATION" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="2" Text="LATENCY" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="3" Text="STATUS" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <ListBox Grid.Row="1" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled" Padding="0,5">
+                                <ListBoxItem>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="170"/>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="SRV-US-01" Foreground="{DynamicResource TextMain}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="N. Virginia, USA" Foreground="{DynamicResource TextSub}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="14ms" Foreground="#32D74B" VerticalAlignment="Center"/>
+                                        <Border Grid.Column="3" Background="#2032D74B" HorizontalAlignment="Left" Padding="8,3" CornerRadius="4">
+                                            <TextBlock Text="ONLINE" Foreground="#32D74B" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+                                    </Grid>
+                                </ListBoxItem>
+                                <ListBoxItem>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="170"/>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="SRV-EU-04" Foreground="{DynamicResource TextMain}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="London, UK" Foreground="{DynamicResource TextSub}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="89ms" Foreground="#FF9F0A" VerticalAlignment="Center"/>
+                                        <Border Grid.Column="3" Background="#20FF9F0A" HorizontalAlignment="Left" Padding="8,3" CornerRadius="4">
+                                            <TextBlock Text="SYNCING" Foreground="#FF9F0A" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+                                    </Grid>
+                                </ListBoxItem>
+                                <ListBoxItem>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="170"/>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="SRV-AP-09" Foreground="{DynamicResource TextMain}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="Tokyo, Japan" Foreground="{DynamicResource TextSub}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="2" Text="ERR" Foreground="#FF453A" VerticalAlignment="Center"/>
+                                        <Border Grid.Column="3" Background="#20FF453A" HorizontalAlignment="Left" Padding="8,3" CornerRadius="4">
+                                            <TextBlock Text="OFFLINE" Foreground="#FF453A" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+                                    </Grid>
+                                </ListBoxItem>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <TextBlock Text="SYSTEM TERMINAL" Foreground="{DynamicResource TextSub}" FontSize="11" FontWeight="Bold" Margin="0,0,0,8"/>
+                    <Border BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" CornerRadius="6" Background="{DynamicResource ControlBg}">
+                        <ListBox Name="LogList" Height="130" Background="Transparent" Foreground="#32D74B" FontFamily="Consolas, Courier New" BorderThickness="0" Padding="8" ItemContainerStyle="{StaticResource TerminalItem}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBoxItem Content="System ready. Awaiting instructions..."/>
+                        </ListBox>
+                    </Border>
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <Grid Grid.Row="2" Background="{DynamicResource SidebarColor}">
+            <Border BorderBrush="{DynamicResource ControlBorder}" BorderThickness="0,1,0,0"/>
+            
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="40,0">
+                <Grid x:Name="LoadingSpinner" Width="18" Height="18" Margin="0,0,15,0" Visibility="Hidden" VerticalAlignment="Center">
+                    <Ellipse Stroke="{DynamicResource Accent}" Opacity="0.25" StrokeThickness="2.5"/>
+                    <Ellipse Stroke="{DynamicResource Accent}" StrokeThickness="2.5" StrokeDashArray="3 10" StrokeDashCap="Round" RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.RenderTransform>
+                            <RotateTransform Angle="0"/>
+                        </Ellipse.RenderTransform>
+                        <Ellipse.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)" From="0" To="360" Duration="0:0:0.8" RepeatBehavior="Forever"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Ellipse.Triggers>
+                    </Ellipse>
+                </Grid>
+                
+                <TextBlock Name="TxtStatus" Text="Awaiting your command..." Foreground="{DynamicResource TextSub}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </StackPanel>
+            
+            <Button Name="BtnExecute" Content="INITIALIZE SEQUENCE" ToolTip="Commences the payload deployment via secure tunnel." HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,40,0" Width="190" Height="45" Background="{DynamicResource Accent}" Foreground="White" FontWeight="Bold" BorderThickness="0" FontSize="13" Cursor="Hand">
+                <Button.Resources>
+                    <Style TargetType="Border"><Setter Property="CornerRadius" Value="6"/></Style>
+                </Button.Resources>
+            </Button>
+        </Grid>
+    </Grid>
+</Grid>

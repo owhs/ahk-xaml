@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 
-#Include "xaml.ahk"
+#Include "../v2-csc/xaml.ahk"
+#Include "XAML_Generator.ahk"
 
 class CustomGenerator extends XAML_Generator {
     ; App-specific shorthands go here

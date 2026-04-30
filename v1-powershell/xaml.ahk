@@ -5,14 +5,14 @@ class XAMLGUI {
     static _instances := Map()
     static _msgHooked := false
 
-    __New(xaml) {
+    __New(xaml, psPath := "") {
         this.id := "WPF_" A_TickCount "_" Random(1000, 9999)
         XAMLGUI._instances[this.id] := this
         this.xaml := xaml
         this.events := Map()
         this.wpfHwnd := 0
         this.pid := 0
-        this.psPath := A_Temp "\" this.id ".ps1"
+        this.psPath := (psPath != "") ? psPath : A_Temp "\" this.id ".ps1"
         this.errLog := A_Temp "\AhkWpfError.log"
 
         this.receiver := Gui()
@@ -345,4 +345,8 @@ XAML_TEMPLATE := '
         %app%
     </Window>
 )'
-XAML_TEMPLATE := StrReplace(XAML_TEMPLATE, "%components%", FileRead(A_ScriptDir "/xaml.components.xaml", "UTF-8"))
+SplitPath(A_LineFile, , &_thisDir)
+if FileExist(_thisDir "/xaml.components.xaml")
+    XAML_TEMPLATE := StrReplace(XAML_TEMPLATE, "%components%", FileRead(_thisDir "/xaml.components.xaml", "UTF-8"))
+else
+    XAML_TEMPLATE := StrReplace(XAML_TEMPLATE, "%components%", "")
