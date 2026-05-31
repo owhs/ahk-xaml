@@ -277,7 +277,9 @@ class XAML_GUI {
                     }
 
                     if (cb != "" && HasMethod(cb)) {
-                        this.host.OnEvent(name, evt.Event, cb)
+                        evtReg := this.host.OnEvent(name, evt.Event, cb)
+                        if (evt.HasProp("LimitFPS") && evt.LimitFPS > 0)
+                            evtReg.Limit(evt.LimitFPS, evt.QueueLimited)
                         ; Auto-track any element that has events registered
                         this.host.Track(name)
                     }
@@ -572,6 +574,8 @@ class XAML_GUI {
         theme := state["ComboTheme"]
         try {
             iniPath := FindThemesIni()
+            this.currentThemeName := theme
+            this.currentIniPath := iniPath
             themeData := IniRead(iniPath, theme)
             Loop Parse, themeData, "`n", "`r" {
                 parts := StrSplit(A_LoopField, "=", " `t", 2)

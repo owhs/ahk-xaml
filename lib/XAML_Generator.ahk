@@ -412,10 +412,25 @@ _XAMLElement_On(this, events, callback) {
     if !this.HasOwnProp("_Events")
         this._Events := []
 
-    ; Support CSV: "Click,Focus" → ["Click", "Focus"]
     for evtName in StrSplit(events, ",", " ") {
         if (Trim(evtName) != "")
-            this._Events.Push({ Event: Trim(evtName), Callback: callback })
+            this._Events.Push({ Event: Trim(evtName), Callback: callback, LimitFPS: 0, QueueLimited: false })
+    }
+    return this  ; chainable
+}
+
+; Set an IPC throttle limit on the most recently registered event(s).
+; e.g. .On("PreviewMouseMove", "MyHandler").Limit(60)
+XAMLElement.Prototype.DefineProp("Limit", { Call: _XAMLElement_Limit })
+_XAMLElement_Limit(this, fps, queue := false) {
+    if this.HasOwnProp("_Events") && this._Events.Length > 0 {
+        idx := this._Events.Length
+        lastCb := this._Events[idx].Callback
+        while (idx > 0 && this._Events[idx].Callback == lastCb) {
+            this._Events[idx].LimitFPS := fps
+            this._Events[idx].QueueLimited := queue
+            idx--
+        }
     }
     return this  ; chainable
 }

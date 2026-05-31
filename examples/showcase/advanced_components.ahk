@@ -1,4 +1,6 @@
 #Requires AutoHotkey v2.0
+#Include "..\..\lib\XAML_Config.ahk"
+global XAML_ENABLE_AVALONEDIT := true
 #Include "..\..\lib\XAML_Host.ahk"
 #Include "..\..\lib\XAML_Dialog.ahk"
 #Include "..\..\lib\XAML_Components.ahk"
@@ -222,18 +224,45 @@ digitalClock := cBox.Clock("MyClock")
 nav.AddPage("Clock", Chr(0xE823), clockPage)
 
 ; ---------------------------------------------------------
-; PAGE 8: Code Editor
+; PAGE 8: Code Editor (AvalonEdit IDE)
 ; ---------------------------------------------------------
 editorPage := XAML_Generator("Grid").Margin("0")
 editorPage._Parent := app.X
-editorPage.Rows("Auto", "*")
+editorPage.Rows("Auto", "Auto", "*")
 
-editorHeader := editorPage.Add("StackPanel").Grid_Row(0).Orientation("Horizontal").Margin("0,0,0,20")
-editorHeader.Add("TextBlock").Text("IDE").FontSize("24").FontWeight("Light").Foreground("{DynamicResource TextMain}").Margin("0,0,20,0").VerticalAlignment("Center")
-editorHeader.Add("TextBlock").Text("Work in progress...").Foreground("{DynamicResource TextSub}").VerticalAlignment("Center")
+editorHeader := editorPage.Add("StackPanel").Grid_Row(0).Orientation("Horizontal").Margin("0,0,0,10")
+editorHeader.Add("TextBlock").Text("IDE Component").FontSize("24").FontWeight("Light").Foreground("{DynamicResource TextMain}").Margin("0,0,20,0").VerticalAlignment("Center")
+editorHeader.Add("TextBlock").Text("Powered by AvalonEdit").Foreground("{DynamicResource TextSub}").VerticalAlignment("Center")
 
-codeGrid := editorPage.Add("Grid").Grid_Row(1)
-myEditor := codeGrid.CodeEditor("function init() {`n    // System ready`n    let count = 42;`n    return true;`n}")
+; Toolbar row
+editorToolbar := editorPage.Add("StackPanel").Grid_Row(1).Orientation("Horizontal").Margin("0,0,0,10")
+
+; Language selector
+editorToolbar.Add("TextBlock").Text("Language:").Foreground("{DynamicResource TextSub}").VerticalAlignment("Center").Margin("0,0,8,0")
+langCb := editorToolbar.Add("ComboBox").Name("AELangCombo").Width(120).Height(28).VerticalAlignment("Center").Margin("0,0,15,0")
+for lang in ["C#", "JavaScript", "Python", "XML", "HTML", "CSS", "C++", "Java", "SQL", "PowerShell", "Markdown"]
+    langCb.Add("ComboBoxItem").Content(lang)
+langCb.SelectedIndex(0)
+
+; Theme selector
+editorToolbar.Add("TextBlock").Text("Theme:").Foreground("{DynamicResource TextSub}").VerticalAlignment("Center").Margin("0,0,8,0")
+themeCb := editorToolbar.Add("ComboBox").Name("AEThemeCombo").Width(130).Height(28).VerticalAlignment("Center").Margin("0,0,15,0")
+for t in ["dark", "light", "monokai", "one-dark", "dracula", "solarized-dark"]
+    themeCb.Add("ComboBoxItem").Content(t)
+themeCb.SelectedIndex(0)
+
+; Action buttons
+editorToolbar.Add("Button").Name("AEFoldAll").Content("Fold All").Background("Transparent").Foreground("{DynamicResource Accent}").BorderThickness(0).Padding("8,4").Margin("0,0,5,0").Cursor("Hand")
+editorToolbar.Add("Button").Name("AEUnfoldAll").Content("Unfold All").Background("Transparent").Foreground("{DynamicResource Accent}").BorderThickness(0).Padding("8,4").Margin("0,0,5,0").Cursor("Hand")
+editorToolbar.Add("Button").Name("AEShowComplete").Content("Show Autocomplete").Background("Transparent").Foreground("{DynamicResource Accent}").BorderThickness(0).Padding("8,4").Cursor("Hand")
+
+; Status bar
+statusSp := editorPage.Add("StackPanel").Grid_Row(2).VerticalAlignment("Bottom").Orientation("Horizontal").Margin("0,0,0,0")
+statusSp.Add("TextBlock").Name("AEStatus").Text("Ln 1, Col 1").Foreground("{DynamicResource TextSub}").FontSize(11).Margin("0,5,0,0")
+
+; The editor itself
+codeGrid := editorPage.Add("Grid").Grid_Row(2).Margin("0,0,0,25")
+myEditor := codeGrid.AvalonEditor("IDEEditor", { Language: "cs", Theme: "dark" })
 
 nav.AddPage("Code", Chr(0xE81E), editorPage)
 
@@ -316,6 +345,66 @@ nav.AddPage("Image Viewer", Chr(0xEB9F), imgViewerPage)
 ; ---------------------------------------------------------
 
 ui := app.Compile()
+
+; --- AvalonEdit post-compile bindings ---
+myEditor.Bind(ui)
+
+sampleCode := "using System;`n`n"
+sampleCode .= "namespace HelloWorld`n{`n"
+sampleCode .= "    class Program`n    {`n"
+sampleCode .= "        static void Main(string[] args)`n        {`n"
+sampleCode .= "            // Welcome message`n"
+sampleCode .= "            Console.WriteLine(" Chr(34) "Hello, World!" Chr(34) ");`n`n"
+sampleCode .= "            string[] items = { " Chr(34) "Alpha" Chr(34) ", " Chr(34) "Beta" Chr(34) ", " Chr(34) "Gamma" Chr(34) " };`n"
+sampleCode .= "            foreach (var item in items)`n            {`n"
+sampleCode .= "                Console.WriteLine(item);`n"
+sampleCode .= "            }`n`n"
+sampleCode .= "            Console.ReadKey();`n"
+sampleCode .= "        }`n    }`n}"
+myEditor.SetText(sampleCode)
+myEditor.UpdateFolding()
+
+; Language selector
+ui.Track("AELangCombo")
+ui.OnEvent("AELangCombo", "SelectionChanged", _AELangChanged)
+_AELangChanged(state, ctrl, event) {
+    if (!state.Has("AELangCombo"))
+        return
+    langMap := Map("C#", "cs", "JavaScript", "js", "Python", "python", "XML", "xml", "HTML", "html", "CSS", "css", "C++", "cpp", "Java", "java", "SQL", "sql", "PowerShell", "powershell", "Markdown", "markdown")
+    sel := state["AELangCombo"]
+    if langMap.Has(sel)
+        myEditor.SetLanguage(langMap[sel])
+}
+
+; Theme selector
+ui.Track("AEThemeCombo")
+ui.OnEvent("AEThemeCombo", "SelectionChanged", _AEThemeChanged)
+_AEThemeChanged(state, ctrl, event) {
+    if (!state.Has("AEThemeCombo"))
+        return
+    myEditor.SetTheme(state["AEThemeCombo"])
+}
+
+; Fold/Unfold buttons
+ui.OnEvent("AEFoldAll", "Click", (*) => (myEditor.UpdateFolding(), myEditor.FoldAll()))
+ui.OnEvent("AEUnfoldAll", "Click", (*) => myEditor.UnfoldAll())
+
+; Demo autocomplete
+ui.OnEvent("AEShowComplete", "Click", (*) => myEditor.ShowCompletion([
+    "Console|System.Console class",
+    "Console.WriteLine|Write line to stdout",
+    "Console.ReadKey|Read a key press",
+    "Console.Clear|Clear the console",
+    "List|Generic list collection",
+    "Dictionary|Key-value dictionary",
+    "foreach|Iterate over collection",
+    "namespace|Declare namespace",
+    "class|Define a class",
+    "static|Static member modifier"
+]))
+
+; Caret position tracking
+myEditor.OnCaretChanged := (editor, state, event) => ui.Update("AEStatus", "Text", "Ln " StrSplit(event, ",")[1] ", Col " StrSplit(event, ",")[2])
 
 SetTimer(LoadPreviewIcons, 1000)
 LoadPreviewIcons() {

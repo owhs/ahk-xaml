@@ -14,6 +14,21 @@ using System.Windows.Documents;
 using Microsoft.Web.WebView2.Wpf;
 using Microsoft.Web.WebView2.Core;
 #endif
+#if ENABLE_AVALONEDIT
+using ICSharpCode.AvalonEdit;
+using ICSharpCode.AvalonEdit.Highlighting;
+using ICSharpCode.AvalonEdit.CodeCompletion;
+using ICSharpCode.AvalonEdit.Document;
+using ICSharpCode.AvalonEdit.Editing;
+using ICSharpCode.AvalonEdit.Folding;
+using ICSharpCode.AvalonEdit.Rendering;
+using ICSharpCode.AvalonEdit.Search;
+#endif
+#if ENABLE_DOCUMENT
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
+#endif
 
 [assembly: AssemblyTitle("ahk-xaml Engine")]
 [assembly: AssemblyDescription("WPF Rendering Engine for AutoHotkey")]
@@ -133,7 +148,24 @@ public class AhkWpfEngine {
     System.Windows.Shapes.Path tempConnection = null;
     FrameworkElement connectionSourcePort = null;
 
+    // Search highlight and replace preview state
+    System.Collections.Generic.List<System.Windows.Documents.TextRange> _highlightedRanges = new System.Collections.Generic.List<System.Windows.Documents.TextRange>();
+    System.Collections.Generic.List<object> _highlightedOriginalBackgrounds = new System.Collections.Generic.List<object>();
+    bool _isPreviewActive = false;
+    System.Windows.Documents.TextRange _activeMatchRange = null;
+    System.Windows.Threading.DispatcherTimer _highlightDebounce = null;
+    string _pendingHighlightQuery = null;
+    bool _pendingHighlightMatchCase = false;
+    RichTextBox _pendingHighlightRtb = null;
+    static readonly System.Windows.Media.SolidColorBrush _highlightBrush;
+    static readonly System.Windows.Media.SolidColorBrush _activeMatchBrush;
+    static void InitHighlightBrushes() { } // Brushes initialized in static field initializers
+
     static AhkWpfEngine() {
+        _highlightBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(254, 239, 195));
+        _highlightBrush.Freeze();
+        _activeMatchBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 165, 0));
+        _activeMatchBrush.Freeze();
         EventManager.RegisterClassHandler(typeof(ScrollViewer), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnScrollViewerLoaded), false);
         EventManager.RegisterClassHandler(typeof(ScrollViewer), UIElement.PreviewMouseWheelEvent, new System.Windows.Input.MouseWheelEventHandler(OnPreviewMouseWheel), false);
     }
@@ -408,7 +440,7 @@ public class AhkWpfEngine {
                     var prewarmPanel = new StackPanel();
                     prewarmPanel.Children.Add(new Button { Content = "Prewarm" });
                     prewarmPanel.Children.Add(new TextBox { Text = "Prewarm" });
-                    prewarmPanel.Children.Add(new CheckBox { Content = "Prewarm" });
+                    prewarmPanel.Children.Add(new System.Windows.Controls.CheckBox { Content = "Prewarm" });
                     prewarmPanel.Children.Add(new ListBox());
                     prewarmPanel.Children.Add(new TreeView());
                     dummy.Content = prewarmPanel;
@@ -994,12 +1026,23 @@ public class AhkWpfEngine {
             string[] pairs = allEvents.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
             var bound = new System.Collections.Generic.HashSet<string>();
             foreach (string p in pairs) {
-                if (bound.Add(p)) { // Deduplicate
-                    string[] kv = p.Split(':');
-                    if (kv.Length == 2) BindEvent(kv[0], kv[1]);
+                    string evtStr = p;
+                    int limitFps = 0;
+                    bool isQueue = false;
+                    int atIndex = p.IndexOf('@');
+                    if (atIndex > 0) {
+                        evtStr = p.Substring(0, atIndex);
+                        string limitStr = p.Substring(atIndex + 1);
+                        if (limitStr.EndsWith("Q")) {
+                            isQueue = true;
+                            limitStr = limitStr.Substring(0, limitStr.Length - 1);
+                        }
+                        int.TryParse(limitStr, out limitFps);
+                    }
+                    string[] kv = evtStr.Split(':');
+                    if (kv.Length == 2) BindEvent(kv[0], kv[1], limitFps, isQueue);
                 }
             }
-        }
 
         if (ownerHwndStr != "0") {
             try {
@@ -1193,7 +1236,7 @@ public class AhkWpfEngine {
         }
     }
 
-    private void BindEvent(string ctrlName, string eventName) {
+    private void BindEvent(string ctrlName, string eventName, int fpsLimit = 0, bool queueLimited = false) {
         try {
             object ctrl = ctrlName == "Window" ? (object)win : win.FindName(ctrlName);
             if (ctrl == null) return;
@@ -1219,19 +1262,114 @@ public class AhkWpfEngine {
             var pExprs = parameters.Select(p => System.Linq.Expressions.Expression.Parameter(p.ParameterType, p.Name)).ToArray();
             System.Linq.Expressions.MethodCallExpression call;
             
-            if (pExprs.Length >= 2) {
-                var dumpStateWithArgsMethod = this.GetType().GetMethod("DumpStateWithArgs", BindingFlags.NonPublic | BindingFlags.Instance);
-                // Convert pExprs[1] to object to match the method signature
-                var objCast = System.Linq.Expressions.Expression.Convert(pExprs[1], typeof(object));
-                call = System.Linq.Expressions.Expression.Call(System.Linq.Expressions.Expression.Constant(this), dumpStateWithArgsMethod, System.Linq.Expressions.Expression.Constant(ctrlName), System.Linq.Expressions.Expression.Constant(eventName), objCast);
+            if (fpsLimit > 0) {
+                var throttler = new EventThrottler(fpsLimit, queueLimited, this, ctrlName, eventName);
+                var throttlerConst = System.Linq.Expressions.Expression.Constant(throttler);
+                
+                if (pExprs.Length >= 2) {
+                    var method = typeof(EventThrottler).GetMethod("InvokeWithArgs");
+                    var objCast = System.Linq.Expressions.Expression.Convert(pExprs[1], typeof(object));
+                    call = System.Linq.Expressions.Expression.Call(throttlerConst, method, objCast);
+                } else {
+                    var method = typeof(EventThrottler).GetMethod("Invoke");
+                    call = System.Linq.Expressions.Expression.Call(throttlerConst, method);
+                }
             } else {
-                var dumpStateMethod = this.GetType().GetMethod("DumpState", BindingFlags.NonPublic | BindingFlags.Instance);
-                call = System.Linq.Expressions.Expression.Call(System.Linq.Expressions.Expression.Constant(this), dumpStateMethod, System.Linq.Expressions.Expression.Constant(ctrlName), System.Linq.Expressions.Expression.Constant(eventName));
+                if (pExprs.Length >= 2) {
+                    var dumpStateWithArgsMethod = this.GetType().GetMethod("DumpStateWithArgs", BindingFlags.NonPublic | BindingFlags.Instance);
+                    var objCast = System.Linq.Expressions.Expression.Convert(pExprs[1], typeof(object));
+                    call = System.Linq.Expressions.Expression.Call(System.Linq.Expressions.Expression.Constant(this), dumpStateWithArgsMethod, System.Linq.Expressions.Expression.Constant(ctrlName), System.Linq.Expressions.Expression.Constant(eventName), objCast);
+                } else {
+                    var dumpStateMethod = this.GetType().GetMethod("DumpState", BindingFlags.NonPublic | BindingFlags.Instance);
+                    call = System.Linq.Expressions.Expression.Call(System.Linq.Expressions.Expression.Constant(this), dumpStateMethod, System.Linq.Expressions.Expression.Constant(ctrlName), System.Linq.Expressions.Expression.Constant(eventName));
+                }
             }
             
             var lambda = System.Linq.Expressions.Expression.Lambda(evt.EventHandlerType, call, pExprs);
             evt.AddEventHandler(ctrl, lambda.Compile());
         } catch { }
+    }
+
+    public class EventThrottler {
+        private int _delayMs;
+        private bool _queueLimited;
+        private object _bridge;
+        private string _ctrlName;
+        private string _eventName;
+        private DateTime _lastFire = DateTime.MinValue;
+        private bool _timerRunning = false;
+        private object _lastArgs = null;
+        private bool _hasPending = false;
+        private object _sync = new object();
+        private System.Collections.Generic.Queue<object> _queue = new System.Collections.Generic.Queue<object>();
+
+        public EventThrottler(int fpsLimit, bool queueLimited, object bridge, string ctrlName, string eventName) {
+            _delayMs = 1000 / fpsLimit;
+            _queueLimited = queueLimited;
+            _bridge = bridge;
+            _ctrlName = ctrlName;
+            _eventName = eventName;
+        }
+
+        public void Invoke() { InvokeWithArgs(null); }
+
+        public void InvokeWithArgs(object args) {
+            lock (_sync) {
+                var now = DateTime.UtcNow;
+                if (_queueLimited) {
+                    _queue.Enqueue(args);
+                    if (!_timerRunning) {
+                        _timerRunning = true;
+                        ProcessQueueAsync();
+                    }
+                } else {
+                    if (now - _lastFire >= TimeSpan.FromMilliseconds(_delayMs)) {
+                        _lastFire = now;
+                        FireEvent(args);
+                    } else {
+                        _lastArgs = args;
+                        _hasPending = true;
+                        if (!_timerRunning) {
+                            _timerRunning = true;
+                            int waitMs = (int)(_delayMs - (now - _lastFire).TotalMilliseconds);
+                            if (waitMs <= 0) waitMs = 1;
+                            System.Threading.Tasks.Task.Delay(waitMs).ContinueWith(t => {
+                                lock (_sync) {
+                                    _timerRunning = false;
+                                    if (_hasPending) {
+                                        _hasPending = false;
+                                        _lastFire = DateTime.UtcNow;
+                                        FireEvent(_lastArgs);
+                                        _lastArgs = null;
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        private async void ProcessQueueAsync() {
+            while (true) {
+                object args = null;
+                lock (_sync) {
+                    if (_queue.Count > 0) args = _queue.Dequeue();
+                    else { _timerRunning = false; return; }
+                }
+                FireEvent(args);
+                await System.Threading.Tasks.Task.Delay(_delayMs);
+            }
+        }
+
+        private void FireEvent(object args) {
+            var bridgeType = _bridge.GetType();
+            if (args != null) {
+                bridgeType.GetMethod("DumpStateWithArgs", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(_bridge, new object[] { _ctrlName, _eventName, args });
+            } else {
+                bridgeType.GetMethod("DumpState", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(_bridge, new object[] { _ctrlName, _eventName });
+            }
+        }
     }
 
     // Length-prefixed encoding helper: encodes a value as "BYTELEN:rawvalue"
@@ -1960,9 +2098,9 @@ public class AhkWpfEngine {
                     if (ctrl is System.Windows.Controls.Control) {
                         if (parts[2].StartsWith("{DynamicResource ") && parts[2].EndsWith("}")) ((System.Windows.Controls.Control)ctrl).SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, parts[2].Substring(17, parts[2].Length - 18));
                         else ((System.Windows.Controls.Control)ctrl).Background = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
-                    } else if (ctrl is Border) {
-                        if (parts[2].StartsWith("{DynamicResource ") && parts[2].EndsWith("}")) ((Border)ctrl).SetResourceReference(Border.BackgroundProperty, parts[2].Substring(17, parts[2].Length - 18));
-                        else ((Border)ctrl).Background = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
+                    } else if (ctrl is System.Windows.Controls.Border) {
+                        if (parts[2].StartsWith("{DynamicResource ") && parts[2].EndsWith("}")) ((System.Windows.Controls.Border)ctrl).SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, parts[2].Substring(17, parts[2].Length - 18));
+                        else ((System.Windows.Controls.Border)ctrl).Background = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
                     } else if (ctrl is System.Windows.Controls.Panel) {
                         if (parts[2].StartsWith("{DynamicResource ") && parts[2].EndsWith("}")) ((System.Windows.Controls.Panel)ctrl).SetResourceReference(System.Windows.Controls.Panel.BackgroundProperty, parts[2].Substring(17, parts[2].Length - 18));
                         else ((System.Windows.Controls.Panel)ctrl).Background = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
@@ -1979,9 +2117,9 @@ public class AhkWpfEngine {
                         else ((TextElement)ctrl).Foreground = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
                     }
                 } else if (parts[1] == "BorderBrush") {
-                    if (ctrl is Border) {
-                        if (parts[2].StartsWith("{DynamicResource ") && parts[2].EndsWith("}")) ((Border)ctrl).SetResourceReference(Border.BorderBrushProperty, parts[2].Substring(17, parts[2].Length - 18));
-                        else ((Border)ctrl).BorderBrush = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
+                    if (ctrl is System.Windows.Controls.Border) {
+                        if (parts[2].StartsWith("{DynamicResource ") && parts[2].EndsWith("}")) ((System.Windows.Controls.Border)ctrl).SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, parts[2].Substring(17, parts[2].Length - 18));
+                        else ((System.Windows.Controls.Border)ctrl).BorderBrush = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
                     } else if (ctrl is System.Windows.Controls.Control) {
                         if (parts[2].StartsWith("{DynamicResource ") && parts[2].EndsWith("}")) ((System.Windows.Controls.Control)ctrl).SetResourceReference(System.Windows.Controls.Control.BorderBrushProperty, parts[2].Substring(17, parts[2].Length - 18));
                         else ((System.Windows.Controls.Control)ctrl).BorderBrush = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]) as System.Windows.Media.Brush;
@@ -2059,6 +2197,684 @@ public class AhkWpfEngine {
                     try { ((Microsoft.Web.WebView2.Wpf.WebView2)ctrl).Reload(); } catch { }
                 } else if (parts[1] == "OpenDevTools" && ctrl is Microsoft.Web.WebView2.Wpf.WebView2) {
                     try { ((Microsoft.Web.WebView2.Wpf.WebView2)ctrl).CoreWebView2.OpenDevToolsWindow(); } catch { }
+#endif
+#if ENABLE_AVALONEDIT
+                } else if (ctrl is ContentControl && parts[1].StartsWith("AE_")) {
+                    // AvalonEdit commands — the ContentControl hosts the TextEditor
+                    var host = ctrl as ContentControl;
+                    var editor = host != null ? host.Content as TextEditor : null;
+                    if (editor == null) {
+                        // First-time init: create AvalonEdit inside the ContentControl
+                        if (parts[1] == "AE_Init") {
+                            editor = new TextEditor();
+                            editor.FontFamily = new System.Windows.Media.FontFamily("Consolas");
+                            editor.FontSize = 14;
+                            editor.ShowLineNumbers = true;
+                            editor.WordWrap = false;
+                            editor.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+                            editor.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                            editor.Options.EnableHyperlinks = false;
+                            editor.Options.EnableEmailHyperlinks = false;
+                            editor.Options.ShowEndOfLine = false;
+                            editor.Options.ShowSpaces = false;
+                            editor.Options.ShowTabs = false;
+                            editor.Options.HighlightCurrentLine = true;
+                            editor.Options.AllowScrollBelowDocument = true;
+                            editor.Options.ConvertTabsToSpaces = true;
+                            editor.Options.IndentationSize = 4;
+                            // Install search panel
+                            SearchPanel.Install(editor);
+                            // Wire events
+                            string eName = ((FrameworkElement)host).Name;
+                            editor.TextChanged += (s, e2) => {
+                                SendToAhk("EVENT|" + winId + "|" + eName + "|TextChanged|" + LengthPrefix(editor.Document.LineCount.ToString()) + "\n");
+                            };
+                            editor.TextArea.Caret.PositionChanged += (s, e2) => {
+                                int line = editor.TextArea.Caret.Line;
+                                int col = editor.TextArea.Caret.Column;
+                                int offset = editor.TextArea.Caret.Offset;
+                                SendToAhk("EVENT|" + winId + "|" + eName + "|CaretChanged|" + LengthPrefix(line + "," + col + "," + offset) + "\n");
+                            };
+                            ((ContentControl)host).Content = editor;
+                            // Apply initial theme from parts[2] if provided
+                            if (parts.Length > 2 && !string.IsNullOrEmpty(parts[2])) {
+                                ApplyAvalonEditTheme(editor, parts[2]);
+                            }
+                        }
+                    }
+                    if (editor != null) {
+                        string aeCmd = parts[1].Substring(3); // strip "AE_"
+                        string aeVal = parts.Length > 2 ? parts[2] : "";
+                        switch (aeCmd) {
+                            case "Init": break; // Already handled above
+                            case "SetText":
+                                try {
+                                    string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(aeVal));
+                                    editor.Document.Text = decoded;
+                                } catch {
+                                    editor.Document.Text = aeVal;
+                                }
+                                break;
+                            case "GetText": {
+                                string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(editor.Document.Text));
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)host).Name + "|TextContent|" + LengthPrefix(b64) + "\n");
+                                break;
+                            }
+                            case "AppendText":
+                                try {
+                                    string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(aeVal));
+                                    editor.AppendText(decoded);
+                                } catch {
+                                    editor.AppendText(aeVal);
+                                }
+                                break;
+                            case "SetLanguage":
+                                try {
+                                    var hlDef = HighlightingManager.Instance.GetDefinition(aeVal);
+                                    if (hlDef == null) {
+                                        // Try common aliases
+                                        switch (aeVal.ToLower()) {
+                                            case "ahk": case "autohotkey": hlDef = HighlightingManager.Instance.GetDefinition("Python"); break; // Closest built-in
+                                            case "cs": case "csharp": hlDef = HighlightingManager.Instance.GetDefinition("C#"); break;
+                                            case "js": case "javascript": hlDef = HighlightingManager.Instance.GetDefinition("JavaScript"); break;
+                                            case "py": case "python": hlDef = HighlightingManager.Instance.GetDefinition("Python"); break;
+                                            case "xml": case "xaml": hlDef = HighlightingManager.Instance.GetDefinition("XML"); break;
+                                            case "html": hlDef = HighlightingManager.Instance.GetDefinition("HTML"); break;
+                                            case "css": hlDef = HighlightingManager.Instance.GetDefinition("CSS"); break;
+                                            case "json": hlDef = HighlightingManager.Instance.GetDefinition("JavaScript"); break;
+                                            case "sql": hlDef = HighlightingManager.Instance.GetDefinition("TSQL"); break;
+                                            case "md": case "markdown": hlDef = HighlightingManager.Instance.GetDefinition("MarkDown"); break;
+                                            case "cpp": case "c++": case "c": hlDef = HighlightingManager.Instance.GetDefinition("C++"); break;
+                                            case "java": hlDef = HighlightingManager.Instance.GetDefinition("Java"); break;
+                                            case "ps": case "powershell": hlDef = HighlightingManager.Instance.GetDefinition("PowerShell"); break;
+                                            case "bat": case "batch": case "cmd": hlDef = HighlightingManager.Instance.GetDefinition("BAT"); break;
+                                            case "vb": case "vbnet": hlDef = HighlightingManager.Instance.GetDefinition("VB"); break;
+                                            case "php": hlDef = HighlightingManager.Instance.GetDefinition("PHP"); break;
+                                        }
+                                    }
+                                    editor.SyntaxHighlighting = hlDef;
+                                } catch { }
+                                break;
+                            case "SetTheme":
+                                ApplyAvalonEditTheme(editor, aeVal);
+                                break;
+                            case "ShowLineNumbers":
+                                editor.ShowLineNumbers = aeVal != "0" && aeVal.ToLower() != "false";
+                                break;
+                            case "WordWrap":
+                                editor.WordWrap = aeVal != "0" && aeVal.ToLower() != "false";
+                                break;
+                            case "ReadOnly":
+                                editor.IsReadOnly = aeVal != "0" && aeVal.ToLower() != "false";
+                                break;
+                            case "FontSize":
+                                double fs; if (double.TryParse(aeVal, out fs)) editor.FontSize = fs;
+                                break;
+                            case "FontFamily":
+                                editor.FontFamily = new System.Windows.Media.FontFamily(aeVal);
+                                break;
+                            case "TabSize":
+                                int ts; if (int.TryParse(aeVal, out ts)) editor.Options.IndentationSize = ts;
+                                break;
+                            case "GotoLine": {
+                                int ln; if (int.TryParse(aeVal, out ln) && ln > 0 && ln <= editor.Document.LineCount) {
+                                    editor.ScrollToLine(ln);
+                                    editor.TextArea.Caret.Line = ln;
+                                    editor.TextArea.Caret.Column = 1;
+                                }
+                                break;
+                            }
+                            case "GotoOffset": {
+                                int off; if (int.TryParse(aeVal, out off)) {
+                                    if (off >= 0 && off <= editor.Document.TextLength) {
+                                        editor.CaretOffset = off;
+                                        editor.ScrollTo(editor.TextArea.Caret.Line, editor.TextArea.Caret.Column);
+                                    }
+                                }
+                                break;
+                            }
+                            case "Select": {
+                                string[] sel = aeVal.Split(',');
+                                if (sel.Length >= 2) {
+                                    int start, len;
+                                    if (int.TryParse(sel[0], out start) && int.TryParse(sel[1], out len)) {
+                                        if (start >= 0 && start + len <= editor.Document.TextLength) {
+                                            editor.Select(start, len);
+                                            editor.ScrollTo(editor.TextArea.Caret.Line, editor.TextArea.Caret.Column);
+                                        }
+                                    }
+                                }
+                                break;
+                            }
+                            case "InsertText": {
+                                try {
+                                    string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(aeVal));
+                                    editor.Document.Insert(editor.CaretOffset, decoded);
+                                } catch {
+                                    editor.Document.Insert(editor.CaretOffset, aeVal);
+                                }
+                                break;
+                            }
+                            case "Find": {
+                                // Open built-in search panel with query
+                                var sp = SearchPanel.Install(editor);
+                                // The SearchPanel doesn't expose a programmatic "search for" method easily,
+                                // so we use reflection or just open it
+                                sp.Open();
+                                if (!string.IsNullOrEmpty(aeVal)) {
+                                    // Set search text via reflection
+                                    try {
+                                        var searchProp = sp.GetType().GetProperty("SearchPattern");
+                                        if (searchProp != null) searchProp.SetValue(sp, aeVal);
+                                    } catch { }
+                                }
+                                break;
+                            }
+                            case "ReplaceAll": {
+                                string[] rp = aeVal.Split(new[] { "|||" }, StringSplitOptions.None);
+                                if (rp.Length >= 2) {
+                                    string findText = rp[0], replText = rp[1];
+                                    editor.Document.Text = editor.Document.Text.Replace(findText, replText);
+                                }
+                                break;
+                            }
+                            case "HighlightLine": {
+                                // Set current line highlight — AvalonEdit does this natively
+                                // but we can also add a custom background marker
+                                int hlLine;
+                                if (int.TryParse(aeVal, out hlLine) && hlLine > 0 && hlLine <= editor.Document.LineCount) {
+                                    editor.ScrollToLine(hlLine);
+                                    var docLine = editor.Document.GetLineByNumber(hlLine);
+                                    editor.Select(docLine.Offset, docLine.Length);
+                                }
+                                break;
+                            }
+                            case "FoldAll":
+                                if (editor.Tag is FoldingManager) {
+                                    var fm = (FoldingManager)editor.Tag;
+                                    foreach (var fold in fm.AllFoldings) fold.IsFolded = true;
+                                }
+                                break;
+                            case "UnfoldAll":
+                                if (editor.Tag is FoldingManager) {
+                                    var fm = (FoldingManager)editor.Tag;
+                                    foreach (var fold in fm.AllFoldings) fold.IsFolded = false;
+                                }
+                                break;
+                            case "SetFolding": {
+                                // Initialize or update folding based on brace-matching
+                                FoldingManager foldMgr = editor.Tag as FoldingManager;
+                                if (foldMgr == null) {
+                                    foldMgr = FoldingManager.Install(editor.TextArea);
+                                    editor.Tag = foldMgr;
+                                }
+                                var strategy = new BraceFoldingStrategy();
+                                strategy.UpdateFoldings(foldMgr, editor.Document);
+                                break;
+                            }
+                            case "ShowCompletion": {
+                                // Show a WPF-styled autocomplete popup with the provided items
+                                try {
+                                    string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(aeVal));
+                                    string[] items = decoded.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                                    var completionWindow = new CompletionWindow(editor.TextArea);
+                                    foreach (string item in items) {
+                                        string[] itemParts = item.Split(new[] { '|' }, 2);
+                                        string completionText = itemParts[0].Trim();
+                                        string desc = itemParts.Length > 1 ? itemParts[1].Trim() : "";
+                                        completionWindow.CompletionList.CompletionData.Add(
+                                            new AhkCompletionData(completionText, desc));
+                                    }
+                                    completionWindow.Show();
+                                    completionWindow.Closed += (s2, e2) => {
+                                        // Notify AHK which item was selected
+                                        SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)host).Name + "|CompletionClosed|\n");
+                                    };
+                                } catch { }
+                                break;
+                            }
+                            case "AddMarker": {
+                                // Format: line,type (error|warning|info|breakpoint)
+                                // TODO: Add colored marker support with custom margin rendering
+                                break;
+                            }
+                            case "ClearMarkers":
+                                break;
+                            case "HighlightCurrentLine":
+                                editor.Options.HighlightCurrentLine = aeVal != "0" && aeVal.ToLower() != "false";
+                                break;
+                            case "ShowSpaces":
+                                editor.Options.ShowSpaces = aeVal != "0" && aeVal.ToLower() != "false";
+                                break;
+                            case "ShowTabs":
+                                editor.Options.ShowTabs = aeVal != "0" && aeVal.ToLower() != "false";
+                                break;
+                            case "ShowEndOfLine":
+                                editor.Options.ShowEndOfLine = aeVal != "0" && aeVal.ToLower() != "false";
+                                break;
+                        }
+                    }
+#endif
+#if ENABLE_DOCUMENT
+                } else if (parts[1].StartsWith("Doc_") && ctrl is RichTextBox) {
+                    var rtb = (RichTextBox)ctrl;
+                    string docCmd = parts[1].Substring(4);
+                    string docVal = parts.Length > 2 ? parts[2] : "";
+                    switch (docCmd) {
+                        case "Import": {
+                            try {
+                                string filePath = docVal;
+                                if (System.IO.File.Exists(filePath)) {
+                                    string ext = System.IO.Path.GetExtension(filePath).ToLower();
+                                    FlowDocument doc = new FlowDocument();
+                                    if (ext == ".docx") {
+                                        doc = DocxToFlowDocument(filePath);
+                                    } else if (ext == ".doc") {
+                                        doc = DocToFlowDocument(filePath);
+                                    } else if (ext == ".rtf") {
+                                        var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+                                        using (var fs = new System.IO.FileStream(filePath, System.IO.FileMode.Open)) {
+                                            range.Load(fs, DataFormats.Rtf);
+                                        }
+                                    } else if (ext == ".txt") {
+                                        doc.Blocks.Add(new System.Windows.Documents.Paragraph(
+                                            new System.Windows.Documents.Run(System.IO.File.ReadAllText(filePath))));
+                                    }
+                                    rtb.Document = doc;
+                                    SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentLoaded|" + LengthPrefix(filePath) + "\n");
+                                }
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
+                        case "Export": {
+                            try {
+                                string filePath = docVal;
+                                string ext = System.IO.Path.GetExtension(filePath).ToLower();
+                                if (ext == ".docx") {
+                                    FlowDocumentToDocx(rtb.Document, filePath);
+                                } else if (ext == ".rtf") {
+                                    var range = new TextRange(rtb.Document.ContentStart, rtb.Document.ContentEnd);
+                                    using (var fs = new System.IO.FileStream(filePath, System.IO.FileMode.Create)) {
+                                        range.Save(fs, DataFormats.Rtf);
+                                    }
+                                } else {
+                                    var range = new TextRange(rtb.Document.ContentStart, rtb.Document.ContentEnd);
+                                    System.IO.File.WriteAllText(filePath, range.Text);
+                                }
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentSaved|" + LengthPrefix(filePath) + "\n");
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
+                        case "Format": {
+                            ApplyDocFormat(rtb, docVal);
+                            break;
+                        }
+                        case "InsertTable": {
+                            string[] dims = docVal.Split(',');
+                            int rows = 3, cols = 3;
+                            if (dims.Length >= 2) { int.TryParse(dims[0], out rows); int.TryParse(dims[1], out cols); }
+                            var table = new System.Windows.Documents.Table();
+                            table.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                            table.BorderThickness = new Thickness(1);
+                            table.CellSpacing = 0;
+                            table.Margin = new Thickness(0, 10, 0, 10);
+                            for (int c = 0; c < cols; c++) {
+                                table.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(1, GridUnitType.Star) });
+                            }
+                            var rg = new System.Windows.Documents.TableRowGroup();
+                            for (int r = 0; r < rows; r++) {
+                                var row = new System.Windows.Documents.TableRow();
+                                for (int c = 0; c < cols; c++) {
+                                    var cellPara = new System.Windows.Documents.Paragraph(new System.Windows.Documents.Run(r == 0 ? "Header" : ""));
+                                    cellPara.Margin = new Thickness(0);
+                                    if (r == 0) cellPara.TextAlignment = System.Windows.TextAlignment.Center;
+                                    var cell = new System.Windows.Documents.TableCell(cellPara);
+                                    cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                                    cell.BorderThickness = new Thickness(0.5);
+                                    cell.Padding = new Thickness(10, 8, 10, 8);
+                                    if (r == 0) {
+                                        cell.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(68, 114, 196));
+                                        cell.Foreground = System.Windows.Media.Brushes.White;
+                                        cellPara.FontWeight = FontWeights.Bold;
+                                    }
+                                    row.Cells.Add(cell);
+                                }
+                                rg.Rows.Add(row);
+                            }
+                            table.RowGroups.Add(rg);
+                            
+                            var currentPara = rtb.CaretPosition.Paragraph;
+                            if (currentPara != null) {
+                                rtb.Document.Blocks.InsertAfter(currentPara, table);
+                            } else {
+                                rtb.Document.Blocks.Add(table);
+                            }
+                            break;
+                        }
+                        case "GetOutline": {
+                            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                            int idx = 0;
+                            foreach (var block in rtb.Document.Blocks) {
+                                System.Windows.Documents.Paragraph p = block as System.Windows.Documents.Paragraph;
+                                if (p != null) {
+                                    var range = new TextRange(p.ContentStart, p.ContentEnd);
+                                    string headingText = range.Text.Trim();
+                                    if (!string.IsNullOrEmpty(headingText) && headingText.Length < 100) {
+                                        bool isHeading = false;
+                                        string level = "H2";
+                                        if (p.FontWeight == FontWeights.Bold || p.FontWeight == FontWeights.SemiBold) {
+                                            isHeading = true;
+                                            level = p.FontSize >= 24 ? "H1" : (p.FontSize >= 20 ? "H2" : "H3");
+                                        } else if (p.FontSize >= 18) {
+                                            isHeading = true;
+                                            level = p.FontSize >= 24 ? "H1" : (p.FontSize >= 20 ? "H2" : "H3");
+                                        }
+                                        
+                                        if (isHeading) {
+                                            sb.Append(idx + "," + level + "," + headingText + "\n");
+                                        }
+                                    }
+                                }
+                                idx++;
+                            }
+                            SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|Outline|" + LengthPrefix(sb.ToString()) + "\n");
+                            break;
+                        }
+                        case "GoToBlock": {
+                            int blockIdx;
+                            if (int.TryParse(docVal, out blockIdx) && blockIdx >= 0) {
+                                int count = 0;
+                                foreach (var b in rtb.Document.Blocks) {
+                                    if (count == blockIdx) {
+                                        rtb.CaretPosition = b.ContentStart;
+                                        rtb.Focus();
+                                        b.BringIntoView();
+                                        break;
+                                    }
+                                    count++;
+                                }
+                            }
+                            break;
+                        }
+                        case "InsertImage": {
+                            try {
+                                if (System.IO.File.Exists(docVal)) {
+                                    var bi = new System.Windows.Media.Imaging.BitmapImage(new Uri(docVal));
+                                    var img = new System.Windows.Controls.Image { Source = bi, MaxWidth = 600, Stretch = System.Windows.Media.Stretch.Uniform };
+                                    var container = new InlineUIContainer(img, rtb.CaretPosition);
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "InsertHR": {
+                            var line = new System.Windows.Documents.Paragraph();
+                            line.BorderBrush = System.Windows.Media.Brushes.Gray;
+                            line.BorderThickness = new Thickness(0, 0, 0, 1);
+                            line.Margin = new Thickness(0, 10, 0, 10);
+                            rtb.Document.Blocks.Add(line);
+                            break;
+                        }
+                        case "InsertLink": {
+                            try {
+                                string linkUrl = docVal;
+                                string displayText = "";
+                                if (!rtb.Selection.IsEmpty) {
+                                    displayText = rtb.Selection.Text;
+                                }
+                                if (string.IsNullOrEmpty(displayText)) {
+                                    displayText = linkUrl;
+                                }
+                                var linkRun = new System.Windows.Documents.Run(displayText);
+                                var hyperlink = new System.Windows.Documents.Hyperlink(linkRun, rtb.CaretPosition);
+                                try { hyperlink.NavigateUri = new Uri(linkUrl, UriKind.RelativeOrAbsolute); } catch { }
+                                hyperlink.Foreground = new System.Windows.Media.SolidColorBrush(
+                                    System.Windows.Media.Color.FromRgb(17, 85, 204));
+                                hyperlink.ToolTip = linkUrl;
+                                hyperlink.Cursor = System.Windows.Input.Cursors.Hand;
+                                hyperlink.RequestNavigate += (s, e) => {
+                                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); } catch { }
+                                    e.Handled = true;
+                                };
+                            } catch { }
+                            break;
+                        }
+                        case "GetWordCount": {
+                            var range = new TextRange(rtb.Document.ContentStart, rtb.Document.ContentEnd);
+                            string wcText = range.Text;
+                            int words = wcText.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                            int chars = wcText.Length;
+                            SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|WordCount|" + LengthPrefix(words + "," + chars) + "\n");
+                            break;
+                        }
+                        case "Zoom": {
+                            double zoom;
+                            if (double.TryParse(docVal, out zoom)) {
+                                var parent = System.Windows.Media.VisualTreeHelper.GetParent(rtb) as FrameworkElement;
+                                if (parent == null) parent = rtb;
+                                var st = parent.LayoutTransform as System.Windows.Media.ScaleTransform;
+                                if (st == null) {
+                                    st = new System.Windows.Media.ScaleTransform(1, 1);
+                                    parent.LayoutTransform = st;
+                                }
+                                st.ScaleX = zoom / 100.0;
+                                st.ScaleY = zoom / 100.0;
+                            }
+                            break;
+                        }
+                        case "NewDocument": {
+                            rtb.Document = new FlowDocument();
+                            rtb.Document.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+                            rtb.Document.FontSize = 14;
+                            break;
+                        }
+                        case "Undo":
+                            rtb.Undo();
+                            break;
+                        case "Redo":
+                            rtb.Redo();
+                            break;
+                        case "SelectAll": {
+                            rtb.SelectAll();
+                            break;
+                        }
+                        case "FindNext": {
+                            string fnQuery = docVal; StringComparison fnCmp = StringComparison.OrdinalIgnoreCase;
+                            int fnMc = docVal.IndexOf("|||MC:"); if (fnMc >= 0) { fnQuery = docVal.Substring(0, fnMc); fnCmp = docVal.Substring(fnMc + 6) == "1" ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase; }
+                            if (!string.IsNullOrEmpty(fnQuery)) {
+                                var map = BuildCharPositionMap(rtb.Document);
+                                var sb = new StringBuilder();
+                                foreach (var cp in map) sb.Append(cp.Character);
+                                string plainText = sb.ToString();
+
+                                TextPointer currentStart = rtb.Selection.IsEmpty ? rtb.Document.ContentStart : rtb.Selection.End;
+                                int searchStartIdx = 0;
+                                for (int i = 0; i < map.Count; i++) { if (map[i].Start.CompareTo(currentStart) >= 0) { searchStartIdx = i; break; } }
+
+                                int idx = plainText.IndexOf(fnQuery, searchStartIdx, fnCmp);
+                                if (idx < 0) idx = plainText.IndexOf(fnQuery, 0, fnCmp);
+
+                                if (idx >= 0) {
+                                    TextPointer start = map[idx].Start;
+                                    TextPointer end = map[idx + fnQuery.Length - 1].End;
+                                    if (start != null && end != null) {
+                                        if (_activeMatchRange != null) { try { _activeMatchRange.ApplyPropertyValue(TextElement.BackgroundProperty, _highlightBrush); } catch { } }
+                                        _activeMatchRange = new TextRange(start, end);
+                                        _activeMatchRange.ApplyPropertyValue(TextElement.BackgroundProperty, _activeMatchBrush);
+                                        rtb.Focus();
+                                        rtb.Selection.Select(start, end); 
+                                        if (start.Paragraph != null) start.Paragraph.BringIntoView(); 
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        case "FindPrevious": {
+                            string fpQuery = docVal; StringComparison fpCmp = StringComparison.OrdinalIgnoreCase;
+                            int fpMc = docVal.IndexOf("|||MC:"); if (fpMc >= 0) { fpQuery = docVal.Substring(0, fpMc); fpCmp = docVal.Substring(fpMc + 6) == "1" ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase; }
+                            if (!string.IsNullOrEmpty(fpQuery)) {
+                                var map = BuildCharPositionMap(rtb.Document);
+                                var sb = new StringBuilder();
+                                foreach (var cp in map) sb.Append(cp.Character);
+                                string plainText = sb.ToString();
+
+                                TextPointer currentStart = rtb.Selection.IsEmpty ? rtb.Document.ContentEnd : rtb.Selection.Start;
+                                int searchStartIdx = map.Count - 1;
+                                for (int i = map.Count - 1; i >= 0; i--) { if (map[i].End.CompareTo(currentStart) <= 0) { searchStartIdx = i; break; } }
+
+                                int idx = plainText.LastIndexOf(fpQuery, searchStartIdx, fpCmp);
+                                if (idx < 0) idx = plainText.LastIndexOf(fpQuery, map.Count - 1, fpCmp);
+
+                                if (idx >= 0) {
+                                    TextPointer start = map[idx].Start;
+                                    TextPointer end = map[idx + fpQuery.Length - 1].End;
+                                    if (start != null && end != null) {
+                                        if (_activeMatchRange != null) { try { _activeMatchRange.ApplyPropertyValue(TextElement.BackgroundProperty, _highlightBrush); } catch { } }
+                                        _activeMatchRange = new TextRange(start, end);
+                                        _activeMatchRange.ApplyPropertyValue(TextElement.BackgroundProperty, _activeMatchBrush);
+                                        rtb.Focus();
+                                        rtb.Selection.Select(start, end); 
+                                        if (start.Paragraph != null) start.Paragraph.BringIntoView(); 
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                        case "ReplaceCurrent": {
+                            string[] rp = docVal.Split(new[] { "|||" }, StringSplitOptions.None);
+                            if (rp.Length >= 2) {
+                                string find = rp[0]; string replace = rp[1];
+                                StringComparison rcCmp = StringComparison.OrdinalIgnoreCase;
+                                for (int pi = 2; pi < rp.Length; pi++) { if (rp[pi] == "MC:1") rcCmp = StringComparison.Ordinal; }
+                                
+                                if (!rtb.Selection.IsEmpty && rtb.Selection.Text.Equals(find, rcCmp)) rtb.Selection.Text = replace;
+
+                                var map = BuildCharPositionMap(rtb.Document);
+                                var sb = new StringBuilder(); foreach (var cp in map) sb.Append(cp.Character);
+                                string plainText = sb.ToString();
+                                TextPointer currentStart = rtb.Selection.End;
+                                int searchStartIdx = 0;
+                                for (int i = 0; i < map.Count; i++) { if (map[i].Start.CompareTo(currentStart) >= 0) { searchStartIdx = i; break; } }
+                                int idx = plainText.IndexOf(find, searchStartIdx, rcCmp);
+                                if (idx < 0) idx = plainText.IndexOf(find, 0, rcCmp);
+                                if (idx >= 0) {
+                                    TextPointer start = map[idx].Start; TextPointer end = map[idx + find.Length - 1].End;
+                                    if (start != null && end != null) { rtb.Selection.Select(start, end); if (start.Paragraph != null) start.Paragraph.BringIntoView(); }
+                                }
+                            }
+                            break;
+                        }
+                        case "ReplaceAll": {
+                            string[] rp = docVal.Split(new[] { "|||" }, StringSplitOptions.None);
+                            if (rp.Length >= 2) {
+                                string find = rp[0]; string replace = rp[1];
+                                bool isPreview = rp.Length > 2 && rp[2] == "1";
+                                bool raMatchCase = false;
+                                for (int pi = 2; pi < rp.Length; pi++) { if (rp[pi] == "MC:1") raMatchCase = true; }
+                                
+                                if (isPreview) {
+                                    if (_isPreviewActive) rtb.Undo();
+                                    rtb.BeginChange();
+                                    ReplaceAllBackward(rtb, find, replace, raMatchCase);
+                                    rtb.EndChange();
+                                    _isPreviewActive = true;
+                                } else {
+                                    rtb.BeginChange();
+                                    ReplaceAllBackward(rtb, find, replace, raMatchCase);
+                                    rtb.EndChange();
+                                }
+                            }
+                            break;
+                        }
+                        case "HighlightFinds": {
+                            // Parse match-case flag: value may end with |||MC:0 or |||MC:1
+                            string hlQuery = docVal ?? "";
+                            bool hlMatchCase = false;
+                            int hlMcIdx = hlQuery.IndexOf("|||MC:");
+                            if (hlMcIdx >= 0) { hlMatchCase = hlQuery.Substring(hlMcIdx + 6) == "1"; hlQuery = hlQuery.Substring(0, hlMcIdx); }
+
+                            _pendingHighlightQuery = hlQuery;
+                            _pendingHighlightMatchCase = hlMatchCase;
+                            _pendingHighlightRtb = rtb;
+                            if (_highlightDebounce == null) {
+                                _highlightDebounce = new System.Windows.Threading.DispatcherTimer {
+                                    Interval = TimeSpan.FromMilliseconds(200)
+                                };
+                                _highlightDebounce.Tick += (ds, de) => {
+                                    _highlightDebounce.Stop();
+                                    ClearSearchHighlights(_pendingHighlightRtb);
+                                    if (!string.IsNullOrEmpty(_pendingHighlightQuery) && _pendingHighlightQuery.Length >= 2) {
+                                        HighlightAllMatches(_pendingHighlightRtb, _pendingHighlightQuery, _pendingHighlightMatchCase);
+                                    }
+                                };
+                            }
+                            _highlightDebounce.Stop();
+                            if (string.IsNullOrEmpty(hlQuery)) { 
+                                ClearSearchHighlights(rtb); 
+                                var tb = win.FindName(rtb.Name + "_MatchCount") as System.Windows.Controls.TextBlock;
+                                if (tb != null) tb.Text = "";
+                            } else { 
+                                _highlightDebounce.Start(); 
+                            }
+                            break;
+                        }
+                        case "ConfirmReplace": {
+                            _isPreviewActive = false;
+                            break;
+                        }
+                        case "CancelReplace": {
+                            if (_isPreviewActive) {
+                                rtb.Undo();
+                                _isPreviewActive = false;
+                            }
+                            break;
+                        }
+                        case "ApplyDarkMode": {
+                            ApplyDarkModeToDocument(rtb.Document);
+                            break;
+                        }
+                        case "RestoreColors": {
+                            RestoreDocumentColors(rtb.Document);
+                            break;
+                        }
+                        case "SetupToolbarResponsive": {
+                            // Setup responsive toolbar: hide/show named groups based on window width
+                            // docVal = comma-separated list of group names in order of priority (first hidden first)
+                            // Format can be "MainGrp" or "MainGrp|PopoverGrp"
+                            if (!string.IsNullOrEmpty(docVal)) {
+                                string[] groupNames = docVal.Split(',');
+                                // Thresholds (in window pixels): each group gets hidden below this width
+                                double[] thresholds = new double[] { 860, 760, 660, 560, 460 };
+                                
+                                Action<double> evaluateWidth = (w) => {
+                                    for (int gi = 0; gi < groupNames.Length; gi++) {
+                                        string[] pairs = groupNames[gi].Trim().Split('|');
+                                        var mainGrp = win.FindName(pairs[0]) as FrameworkElement;
+                                        var popGrp = pairs.Length > 1 ? win.FindName(pairs[1]) as FrameworkElement : null;
+                                        
+                                        if (mainGrp != null) {
+                                            double threshold = gi < thresholds.Length ? thresholds[gi] : 400;
+                                            bool isVisible = w > threshold;
+                                            mainGrp.Visibility = isVisible ? Visibility.Visible : Visibility.Collapsed;
+                                            if (popGrp != null) {
+                                                popGrp.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
+                                            }
+                                        }
+                                    }
+                                };
+
+                                win.SizeChanged += (s, e) => {
+                                    evaluateWidth(win.ActualWidth);
+                                };
+                                // Trigger initial evaluation
+                                evaluateWidth(win.ActualWidth);
+                            }
+                            break;
+                        }
+                    }
 #endif
                 } else if (parts[1] == "StartPositionTimer" && ctrl is MediaElement) {
                     // Handle all position tracking and seeking in C# to avoid IPC feedback loops
@@ -2147,7 +2963,7 @@ public class AhkWpfEngine {
                     new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner = new IntPtr(long.Parse(parts[2]));
                     InheritWindowIconAndTitle((Window)ctrl, parts[2]);
                 } else if (parts[1] == "Focus" && ctrl is UIElement) {
-                    if (parts[2].ToLower() == "true") ((UIElement)ctrl).Focus();
+                    if (parts[2].ToLower() == "true" || parts[2] == "1") ((UIElement)ctrl).Focus();
                     else System.Windows.Input.Keyboard.ClearFocus();
                 } else if (parts[1] == "BringIntoView" && ctrl is FrameworkElement) {
                     ((FrameworkElement)ctrl).BringIntoView();
@@ -3024,7 +3840,1344 @@ public class AhkWpfEngine {
         }
         return null;
     }
+
+#if ENABLE_AVALONEDIT
+    // AvalonEdit theme application
+    private void ApplyAvalonEditTheme(TextEditor editor, string theme) {
+        switch (theme.ToLower()) {
+            case "dark":
+                editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30));
+                editor.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(212, 212, 212));
+                editor.TextArea.TextView.CurrentLineBackground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(40, 255, 255, 255));
+                editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(30, 255, 255, 255)), 1);
+                editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 100));
+                editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(100, 38, 79, 120));
+                editor.TextArea.SelectionForeground = null;
+                break;
+            case "light":
+                editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255));
+                editor.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 0, 0));
+                editor.TextArea.TextView.CurrentLineBackground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(25, 0, 0, 0));
+                editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(20, 0, 0, 0)), 1);
+                editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(150, 150, 150));
+                editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 0, 120, 215));
+                editor.TextArea.SelectionForeground = null;
+                break;
+            case "monokai":
+                editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 40, 34));
+                editor.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(248, 248, 242));
+                editor.TextArea.TextView.CurrentLineBackground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(30, 255, 255, 255));
+                editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
+                editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 80));
+                editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 73, 72, 62));
+                break;
+            case "one-dark": case "onedark":
+                editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 44, 52));
+                editor.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(171, 178, 191));
+                editor.TextArea.TextView.CurrentLineBackground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(25, 255, 255, 255));
+                editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
+                editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(76, 82, 99));
+                editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 62, 68, 81));
+                break;
+            case "dracula":
+                editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 42, 54));
+                editor.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(248, 248, 242));
+                editor.TextArea.TextView.CurrentLineBackground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(25, 255, 255, 255));
+                editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
+                editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(98, 114, 164));
+                editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 68, 71, 90));
+                break;
+            case "solarized-dark":
+                editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 43, 54));
+                editor.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(131, 148, 150));
+                editor.TextArea.TextView.CurrentLineBackground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(20, 255, 255, 255));
+                editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
+                editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(88, 110, 117));
+                editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(60, 7, 54, 66));
+                break;
+            default:
+                // Try to parse custom theme: "bg:#1E1E1E,fg:#D4D4D4,ln:#646464,sel:#264F78,cur:#FFFFFF1A"
+                if (theme.Contains(":")) {
+                    foreach (string pair in theme.Split(',')) {
+                        string[] kv = pair.Split(':');
+                        if (kv.Length != 2) continue;
+                        try {
+                            var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(kv[1]);
+                            var brush = new System.Windows.Media.SolidColorBrush(color);
+                            switch (kv[0].Trim().ToLower()) {
+                                case "bg": editor.Background = brush; break;
+                                case "fg": editor.Foreground = brush; break;
+                                case "ln": editor.LineNumbersForeground = brush; break;
+                                case "sel": editor.TextArea.SelectionBrush = brush; break;
+                                case "cur": editor.TextArea.TextView.CurrentLineBackground = brush; break;
+                            }
+                        } catch { }
+                    }
+                }
+                break;
+        }
+    }
+#endif
+
+#if ENABLE_DOCUMENT
+    private void ApplyDocFormat(RichTextBox rtb, string command) {
+        string[] cmdParts = command.Split(new[] { '|' }, 2);
+        string cmd = cmdParts[0];
+        string val = cmdParts.Length > 1 ? cmdParts[1] : "";
+
+        var selection = rtb.Selection;
+
+        switch (cmd) {
+            case "Bold":
+                EditingCommands.ToggleBold.Execute(null, rtb);
+                break;
+            case "Italic":
+                EditingCommands.ToggleItalic.Execute(null, rtb);
+                break;
+            case "Underline":
+                EditingCommands.ToggleUnderline.Execute(null, rtb);
+                break;
+            case "Strikethrough":
+                selection.ApplyPropertyValue(Inline.TextDecorationsProperty, TextDecorations.Strikethrough);
+                break;
+            case "FontFamily":
+                if (!string.IsNullOrEmpty(val))
+                    selection.ApplyPropertyValue(TextElement.FontFamilyProperty, new System.Windows.Media.FontFamily(val));
+                break;
+            case "FontSize":
+                double fs; if (double.TryParse(val, out fs))
+                    selection.ApplyPropertyValue(TextElement.FontSizeProperty, fs);
+                break;
+            case "FontColor":
+                if (!string.IsNullOrEmpty(val)) {
+                    try {
+                        var brush = new System.Windows.Media.BrushConverter().ConvertFromString(val) as System.Windows.Media.Brush;
+                        if (brush != null) selection.ApplyPropertyValue(TextElement.ForegroundProperty, brush);
+                    } catch { }
+                }
+                break;
+            case "Highlight":
+                if (!string.IsNullOrEmpty(val)) {
+                    try {
+                        var brush = new System.Windows.Media.BrushConverter().ConvertFromString(val) as System.Windows.Media.Brush;
+                        if (brush != null) selection.ApplyPropertyValue(TextElement.BackgroundProperty, brush);
+                    } catch { }
+                }
+                break;
+            case "AlignLeft":
+                EditingCommands.AlignLeft.Execute(null, rtb);
+                break;
+            case "AlignCenter":
+                EditingCommands.AlignCenter.Execute(null, rtb);
+                break;
+            case "AlignRight":
+                EditingCommands.AlignRight.Execute(null, rtb);
+                break;
+            case "AlignJustify":
+                EditingCommands.AlignJustify.Execute(null, rtb);
+                break;
+            case "BulletList":
+                EditingCommands.ToggleBullets.Execute(null, rtb);
+                break;
+            case "NumberList":
+                EditingCommands.ToggleNumbering.Execute(null, rtb);
+                break;
+            case "IncreaseIndent":
+                EditingCommands.IncreaseIndentation.Execute(null, rtb);
+                break;
+            case "DecreaseIndent":
+                EditingCommands.DecreaseIndentation.Execute(null, rtb);
+                break;
+            case "Superscript":
+                selection.ApplyPropertyValue(Inline.BaselineAlignmentProperty, BaselineAlignment.Superscript);
+                double curSize = 14;
+                var szObj = selection.GetPropertyValue(TextElement.FontSizeProperty);
+                if (szObj is double) curSize = (double)szObj;
+                selection.ApplyPropertyValue(TextElement.FontSizeProperty, curSize * 0.7);
+                break;
+            case "Subscript":
+                selection.ApplyPropertyValue(Inline.BaselineAlignmentProperty, BaselineAlignment.Subscript);
+                double curSize2 = 14;
+                var szObj2 = selection.GetPropertyValue(TextElement.FontSizeProperty);
+                if (szObj2 is double) curSize2 = (double)szObj2;
+                selection.ApplyPropertyValue(TextElement.FontSizeProperty, curSize2 * 0.7);
+                break;
+            case "ClearFormatting":
+                selection.ClearAllProperties();
+                break;
+            case "Heading": {
+                double headingSize = 24;
+                if (!string.IsNullOrEmpty(val)) {
+                    switch (val) {
+                        case "1": headingSize = 28; break;
+                        case "2": headingSize = 24; break;
+                        case "3": headingSize = 20; break;
+                        case "4": headingSize = 18; break;
+                        case "5": headingSize = 16; break;
+                        case "6": headingSize = 14; break;
+                    }
+                }
+                selection.ApplyPropertyValue(TextElement.FontSizeProperty, headingSize);
+                selection.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Bold);
+                break;
+            }
+            case "TableCellBackground": {
+                if (!string.IsNullOrEmpty(val)) {
+                    try {
+                        var brush = new System.Windows.Media.BrushConverter().ConvertFromString(val) as System.Windows.Media.Brush;
+                        if (brush != null) {
+                            var cell = GetCurrentCell(rtb);
+                            if (cell != null) cell.Background = brush;
+                        }
+                    } catch { }
+                }
+                break;
+            }
+            case "TableMergeRight": {
+                var cell = GetCurrentCell(rtb);
+                if (cell != null) {
+                    cell.ColumnSpan = cell.ColumnSpan + 1;
+                }
+                break;
+            }
+            case "TableAddRowBelow": {
+                var cell = GetCurrentCell(rtb);
+                if (cell != null) {
+                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                    var rg = row != null ? row.Parent as System.Windows.Documents.TableRowGroup : null;
+                    if (row != null && rg != null) {
+                        var newRow = new System.Windows.Documents.TableRow();
+                        int colCount = 0;
+                        foreach (var c in row.Cells) colCount += c.ColumnSpan;
+                        for (int i = 0; i < colCount; i++) {
+                            var newCell = new System.Windows.Documents.TableCell(new System.Windows.Documents.Paragraph());
+                            newCell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                            newCell.BorderThickness = new Thickness(0.5);
+                            newCell.Padding = new Thickness(10, 8, 10, 8);
+                            newRow.Cells.Add(newCell);
+                        }
+                        int rowIdx = rg.Rows.IndexOf(row);
+                        if (rowIdx < rg.Rows.Count - 1)
+                            rg.Rows.Insert(rowIdx + 1, newRow);
+                        else
+                            rg.Rows.Add(newRow);
+                    }
+                }
+                break;
+            }
+            case "TableAddRowAbove": {
+                var cell = GetCurrentCell(rtb);
+                if (cell != null) {
+                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                    var rg = row != null ? row.Parent as System.Windows.Documents.TableRowGroup : null;
+                    if (row != null && rg != null) {
+                        var newRow = new System.Windows.Documents.TableRow();
+                        int colCount = 0;
+                        foreach (var c in row.Cells) colCount += c.ColumnSpan;
+                        for (int i = 0; i < colCount; i++) {
+                            var newCell = new System.Windows.Documents.TableCell(new System.Windows.Documents.Paragraph());
+                            newCell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                            newCell.BorderThickness = new Thickness(0.5);
+                            newCell.Padding = new Thickness(10, 8, 10, 8);
+                            newRow.Cells.Add(newCell);
+                        }
+                        int rowIdx = rg.Rows.IndexOf(row);
+                        rg.Rows.Insert(rowIdx, newRow);
+                    }
+                }
+                break;
+            }
+            case "TableAddColumnRight": {
+                var cell = GetCurrentCell(rtb);
+                if (cell != null) {
+                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                    var rg = row != null ? row.Parent as System.Windows.Documents.TableRowGroup : null;
+                    var table = rg != null ? rg.Parent as System.Windows.Documents.Table : null;
+                    if (table != null && rg != null) {
+                        int cellIdx = row.Cells.IndexOf(cell);
+                        table.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(1, GridUnitType.Star) });
+                        foreach (var r in rg.Rows) {
+                            int insertAt = Math.Min(cellIdx + 1, r.Cells.Count);
+                            var newCell = new System.Windows.Documents.TableCell(new System.Windows.Documents.Paragraph());
+                            newCell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                            newCell.BorderThickness = new Thickness(0.5);
+                            newCell.Padding = new Thickness(10, 8, 10, 8);
+                            r.Cells.Insert(insertAt, newCell);
+                        }
+                    }
+                }
+                break;
+            }
+            case "TableDeleteRow": {
+                var cell = GetCurrentCell(rtb);
+                if (cell != null) {
+                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                    var rg = row != null ? row.Parent as System.Windows.Documents.TableRowGroup : null;
+                    if (rg != null && rg.Rows.Count > 1) {
+                        rg.Rows.Remove(row);
+                    }
+                }
+                break;
+            }
+            case "TableDeleteColumn": {
+                var cell = GetCurrentCell(rtb);
+                if (cell != null) {
+                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                    var rg = row != null ? row.Parent as System.Windows.Documents.TableRowGroup : null;
+                    var table = rg != null ? rg.Parent as System.Windows.Documents.Table : null;
+                    if (table != null && rg != null) {
+                        int cellIdx = row.Cells.IndexOf(cell);
+                        foreach (var r in rg.Rows.ToList()) {
+                            if (cellIdx >= 0 && cellIdx < r.Cells.Count && r.Cells.Count > 1)
+                                r.Cells.RemoveAt(cellIdx);
+                        }
+                        if (table.Columns.Count > 1)
+                            table.Columns.RemoveAt(table.Columns.Count - 1);
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    private System.Windows.Documents.TableCell GetCurrentCell(RichTextBox rtb) {
+        DependencyObject pointer = rtb.CaretPosition.Parent;
+        while (pointer != null && !(pointer is System.Windows.Documents.TableCell)) {
+            pointer = System.Windows.Media.VisualTreeHelper.GetParent(pointer);
+        }
+        if (pointer == null) {
+            pointer = rtb.CaretPosition.Parent;
+            while (pointer != null && !(pointer is System.Windows.Documents.TableCell)) {
+                pointer = LogicalTreeHelper.GetParent(pointer);
+            }
+        }
+        return pointer as System.Windows.Documents.TableCell;
+    }
+
+    private FlowDocument DocxToFlowDocument(string filePath) {
+        var doc = new FlowDocument();
+        doc.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+        doc.FontSize = 14;
+        doc.PagePadding = new Thickness(40);
+
+        using (var wordDoc = WordprocessingDocument.Open(filePath, false)) {
+            var mainPart = wordDoc.MainDocumentPart;
+            var body = mainPart.Document.Body;
+            
+            // Pre-build numbering lookup
+            var numberingFormats = new System.Collections.Generic.Dictionary<string, string>(); // numId_level -> format
+            var numberingCounters = new System.Collections.Generic.Dictionary<string, int>();
+            var numPart = mainPart.NumberingDefinitionsPart;
+            if (numPart != null && numPart.Numbering != null) {
+                // Build abstractNumId -> NumberingInstance mapping
+                var absNumFormats = new System.Collections.Generic.Dictionary<int, System.Collections.Generic.Dictionary<int, string>>();
+                foreach (var absNum in numPart.Numbering.Elements<AbstractNum>()) {
+                    if (absNum.AbstractNumberId == null) continue;
+                    var levelFormats = new System.Collections.Generic.Dictionary<int, string>();
+                    foreach (var lvl in absNum.Elements<Level>()) {
+                        if (lvl.LevelIndex == null) continue;
+                        string fmt = "bullet";
+                        if (lvl.NumberingFormat != null && lvl.NumberingFormat.Val != null) {
+                            fmt = lvl.NumberingFormat.Val.Value.ToString().ToLower();
+                        }
+                        levelFormats[lvl.LevelIndex.Value] = fmt;
+                    }
+                    absNumFormats[absNum.AbstractNumberId.Value] = levelFormats;
+                }
+                foreach (var numInst in numPart.Numbering.Elements<NumberingInstance>()) {
+                    if (numInst.NumberID == null || numInst.AbstractNumId == null || numInst.AbstractNumId.Val == null) continue;
+                    int absId = numInst.AbstractNumId.Val.Value;
+                    if (absNumFormats.ContainsKey(absId)) {
+                        foreach (var kv in absNumFormats[absId]) {
+                            numberingFormats[numInst.NumberID.Value + "_" + kv.Key] = kv.Value;
+                        }
+                    }
+                }
+            }
+
+            // Track current list state for grouping consecutive list items
+            System.Windows.Documents.List currentList = null;
+            string currentListKey = "";
+
+            foreach (var element in body.Elements()) {
+                if (element is DocumentFormat.OpenXml.Wordprocessing.Paragraph) {
+                    var para = (DocumentFormat.OpenXml.Wordprocessing.Paragraph)element;
+                    var pPr = para.ParagraphProperties;
+
+                    // Check if this is a list paragraph
+                    bool isList = false;
+                    int listLevel = 0;
+                    string listFormat = "bullet";
+                    string listKey = "";
+                    if (pPr != null && pPr.NumberingProperties != null) {
+                        var numProps = pPr.NumberingProperties;
+                        string numId = "0";
+                        if (numProps.NumberingId != null && numProps.NumberingId.Val != null) {
+                            numId = numProps.NumberingId.Val.Value.ToString();
+                        }
+                        if (numProps.NumberingLevelReference != null && numProps.NumberingLevelReference.Val != null) {
+                            listLevel = numProps.NumberingLevelReference.Val.Value;
+                        }
+                        if (numId != "0") {
+                            isList = true;
+                            listKey = numId + "_" + listLevel;
+                            if (numberingFormats.ContainsKey(listKey)) {
+                                listFormat = numberingFormats[listKey];
+                            }
+                        }
+                    }
+
+                    if (isList) {
+                        // Create or continue a List block
+                        if (currentList == null || currentListKey != listKey) {
+                            currentList = new System.Windows.Documents.List();
+                            currentList.Margin = new Thickness(listLevel * 20 + 20, 2, 0, 2);
+                            if (listFormat == "bullet" || listFormat == "none") {
+                                currentList.MarkerStyle = TextMarkerStyle.Disc;
+                            } else if (listFormat == "decimal" || listFormat == "arabic") {
+                                currentList.MarkerStyle = TextMarkerStyle.Decimal;
+                            } else if (listFormat == "lowerroman") {
+                                currentList.MarkerStyle = TextMarkerStyle.LowerRoman;
+                            } else if (listFormat == "upperroman") {
+                                currentList.MarkerStyle = TextMarkerStyle.UpperRoman;
+                            } else if (listFormat == "lowerletter") {
+                                currentList.MarkerStyle = TextMarkerStyle.LowerLatin;
+                            } else if (listFormat == "upperletter") {
+                                currentList.MarkerStyle = TextMarkerStyle.UpperLatin;
+                            } else {
+                                currentList.MarkerStyle = TextMarkerStyle.Disc;
+                            }
+                            currentListKey = listKey;
+                            doc.Blocks.Add(currentList);
+                        }
+                        var listItem = new System.Windows.Documents.ListItem();
+                        var listPara = BuildFlowParagraph(para, pPr, mainPart);
+                        listItem.Blocks.Add(listPara);
+                        currentList.ListItems.Add(listItem);
+                    } else {
+                        // End any active list
+                        currentList = null;
+                        currentListKey = "";
+
+                        var flowPara = BuildFlowParagraph(para, pPr, mainPart);
+                        doc.Blocks.Add(flowPara);
+                    }
+                } else if (element is DocumentFormat.OpenXml.Wordprocessing.Table) {
+                    currentList = null;
+                    currentListKey = "";
+                    var flowTable = BuildFlowTable((DocumentFormat.OpenXml.Wordprocessing.Table)element, mainPart);
+                    doc.Blocks.Add(flowTable);
+                }
+            }
+        }
+        return doc;
+    }
+
+    // Build a FlowDocument Paragraph from an OpenXML Paragraph
+    private System.Windows.Documents.Paragraph BuildFlowParagraph(
+        DocumentFormat.OpenXml.Wordprocessing.Paragraph para,
+        ParagraphProperties pPr,
+        MainDocumentPart mainPart) {
+        
+        var flowPara = new System.Windows.Documents.Paragraph();
+
+        if (pPr != null) {
+            // Justification
+            var jc = pPr.Justification;
+            if (jc != null) {
+                var jcVal = jc.Val != null ? jc.Val.Value : JustificationValues.Left;
+                switch (jcVal) {
+                    case JustificationValues.Center: flowPara.TextAlignment = System.Windows.TextAlignment.Center; break;
+                    case JustificationValues.Right: flowPara.TextAlignment = System.Windows.TextAlignment.Right; break;
+                    case JustificationValues.Both: flowPara.TextAlignment = System.Windows.TextAlignment.Justify; break;
+                    default: flowPara.TextAlignment = System.Windows.TextAlignment.Left; break;
+                }
+            }
+
+            // Heading style
+            if (pPr.ParagraphStyleId != null) {
+                string styleId = (pPr.ParagraphStyleId.Val != null) ? pPr.ParagraphStyleId.Val.Value : "";
+                if (styleId.StartsWith("Heading") || styleId.StartsWith("heading")) {
+                    int level = 1;
+                    if (styleId.Length > 7) int.TryParse(styleId.Substring(7), out level);
+                    flowPara.FontWeight = FontWeights.Bold;
+                    flowPara.FontSize = Math.Max(14, 30 - (level * 3));
+                    flowPara.Margin = new Thickness(0, 12, 0, 4);
+                } else if (styleId.Contains("Quote") || styleId.Contains("quote")) {
+                    flowPara.FontStyle = FontStyles.Italic;
+                    flowPara.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 100));
+                    flowPara.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
+                    flowPara.BorderThickness = new Thickness(3, 0, 0, 0);
+                    flowPara.Padding = new Thickness(12, 4, 4, 4);
+                }
+            }
+
+            // Paragraph shading/background
+            if (pPr.Shading != null && pPr.Shading.Fill != null) {
+                string fillHex = pPr.Shading.Fill.Value;
+                if (!string.IsNullOrEmpty(fillHex) && fillHex != "auto" && fillHex != "Auto") {
+                    try {
+                        flowPara.Background = new System.Windows.Media.SolidColorBrush(
+                            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#" + fillHex));
+                        flowPara.Padding = new Thickness(10, 6, 10, 6);
+                    } catch { }
+                }
+            }
+
+            // Indentation
+            if (pPr.Indentation != null) {
+                double leftIndent = 0, rightIndent = 0, firstLine = 0;
+                if (pPr.Indentation.Left != null) {
+                    double val;
+                    if (double.TryParse(pPr.Indentation.Left.Value, out val))
+                        leftIndent = val / 20.0; // twips to points approx
+                }
+                if (pPr.Indentation.Right != null) {
+                    double val;
+                    if (double.TryParse(pPr.Indentation.Right.Value, out val))
+                        rightIndent = val / 20.0;
+                }
+                if (pPr.Indentation.FirstLine != null) {
+                    double val;
+                    if (double.TryParse(pPr.Indentation.FirstLine.Value, out val))
+                        firstLine = val / 20.0;
+                }
+                if (leftIndent > 0 || rightIndent > 0)
+                    flowPara.Margin = new Thickness(leftIndent, flowPara.Margin.Top, rightIndent, flowPara.Margin.Bottom);
+                if (firstLine > 0)
+                    flowPara.TextIndent = firstLine;
+            }
+
+            // Spacing (before/after)
+            if (pPr.SpacingBetweenLines != null) {
+                double before = 0, after = 0;
+                if (pPr.SpacingBetweenLines.Before != null) {
+                    double val;
+                    if (double.TryParse(pPr.SpacingBetweenLines.Before.Value, out val))
+                        before = val / 20.0;
+                }
+                if (pPr.SpacingBetweenLines.After != null) {
+                    double val;
+                    if (double.TryParse(pPr.SpacingBetweenLines.After.Value, out val))
+                        after = val / 20.0;
+                }
+                if (before > 0 || after > 0)
+                    flowPara.Margin = new Thickness(flowPara.Margin.Left, before, flowPara.Margin.Right, after);
+            }
+        }
+
+        // Process paragraph children (Runs, Hyperlinks, Bookmarks, etc.)
+        foreach (var child in para.ChildElements) {
+            if (child is DocumentFormat.OpenXml.Wordprocessing.Run) {
+                var run = (DocumentFormat.OpenXml.Wordprocessing.Run)child;
+                
+                // Check for inline images (Drawing elements)
+                var drawings = run.Descendants<DocumentFormat.OpenXml.Wordprocessing.Drawing>();
+                bool hasDrawing = false;
+                foreach (var drawing in drawings) {
+                    hasDrawing = true;
+                    try {
+                        var img = ExtractImageFromDrawing(drawing, mainPart);
+                        if (img != null) {
+                            flowPara.Inlines.Add(new InlineUIContainer(img));
+                        }
+                    } catch {
+                        flowPara.Inlines.Add(new System.Windows.Documents.Run("[Image]") {
+                            Foreground = System.Windows.Media.Brushes.Gray,
+                            FontStyle = FontStyles.Italic
+                        });
+                    }
+                }
+                if (hasDrawing && string.IsNullOrWhiteSpace(run.InnerText)) continue;
+
+                string text = run.InnerText;
+                var flowRun = new System.Windows.Documents.Run(text);
+                ApplyRunProperties(flowRun, run.RunProperties);
+                flowPara.Inlines.Add(flowRun);
+
+            } else if (child is DocumentFormat.OpenXml.Wordprocessing.Hyperlink) {
+                var hyperlink = (DocumentFormat.OpenXml.Wordprocessing.Hyperlink)child;
+                string url = "";
+                
+                // Resolve the URL from relationship
+                if (hyperlink.Id != null) {
+                    try {
+                        var rel = mainPart.HyperlinkRelationships
+                            .FirstOrDefault(r => r.Id == hyperlink.Id.Value);
+                        if (rel != null) url = rel.Uri.ToString();
+                    } catch { }
+                }
+                if (string.IsNullOrEmpty(url) && hyperlink.Anchor != null) {
+                    url = "#" + hyperlink.Anchor.Value;
+                }
+
+                // Get link display text and formatting
+                string linkText = "";
+                var linkSpan = new System.Windows.Documents.Hyperlink();
+                foreach (var hRun in hyperlink.Elements<DocumentFormat.OpenXml.Wordprocessing.Run>()) {
+                    linkText += hRun.InnerText;
+                    var linkFlowRun = new System.Windows.Documents.Run(hRun.InnerText);
+                    ApplyRunProperties(linkFlowRun, hRun.RunProperties);
+                    linkSpan.Inlines.Add(linkFlowRun);
+                }
+
+                if (!string.IsNullOrEmpty(url)) {
+                    try { linkSpan.NavigateUri = new Uri(url, UriKind.RelativeOrAbsolute); } catch { }
+                    linkSpan.ToolTip = url;
+                    linkSpan.Cursor = System.Windows.Input.Cursors.Hand;
+                    linkSpan.RequestNavigate += (sender, e) => {
+                        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true }); } catch { }
+                        e.Handled = true;
+                    };
+                }
+                linkSpan.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(17, 85, 204));
+                flowPara.Inlines.Add(linkSpan);
+
+            } else if (child is DocumentFormat.OpenXml.Wordprocessing.BookmarkStart ||
+                       child is DocumentFormat.OpenXml.Wordprocessing.BookmarkEnd ||
+                       child is DocumentFormat.OpenXml.Wordprocessing.ProofError) {
+                // Skip bookmark markers and proofing info
+                continue;
+            }
+        }
+
+        return flowPara;
+    }
+
+    // Apply run properties to a WPF Run
+    private void ApplyRunProperties(System.Windows.Documents.Run flowRun, RunProperties rPr) {
+        if (rPr == null) return;
+        if (rPr.Bold != null) flowRun.FontWeight = FontWeights.Bold;
+        if (rPr.Italic != null) flowRun.FontStyle = FontStyles.Italic;
+        if (rPr.Underline != null && rPr.Underline.Val != null && rPr.Underline.Val.Value != UnderlineValues.None)
+            flowRun.TextDecorations = TextDecorations.Underline;
+        if (rPr.Strike != null) flowRun.TextDecorations = TextDecorations.Strikethrough;
+        if (rPr.FontSize != null) {
+            double sz;
+            if (rPr.FontSize.Val != null && double.TryParse(rPr.FontSize.Val.Value, out sz))
+                flowRun.FontSize = sz / 2.0;
+        }
+        if (rPr.Color != null && rPr.Color.Val != null) {
+            try {
+                string cVal = rPr.Color.Val.Value;
+                if (cVal != "auto" && cVal != "Auto")
+                    flowRun.Foreground = new System.Windows.Media.SolidColorBrush(
+                        (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#" + cVal));
+            } catch { }
+        }
+        if (rPr.RunFonts != null && rPr.RunFonts.Ascii != null)
+            flowRun.FontFamily = new System.Windows.Media.FontFamily(rPr.RunFonts.Ascii.Value);
+        // Highlight
+        if (rPr.Highlight != null && rPr.Highlight.Val != null) {
+            flowRun.Background = HighlightColorToBrush(rPr.Highlight.Val.Value);
+        }
+        // Shading on run
+        if (rPr.Shading != null && rPr.Shading.Fill != null) {
+            string fillHex = rPr.Shading.Fill.Value;
+            if (!string.IsNullOrEmpty(fillHex) && fillHex != "auto" && fillHex != "Auto") {
+                try {
+                    flowRun.Background = new System.Windows.Media.SolidColorBrush(
+                        (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#" + fillHex));
+                } catch { }
+            }
+        }
+        // Superscript / Subscript
+        if (rPr.VerticalTextAlignment != null && rPr.VerticalTextAlignment.Val != null) {
+            if (rPr.VerticalTextAlignment.Val.Value == VerticalPositionValues.Superscript) {
+                flowRun.Typography.Variants = System.Windows.FontVariants.Superscript;
+                flowRun.FontSize = (flowRun.FontSize > 0 ? flowRun.FontSize : 14) * 0.7;
+                flowRun.BaselineAlignment = BaselineAlignment.Superscript;
+            } else if (rPr.VerticalTextAlignment.Val.Value == VerticalPositionValues.Subscript) {
+                flowRun.Typography.Variants = System.Windows.FontVariants.Subscript;
+                flowRun.FontSize = (flowRun.FontSize > 0 ? flowRun.FontSize : 14) * 0.7;
+                flowRun.BaselineAlignment = BaselineAlignment.Subscript;
+            }
+        }
+    }
+
+    // Convert OOXML highlight color name to WPF Brush
+    private System.Windows.Media.Brush HighlightColorToBrush(HighlightColorValues color) {
+        switch (color) {
+            case HighlightColorValues.Yellow: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 0));
+            case HighlightColorValues.Green: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 255, 0));
+            case HighlightColorValues.Cyan: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 255, 255));
+            case HighlightColorValues.Magenta: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 0, 255));
+            case HighlightColorValues.Blue: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 0, 255));
+            case HighlightColorValues.Red: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 0, 0));
+            case HighlightColorValues.DarkBlue: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 0, 139));
+            case HighlightColorValues.DarkCyan: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 139, 139));
+            case HighlightColorValues.DarkGreen: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 100, 0));
+            case HighlightColorValues.DarkMagenta: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(139, 0, 139));
+            case HighlightColorValues.DarkRed: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(139, 0, 0));
+            case HighlightColorValues.DarkYellow: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(128, 128, 0));
+            case HighlightColorValues.DarkGray: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(169, 169, 169));
+            case HighlightColorValues.LightGray: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(211, 211, 211));
+            case HighlightColorValues.Black: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 0, 0));
+            case HighlightColorValues.White: return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255));
+            default: return System.Windows.Media.Brushes.Yellow;
+        }
+    }
+
+    // Extract an image from an OpenXML Drawing element
+    private System.Windows.Controls.Image ExtractImageFromDrawing(
+        DocumentFormat.OpenXml.Wordprocessing.Drawing drawing, MainDocumentPart mainPart) {
+        
+        // Try inline images first, then anchored
+        var blipFill = drawing.Descendants<DocumentFormat.OpenXml.Drawing.Blip>().FirstOrDefault();
+        if (blipFill == null || blipFill.Embed == null) return null;
+        
+        string relId = blipFill.Embed.Value;
+        var imagePart = mainPart.GetPartById(relId);
+        if (imagePart == null) return null;
+        
+        var bi = new System.Windows.Media.Imaging.BitmapImage();
+        using (var stream = imagePart.GetStream()) {
+            bi.BeginInit();
+            bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bi.StreamSource = stream;
+            bi.EndInit();
+        }
+        bi.Freeze();
+        
+        var img = new System.Windows.Controls.Image();
+        img.Source = bi;
+        img.Stretch = System.Windows.Media.Stretch.Uniform;
+        
+        // Try to get dimensions from extent (EMU → pixels, 1 EMU = 1/914400 inch, 96 DPI)
+        double maxWidth = 600;
+        var extents = drawing.Descendants<DocumentFormat.OpenXml.Drawing.Wordprocessing.Extent>().FirstOrDefault();
+        if (extents != null) {
+            if (extents.Cx != null && extents.Cx.Value > 0) {
+                double widthPx = extents.Cx.Value / 914400.0 * 96.0;
+                maxWidth = Math.Min(widthPx, 660);
+            }
+            if (extents.Cy != null && extents.Cy.Value > 0) {
+                double heightPx = extents.Cy.Value / 914400.0 * 96.0;
+                img.MaxHeight = heightPx;
+            }
+        }
+        img.MaxWidth = maxWidth;
+        img.Margin = new Thickness(0, 4, 0, 4);
+        return img;
+    }
+
+    // Build a FlowDocument Table from an OpenXML Table
+    private System.Windows.Documents.Table BuildFlowTable(
+        DocumentFormat.OpenXml.Wordprocessing.Table oxTable, MainDocumentPart mainPart) {
+        
+        var flowTable = new System.Windows.Documents.Table();
+        flowTable.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+        flowTable.BorderThickness = new Thickness(1);
+        flowTable.CellSpacing = 0;
+        flowTable.Margin = new Thickness(0, 8, 0, 8);
+        var rg = new System.Windows.Documents.TableRowGroup();
+        foreach (var oxRow in oxTable.Elements<DocumentFormat.OpenXml.Wordprocessing.TableRow>()) {
+            var flowRow = new System.Windows.Documents.TableRow();
+            foreach (var oxCell in oxRow.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>()) {
+                var cell = new System.Windows.Documents.TableCell();
+                cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                cell.BorderThickness = new Thickness(0.5);
+                cell.Padding = new Thickness(8, 6, 8, 6);
+
+                // Cell content — multiple paragraphs
+                foreach (var cellPara in oxCell.Elements<DocumentFormat.OpenXml.Wordprocessing.Paragraph>()) {
+                    var flowCellPara = BuildFlowParagraph(cellPara, cellPara.ParagraphProperties, mainPart);
+                    flowCellPara.Margin = new Thickness(0, 0, 0, 2);
+                    cell.Blocks.Add(flowCellPara);
+                }
+                // If no blocks were added, add empty paragraph
+                if (cell.Blocks.Count == 0) {
+                    cell.Blocks.Add(new System.Windows.Documents.Paragraph());
+                }
+
+                // Cell properties
+                var tcPr = oxCell.TableCellProperties;
+                if (tcPr != null) {
+                    var shading = tcPr.Shading;
+                    if (shading != null && shading.Fill != null) {
+                        string fillHex = shading.Fill.Value;
+                        if (!string.IsNullOrEmpty(fillHex) && fillHex != "auto" && fillHex != "Auto") {
+                            try {
+                                cell.Background = new System.Windows.Media.SolidColorBrush(
+                                    (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#" + fillHex));
+                            } catch { }
+                        }
+                    }
+                    var gridSpan = tcPr.GridSpan;
+                    if (gridSpan != null && gridSpan.Val != null) {
+                        int spanVal;
+                        if (int.TryParse(gridSpan.Val.ToString(), out spanVal) && spanVal > 1) {
+                            cell.ColumnSpan = spanVal;
+                        }
+                    }
+                }
+                flowRow.Cells.Add(cell);
+            }
+            rg.Rows.Add(flowRow);
+        }
+        flowTable.RowGroups.Add(rg);
+        if (flowTable.Columns.Count == 0) {
+            int maxCols = 1;
+            foreach (var r in rg.Rows) {
+                int rowColCount = 0;
+                foreach (var c in r.Cells) rowColCount += c.ColumnSpan;
+                if (rowColCount > maxCols) maxCols = rowColCount;
+            }
+            for (int i = 0; i < maxCols; i++)
+                flowTable.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(1, GridUnitType.Star) });
+        }
+        return flowTable;
+    }
+
+    // === Non-Destructive Dark Mode ===
+    // Use Dictionary keyed by DependencyObject (reference equality by default)
+    private System.Collections.Generic.Dictionary<DependencyObject, System.Windows.Media.Brush[]>
+        _darkModeStore = new System.Collections.Generic.Dictionary<DependencyObject, System.Windows.Media.Brush[]>();
+    private bool _isDarkMode = false;
+
+    private void ApplyDarkModeToDocument(FlowDocument doc) {
+        _darkModeStore = new System.Collections.Generic.Dictionary<DependencyObject, System.Windows.Media.Brush[]>();
+        _isDarkMode = true;
+        foreach (var block in doc.Blocks.ToList()) {
+            ApplyDarkModeToBlock(block);
+        }
+    }
+
+    private void RestoreDocumentColors(FlowDocument doc) {
+        if (!_isDarkMode) return;
+        foreach (var block in doc.Blocks.ToList()) {
+            RestoreBlockColors(block);
+        }
+        _darkModeStore = new System.Collections.Generic.Dictionary<DependencyObject, System.Windows.Media.Brush[]>();
+        _isDarkMode = false;
+    }
+
+    private void StoreOriginal(DependencyObject element, System.Windows.Media.Brush fg, System.Windows.Media.Brush bg) {
+        _darkModeStore[element] = new System.Windows.Media.Brush[] { fg, bg };
+    }
+
+    private bool TryGetOriginal(DependencyObject element, out System.Windows.Media.Brush fg, out System.Windows.Media.Brush bg) {
+        System.Windows.Media.Brush[] stored;
+        if (_darkModeStore.TryGetValue(element, out stored)) {
+            fg = stored[0];
+            bg = stored[1];
+            return true;
+        }
+        fg = null; bg = null;
+        return false;
+    }
+
+    private void ApplyDarkModeToBlock(System.Windows.Documents.Block block) {
+        if (block is System.Windows.Documents.Paragraph) {
+            var para = (System.Windows.Documents.Paragraph)block;
+            StoreOriginal(para, para.Foreground, para.Background);
+            para.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224));
+            if (para.Background != null && para.Background is System.Windows.Media.SolidColorBrush) {
+                var origBg = ((System.Windows.Media.SolidColorBrush)para.Background).Color;
+                para.Background = new System.Windows.Media.SolidColorBrush(ToDarkGreyscale(origBg));
+            }
+            foreach (var inline in para.Inlines.ToList()) {
+                ApplyDarkModeToInline(inline);
+            }
+        } else if (block is System.Windows.Documents.Table) {
+            var table = (System.Windows.Documents.Table)block;
+            StoreOriginal(table, table.BorderBrush, null);
+            table.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(60, 60, 60));
+            foreach (var rg in table.RowGroups) {
+                foreach (var row in rg.Rows) {
+                    foreach (var cell in row.Cells) {
+                        StoreOriginal(cell, cell.Foreground, cell.Background);
+                        cell.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224));
+                        cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(60, 60, 60));
+                        if (cell.Background != null && cell.Background is System.Windows.Media.SolidColorBrush) {
+                            var origCBg = ((System.Windows.Media.SolidColorBrush)cell.Background).Color;
+                            cell.Background = new System.Windows.Media.SolidColorBrush(ToDarkGreyscale(origCBg));
+                        }
+                        foreach (var cellBlock in cell.Blocks.ToList()) {
+                            ApplyDarkModeToBlock(cellBlock);
+                        }
+                    }
+                }
+            }
+        } else if (block is System.Windows.Documents.List) {
+            var list = (System.Windows.Documents.List)block;
+            StoreOriginal(list, list.Foreground, null);
+            list.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224));
+            foreach (var item in list.ListItems) {
+                foreach (var itemBlock in item.Blocks.ToList()) {
+                    ApplyDarkModeToBlock(itemBlock);
+                }
+            }
+        }
+    }
+
+    private void ApplyDarkModeToInline(System.Windows.Documents.Inline inline) {
+        if (inline is System.Windows.Documents.Run) {
+            var run = (System.Windows.Documents.Run)inline;
+            StoreOriginal(run, run.Foreground, run.Background);
+            if (run.Foreground is System.Windows.Media.SolidColorBrush) {
+                var origFg = ((System.Windows.Media.SolidColorBrush)run.Foreground).Color;
+                byte grey = (byte)(0.299 * origFg.R + 0.587 * origFg.G + 0.114 * origFg.B);
+                byte invGrey = (byte)Math.Min(255, 255 - grey + 60);
+                run.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(invGrey, invGrey, invGrey));
+            } else {
+                run.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224));
+            }
+            if (run.Background != null && run.Background is System.Windows.Media.SolidColorBrush) {
+                var origBg = ((System.Windows.Media.SolidColorBrush)run.Background).Color;
+                run.Background = new System.Windows.Media.SolidColorBrush(ToDarkGreyscale(origBg));
+            }
+        } else if (inline is System.Windows.Documents.Hyperlink) {
+            var link = (System.Windows.Documents.Hyperlink)inline;
+            StoreOriginal(link, link.Foreground, null);
+            link.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(108, 180, 238));
+            foreach (var linkInline in link.Inlines.ToList()) {
+                ApplyDarkModeToInline(linkInline);
+            }
+        } else if (inline is System.Windows.Documents.Span) {
+            var span = (System.Windows.Documents.Span)inline;
+            foreach (var spanInline in span.Inlines.ToList()) {
+                ApplyDarkModeToInline(spanInline);
+            }
+        }
+    }
+
+    private void RestoreBlockColors(System.Windows.Documents.Block block) {
+        System.Windows.Media.Brush fg, bg;
+        if (block is System.Windows.Documents.Paragraph) {
+            var para = (System.Windows.Documents.Paragraph)block;
+            if (TryGetOriginal(para, out fg, out bg)) {
+                para.Foreground = fg;
+                para.Background = bg;
+            }
+            foreach (var inline in para.Inlines.ToList()) {
+                RestoreInlineColors(inline);
+            }
+        } else if (block is System.Windows.Documents.Table) {
+            var table = (System.Windows.Documents.Table)block;
+            if (TryGetOriginal(table, out fg, out bg)) {
+                table.BorderBrush = fg;
+            }
+            foreach (var rg in table.RowGroups) {
+                foreach (var row in rg.Rows) {
+                    foreach (var cell in row.Cells) {
+                        if (TryGetOriginal(cell, out fg, out bg)) {
+                            cell.Foreground = fg;
+                            cell.Background = bg;
+                        }
+                        cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                        foreach (var cellBlock in cell.Blocks.ToList()) {
+                            RestoreBlockColors(cellBlock);
+                        }
+                    }
+                }
+            }
+        } else if (block is System.Windows.Documents.List) {
+            var list = (System.Windows.Documents.List)block;
+            if (TryGetOriginal(list, out fg, out bg)) {
+                list.Foreground = fg;
+            }
+            foreach (var item in list.ListItems) {
+                foreach (var itemBlock in item.Blocks.ToList()) {
+                    RestoreBlockColors(itemBlock);
+                }
+            }
+        }
+    }
+
+    private void RestoreInlineColors(System.Windows.Documents.Inline inline) {
+        System.Windows.Media.Brush fg, bg;
+        if (inline is System.Windows.Documents.Run) {
+            var run = (System.Windows.Documents.Run)inline;
+            if (TryGetOriginal(run, out fg, out bg)) {
+                run.Foreground = fg;
+                run.Background = bg;
+            }
+        } else if (inline is System.Windows.Documents.Hyperlink) {
+            var link = (System.Windows.Documents.Hyperlink)inline;
+            if (TryGetOriginal(link, out fg, out bg)) {
+                link.Foreground = fg;
+            }
+            foreach (var linkInline in link.Inlines.ToList()) {
+                RestoreInlineColors(linkInline);
+            }
+        } else if (inline is System.Windows.Documents.Span) {
+            var span = (System.Windows.Documents.Span)inline;
+            foreach (var spanInline in span.Inlines.ToList()) {
+                RestoreInlineColors(spanInline);
+            }
+        }
+    }
+
+    private System.Windows.Media.Color ToDarkGreyscale(System.Windows.Media.Color c) {
+        byte grey = (byte)(0.299 * c.R + 0.587 * c.G + 0.114 * c.B);
+        byte dark = (byte)(20 + (grey * 30 / 255));
+        return System.Windows.Media.Color.FromRgb(dark, dark, dark);
+    }
+
+    private void FlowDocumentToDocx(FlowDocument flowDoc, string filePath) {
+        using (var wordDoc = WordprocessingDocument.Create(filePath, WordprocessingDocumentType.Document)) {
+            var mainPart = wordDoc.AddMainDocumentPart();
+            mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
+            var body = new DocumentFormat.OpenXml.Wordprocessing.Body();
+
+            foreach (var block in flowDoc.Blocks) {
+                if (block is System.Windows.Documents.Paragraph) {
+                    var flowPara = (System.Windows.Documents.Paragraph)block;
+                    var oxPara = new DocumentFormat.OpenXml.Wordprocessing.Paragraph();
+
+                    // Alignment
+                    var pPr = new DocumentFormat.OpenXml.Wordprocessing.ParagraphProperties();
+                    JustificationValues jv = JustificationValues.Left;
+                    switch (flowPara.TextAlignment) {
+                        case System.Windows.TextAlignment.Center: jv = JustificationValues.Center; break;
+                        case System.Windows.TextAlignment.Right: jv = JustificationValues.Right; break;
+                        case System.Windows.TextAlignment.Justify: jv = JustificationValues.Both; break;
+                    }
+                    pPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Justification { Val = jv });
+                    oxPara.Append(pPr);
+
+                    foreach (var inline in flowPara.Inlines) {
+                        if (inline is System.Windows.Documents.Run) {
+                            var flowRun = (System.Windows.Documents.Run)inline;
+                            var oxRun = new DocumentFormat.OpenXml.Wordprocessing.Run();
+                            var rPr = new DocumentFormat.OpenXml.Wordprocessing.RunProperties();
+
+                            if (flowRun.FontWeight == FontWeights.Bold)
+                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Bold());
+                            if (flowRun.FontStyle == FontStyles.Italic)
+                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Italic());
+                            if (flowRun.TextDecorations != null && flowRun.TextDecorations == TextDecorations.Underline)
+                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Underline { Val = UnderlineValues.Single });
+                            if (flowRun.FontSize != 14) {
+                                int halfPoints = (int)(flowRun.FontSize * 2);
+                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.FontSize { Val = halfPoints.ToString() });
+                            }
+                            if (flowRun.Foreground is System.Windows.Media.SolidColorBrush) {
+                                var color = ((System.Windows.Media.SolidColorBrush)flowRun.Foreground).Color;
+                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Color { Val = color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2") });
+                            }
+
+                            oxRun.Append(rPr);
+                            oxRun.Append(new DocumentFormat.OpenXml.Wordprocessing.Text(flowRun.Text) { Space = SpaceProcessingModeValues.Preserve });
+                            oxPara.Append(oxRun);
+                        }
+                    }
+                    body.Append(oxPara);
+                }
+            }
+            mainPart.Document.Append(body);
+            mainPart.Document.Save();
+        }
+    }
+
+    private FlowDocument DocToFlowDocument(string filePath) {
+        // .doc format requires COM interop or NPOI — try basic text extraction as fallback
+        var doc = new FlowDocument();
+        doc.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+        doc.FontSize = 14;
+        doc.PagePadding = new Thickness(40);
+        try {
+            // Attempt RTF conversion via RichTextBox (works for some .doc files)
+            byte[] bytes = System.IO.File.ReadAllBytes(filePath);
+            // Check for RTF magic bytes
+            string header = Encoding.ASCII.GetString(bytes, 0, Math.Min(5, bytes.Length));
+            if (header.StartsWith("{\\rtf")) {
+                var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+                using (var ms = new System.IO.MemoryStream(bytes)) {
+                    range.Load(ms, DataFormats.Rtf);
+                }
+            } else {
+                // Binary .doc — extract plain text as fallback
+                var sb = new StringBuilder();
+                for (int i = 0; i < bytes.Length; i++) {
+                    if (bytes[i] >= 32 && bytes[i] < 127) sb.Append((char)bytes[i]);
+                    else if (bytes[i] == 13 || bytes[i] == 10) sb.Append('\n');
+                }
+                doc.Blocks.Add(new System.Windows.Documents.Paragraph(
+                    new System.Windows.Documents.Run(sb.ToString())));
+            }
+        } catch {
+            doc.Blocks.Add(new System.Windows.Documents.Paragraph(
+                new System.Windows.Documents.Run("Error: Could not open .doc file. For full .doc support, NPOI library is required.")));
+        }
+        return doc;
+    }
+
+    private struct CharPosition {
+        public TextPointer Start;
+        public TextPointer End;
+        public char Character;
+    }
+
+    private System.Collections.Generic.List<CharPosition> BuildCharPositionMap(FlowDocument doc) {
+        var map = new System.Collections.Generic.List<CharPosition>();
+        TextPointer current = doc.ContentStart;
+        while (current != null && current.CompareTo(doc.ContentEnd) < 0) {
+            TextPointerContext context = current.GetPointerContext(LogicalDirection.Forward);
+            if (context == TextPointerContext.Text) {
+                string runText = current.GetTextInRun(LogicalDirection.Forward);
+                for (int i = 0; i < runText.Length; i++) {
+                    map.Add(new CharPosition {
+                        Start = current.GetPositionAtOffset(i),
+                        End = current.GetPositionAtOffset(i + 1),
+                        Character = runText[i]
+                    });
+                }
+            } else if (context == TextPointerContext.ElementEnd) {
+                DependencyObject element = current.Parent;
+                if (element is System.Windows.Documents.Paragraph || element is System.Windows.Documents.LineBreak) {
+                    map.Add(new CharPosition {
+                        Start = current,
+                        End = current,
+                        Character = '\r'
+                    });
+                    map.Add(new CharPosition {
+                        Start = current,
+                        End = current,
+                        Character = '\n'
+                    });
+                }
+            }
+            current = current.GetNextContextPosition(LogicalDirection.Forward);
+        }
+        return map;
+    }
+
+    private void ClearSearchHighlights(RichTextBox rtb) {
+        // Walk ALL inlines in the document and remove our highlight brush by color.
+        // We cannot rely on stored TextRange objects because WPF splits Runs when
+        // ApplyPropertyValue is called, making the original ranges stale.
+        try {
+            var highlightColor = _highlightBrush.Color;
+            var activeColor = _activeMatchBrush.Color;
+            TextPointer pos = rtb.Document.ContentStart;
+            System.Windows.Documents.Inline lastProcessed = null;
+            while (pos != null && pos.CompareTo(rtb.Document.ContentEnd) < 0) {
+                var il = pos.Parent as System.Windows.Documents.Inline;
+                if (il != null && il != lastProcessed) {
+                    lastProcessed = il;
+                    var scb = il.Background as System.Windows.Media.SolidColorBrush;
+                    if (scb != null && (scb.Color == highlightColor || scb.Color == activeColor)) {
+                        il.ClearValue(System.Windows.Documents.Inline.BackgroundProperty);
+                    }
+                }
+                pos = pos.GetNextContextPosition(LogicalDirection.Forward);
+            }
+        } catch { }
+        _highlightedRanges.Clear();
+        _highlightedOriginalBackgrounds.Clear();
+        _activeMatchRange = null;
+    }
+
+    private void ReplaceAllBackward(RichTextBox rtb, string find, string replace, bool matchCase) {
+        if (string.IsNullOrEmpty(find)) return;
+        var map = BuildCharPositionMap(rtb.Document);
+        var sb = new StringBuilder();
+        foreach (var cp in map) sb.Append(cp.Character);
+        string plain = sb.ToString();
+
+        StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        int searchPos = 0;
+        var matches = new System.Collections.Generic.List<int>();
+        while (searchPos < plain.Length) {
+            int idx = plain.IndexOf(find, searchPos, cmp);
+            if (idx < 0) break;
+            matches.Add(idx);
+            searchPos = idx + find.Length;
+        }
+
+        for (int i = matches.Count - 1; i >= 0; i--) {
+            int idx = matches[i];
+            int endIdx = idx + find.Length - 1;
+            if (endIdx < map.Count) {
+                TextPointer start = map[idx].Start;
+                TextPointer end = map[endIdx].End;
+                if (start != null && end != null) {
+                    var range = new TextRange(start, end);
+                    range.Text = replace;
+                }
+            }
+        }
+    }
+
+    private void HighlightAllMatches(RichTextBox rtb, string query, bool matchCase = false) {
+        if (string.IsNullOrEmpty(query) || query.Length < 2) return;
+
+        // Use the same precise character-level mapping as FindNext/FindPrevious
+        var map = BuildCharPositionMap(rtb.Document);
+        var sb = new StringBuilder();
+        foreach (var cp in map) sb.Append(cp.Character);
+        string plain = sb.ToString();
+
+        StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        int searchPos = 0;
+        int matchCount = 0;
+        while (searchPos < plain.Length) {
+            int idx = plain.IndexOf(query, searchPos, cmp);
+            if (idx < 0) break;
+
+            int endIdx = idx + query.Length - 1;
+            if (endIdx < map.Count) {
+                TextPointer start = map[idx].Start;
+                TextPointer end = map[endIdx].End;
+                if (start != null && end != null) {
+                    var range = new TextRange(start, end);
+                    object origBg = range.GetPropertyValue(TextElement.BackgroundProperty);
+                    _highlightedRanges.Add(range);
+                    _highlightedOriginalBackgrounds.Add(origBg);
+                    range.ApplyPropertyValue(TextElement.BackgroundProperty, _highlightBrush);
+                    matchCount++;
+                }
+            }
+            searchPos = idx + query.Length;
+        }
+
+        var win = System.Windows.Window.GetWindow(rtb);
+        if (win != null) {
+            var tb = win.FindName(rtb.Name + "_MatchCount") as System.Windows.Controls.TextBlock;
+            if (tb != null) {
+                tb.Text = matchCount == 1 ? "1 match" : matchCount + " matches";
+            }
+        }
+    }
+
+    private string GetDocumentRtf(FlowDocument doc) {
+        var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+        using (var ms = new System.IO.MemoryStream()) {
+            range.Save(ms, DataFormats.Rtf);
+            return Encoding.UTF8.GetString(ms.ToArray());
+        }
+    }
+
+    private void SetDocumentRtf(FlowDocument doc, string rtf) {
+        var range = new TextRange(doc.ContentStart, doc.ContentEnd);
+        using (var ms = new System.IO.MemoryStream(Encoding.UTF8.GetBytes(rtf))) {
+            range.Load(ms, DataFormats.Rtf);
+        }
+    }
+
+    private void ReplaceInFlowDocument(FlowDocument doc, string find, string replace, bool matchCase = false) {
+        foreach (var block in doc.Blocks) {
+            ReplaceInBlock(block, find, replace, matchCase);
+        }
+    }
+
+    private void ReplaceInBlock(System.Windows.Documents.Block block, string find, string replace, bool matchCase = false) {
+        if (block is System.Windows.Documents.Paragraph) {
+            var para = (System.Windows.Documents.Paragraph)block;
+            foreach (var inline in para.Inlines) {
+                ReplaceInInline(inline, find, replace, matchCase);
+            }
+        } else if (block is System.Windows.Documents.Table) {
+            var table = (System.Windows.Documents.Table)block;
+            foreach (var rg in table.RowGroups) {
+                foreach (var row in rg.Rows) {
+                    foreach (var cell in row.Cells) {
+                        foreach (var b in cell.Blocks) {
+                            ReplaceInBlock(b, find, replace, matchCase);
+                        }
+                    }
+                }
+            }
+        } else if (block is System.Windows.Documents.List) {
+            var list = (System.Windows.Documents.List)block;
+            foreach (var li in list.ListItems) {
+                foreach (var b in li.Blocks) {
+                    ReplaceInBlock(b, find, replace, matchCase);
+                }
+            }
+        } else if (block is System.Windows.Documents.Section) {
+            var section = (System.Windows.Documents.Section)block;
+            foreach (var b in section.Blocks) {
+                ReplaceInBlock(b, find, replace, matchCase);
+            }
+        }
+    }
+
+    private void ReplaceInInline(System.Windows.Documents.Inline inline, string find, string replace, bool matchCase = false) {
+        StringComparison cmp = matchCase ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        if (inline is System.Windows.Documents.Run) {
+            var run = (System.Windows.Documents.Run)inline;
+            if (run.Text != null && run.Text.IndexOf(find, cmp) >= 0) {
+                run.Text = ReplaceWithComparison(run.Text, find, replace, cmp);
+            }
+        } else if (inline is System.Windows.Documents.Span) {
+            var span = (System.Windows.Documents.Span)inline;
+            foreach (var subInline in span.Inlines) {
+                ReplaceInInline(subInline, find, replace, matchCase);
+            }
+        }
+    }
+
+    private string ReplaceWithComparison(string text, string find, string replace, StringComparison cmp) {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(find)) return text;
+        int idx = 0;
+        var sb = new StringBuilder();
+        while (true) {
+            int foundIdx = text.IndexOf(find, idx, cmp);
+            if (foundIdx < 0) {
+                sb.Append(text.Substring(idx));
+                break;
+            }
+            sb.Append(text.Substring(idx, foundIdx - idx));
+            sb.Append(replace);
+            idx = foundIdx + find.Length;
+        }
+        return sb.ToString();
+    }
+#endif
 }
+
+#if ENABLE_AVALONEDIT
+// Autocomplete item for AvalonEdit completion window
+public class AhkCompletionData : ICSharpCode.AvalonEdit.CodeCompletion.ICompletionData {
+    public AhkCompletionData(string text, string description = "") {
+        this.Text = text;
+        this.Description = description;
+    }
+    public System.Windows.Media.ImageSource Image { get { return null; } }
+    public string Text { get; private set; }
+    public object Content { get { return this.Text; } }
+    public object Description { get; private set; }
+    public double Priority { get { return 0; } }
+
+    public void Complete(ICSharpCode.AvalonEdit.Editing.TextArea textArea,
+        ICSharpCode.AvalonEdit.Document.ISegment completionSegment,
+        EventArgs insertionRequestEventArgs) {
+        textArea.Document.Replace(completionSegment, this.Text);
+    }
+}
+
+// Brace-matching folding strategy for AvalonEdit
+public class BraceFoldingStrategy {
+    public void UpdateFoldings(ICSharpCode.AvalonEdit.Folding.FoldingManager manager,
+        ICSharpCode.AvalonEdit.Document.TextDocument document) {
+        var foldings = CreateNewFoldings(document);
+        manager.UpdateFoldings(foldings, -1);
+    }
+
+    private System.Collections.Generic.IEnumerable<ICSharpCode.AvalonEdit.Folding.NewFolding> CreateNewFoldings(
+        ICSharpCode.AvalonEdit.Document.TextDocument document) {
+        var foldings = new System.Collections.Generic.List<ICSharpCode.AvalonEdit.Folding.NewFolding>();
+        var stack = new System.Collections.Generic.Stack<int>();
+        string text = document.Text;
+
+        for (int i = 0; i < text.Length; i++) {
+            if (text[i] == '{') {
+                stack.Push(i);
+            } else if (text[i] == '}' && stack.Count > 0) {
+                int start = stack.Pop();
+                if (i - start > 1) {
+                    foldings.Add(new ICSharpCode.AvalonEdit.Folding.NewFolding(start, i + 1) { Name = "..." });
+                }
+            }
+        }
+        foldings.Sort((a, b) => a.StartOffset.CompareTo(b.StartOffset));
+        return foldings;
+    }
+}
+#endif
 
 [ComImport]
 [Guid("56FDF342-FD6D-11d0-958A-006097C9A090")]

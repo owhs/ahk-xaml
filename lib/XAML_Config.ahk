@@ -33,6 +33,18 @@ global XAML_ENABLE_TRACING := true
 ; --- WebView2 ---
 global XAML_ENABLE_WEBVIEW := false
 
+; --- AvalonEdit IDE Component ---
+; When true, compiles with ICSharpCode.AvalonEdit for a robust code editor
+; with syntax highlighting, code folding, line numbers, autocomplete, and LSP hooks.
+; Requires AvalonEdit DLLs in lib/AvalonEdit/ (auto-downloaded from NuGet if missing).
+global XAML_ENABLE_AVALONEDIT := false
+
+; --- Document Editor ---
+; When true, compiles with OpenXml SDK + NPOI for rich document viewing/editing
+; with DOCX/DOC import/export, formatting toolbar, tables, images, and more.
+; Requires DLLs in lib/OpenXml/ (auto-downloaded from NuGet if missing).
+global XAML_ENABLE_DOCUMENT := false
+
 ; --- Auto-Prewarm Engine ---
 ; When true, automatically spins up the background WPF engine as soon as the script launches.
 ; This completely eliminates the ~300ms cold-start delay when the dialog is shown!

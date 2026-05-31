@@ -97,6 +97,8 @@ class XAMLHost {
 
     __New(xaml := "", exePath := "", ownerHwnd := 0) {
         XAMLHost.RestoreWebView2Dlls()
+        XAMLHost.RestoreAvalonEditDlls()
+        XAMLHost.RestoreDocumentDlls()
         XAMLHost.instanceCounter++
         this.id := "WPF_" A_TickCount "_" XAMLHost.instanceCounter "_" Random(1000, 9999)
         XAMLHost._instances[this.id] := this
@@ -126,7 +128,12 @@ class XAMLHost {
             this.events[controlName] := Map()
         if !this.events[controlName].Has(eventName)
             this.events[controlName][eventName] := []
-        this.events[controlName][eventName].Push({ Callback: callback, Priority: priority })
+            
+        evtObj := { Callback: callback, Priority: priority, LimitFPS: 0, QueueLimited: false }
+        this.events[controlName][eventName].Push(evtObj)
+        
+        ; Return a chainable config object for this event registration
+        return { Limit: (thisObj, fps, queue := false) => (evtObj.LimitFPS := fps, evtObj.QueueLimited := queue, this) }
     }
 
     Track(controlName) {
@@ -568,6 +575,45 @@ class XAMLHost {
             }
         }
 
+        ; --- AvalonEdit IDE Component ---
+        aeRefs := ""
+        aeDef := ""
+        if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
+            aeDll := libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll"
+            if (FileExist(aeDll)) {
+                aeRefs := ' /reference:"' aeDll '" /reference:System.Windows.Forms.dll /reference:WindowsFormsIntegration.dll'
+                aeDef := ' /define:ENABLE_AVALONEDIT'
+            } else {
+                ToolTip("AvalonEdit DLL not found in lib\AvalonEdit. Compiling without IDE support.")
+                SetTimer(() => ToolTip(), -4000)
+            }
+        }
+
+        ; --- Document Editor (OpenXml + NPOI) ---
+        docRefs := ""
+        docDef := ""
+        if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
+            oxDll := libDir "\OpenXml\DocumentFormat.OpenXml.dll"
+            if (FileExist(oxDll)) {
+                docRefs := ' /reference:"' oxDll '"'
+                ; Also add NPOI if available for .doc support
+                npoiDll := libDir "\OpenXml\NPOI.dll"
+                if (FileExist(npoiDll)) {
+                    docRefs .= ' /reference:"' npoiDll '"'
+                    npoiOoxmlDll := libDir "\OpenXml\NPOI.OOXML.dll"
+                    npoiOpenXml4NetDll := libDir "\OpenXml\NPOI.OpenXml4Net.dll"
+                    if (FileExist(npoiOoxmlDll))
+                        docRefs .= ' /reference:"' npoiOoxmlDll '"'
+                    if (FileExist(npoiOpenXml4NetDll))
+                        docRefs .= ' /reference:"' npoiOpenXml4NetDll '"'
+                }
+                docDef := ' /define:ENABLE_DOCUMENT'
+            } else {
+                ToolTip("OpenXml DLL not found in lib\OpenXml. Compiling without Document Editor support.")
+                SetTimer(() => ToolTip(), -4000)
+            }
+        }
+
         ; Embed component resources directly into the DLL for zero-disk-IO loading
         embeddedRes := ""
         bamlPath := libDir "\xaml.components.baml"
@@ -583,7 +629,7 @@ class XAMLHost {
                 embeddedRes .= ' /resource:"' res '"'
         }
 
-        cmd := A_ComSpec ' /c ""' cscPath '" /nologo /target:winexe /out:"' sharedExe '" /lib:"' wpfDir '" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:PresentationFramework.dll /reference:PresentationCore.dll /reference:WindowsBase.dll /reference:System.Xaml.dll /reference:UIAutomationProvider.dll /reference:UIAutomationTypes.dll' wvRefs wvDef embeddedRes ' "' sourceCs '" > "' errLog '" 2>&1"'
+        cmd := A_ComSpec ' /c ""' cscPath '" /nologo /target:winexe /out:"' sharedExe '" /lib:"' wpfDir '" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:PresentationFramework.dll /reference:PresentationCore.dll /reference:WindowsBase.dll /reference:System.Xaml.dll /reference:UIAutomationProvider.dll /reference:UIAutomationTypes.dll' wvRefs wvDef aeRefs aeDef docRefs docDef embeddedRes ' "' sourceCs '" > "' errLog '" 2>&1"'
         RunWait(cmd, "", "Hide")
 
         if !FileExist(sharedExe) {
@@ -622,7 +668,20 @@ class XAMLHost {
         eventsStr := ""
         for ctrlName, evtMap in this.events {
             for evtName, arr in evtMap {
-                eventsStr .= ctrlName ":" evtName ","
+                limit := 0
+                queue := false
+                for evtObj in arr {
+                    if (evtObj.HasProp("LimitFPS") && evtObj.LimitFPS > 0) {
+                        limit := evtObj.LimitFPS
+                        queue := evtObj.QueueLimited
+                    }
+                }
+                
+                evtToken := ctrlName ":" evtName
+                if (limit > 0)
+                    evtToken .= "@" limit (queue ? "Q" : "")
+                    
+                eventsStr .= evtToken ","
             }
         }
         eventsStr := Trim(eventsStr, ",")
@@ -703,6 +762,8 @@ class XAMLHost {
             }
 
             XAMLHost.RestoreWebView2Dlls()
+            XAMLHost.RestoreAvalonEditDlls()
+            XAMLHost.RestoreDocumentDlls()
             SplitPath(targetExe, , &targetDir)
             if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) {
                 if FileExist(libDir "\WebView2\WebView2Loader.dll") {
@@ -710,6 +771,22 @@ class XAMLHost {
                     try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Core.dll", targetDir "\Microsoft.Web.WebView2.Core.dll", 1)
                     try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Wpf.dll", targetDir "\Microsoft.Web.WebView2.Wpf.dll", 1)
                 }
+            }
+            ; AvalonEdit DLL copy
+            if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
+                if FileExist(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll")
+                    try FileCopy(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll", targetDir "\ICSharpCode.AvalonEdit.dll", 1)
+            }
+            ; Document Editor DLL copy
+            if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
+                if FileExist(libDir "\OpenXml\DocumentFormat.OpenXml.dll")
+                    try FileCopy(libDir "\OpenXml\DocumentFormat.OpenXml.dll", targetDir "\DocumentFormat.OpenXml.dll", 1)
+                if FileExist(libDir "\OpenXml\NPOI.dll")
+                    try FileCopy(libDir "\OpenXml\NPOI.dll", targetDir "\NPOI.dll", 1)
+                if FileExist(libDir "\OpenXml\NPOI.OOXML.dll")
+                    try FileCopy(libDir "\OpenXml\NPOI.OOXML.dll", targetDir "\NPOI.OOXML.dll", 1)
+                if FileExist(libDir "\OpenXml\NPOI.OpenXml4Net.dll")
+                    try FileCopy(libDir "\OpenXml\NPOI.OpenXml4Net.dll", targetDir "\NPOI.OpenXml4Net.dll", 1)
             }
         } else {
             if !FileExist(targetExe)
@@ -1326,6 +1403,94 @@ class XAMLHost {
             }
         }
         return false
+    }
+
+    ; Auto-download AvalonEdit from NuGet if not present in lib/AvalonEdit/
+    static RestoreAvalonEditDlls() {
+        if (!IsSet(XAML_ENABLE_AVALONEDIT) || !XAML_ENABLE_AVALONEDIT)
+            return false
+        libDir := ""
+        SplitPath(A_LineFile, , &libDir)
+        aeDir := libDir "\AvalonEdit"
+        aeDll := aeDir "\ICSharpCode.AvalonEdit.dll"
+        if FileExist(aeDll)
+            return false
+
+        ; Auto-download from NuGet
+        if !DirExist(aeDir)
+            DirCreate(aeDir)
+
+        tmpDir := A_Temp "\AhkWpf\nuget_avalonedit"
+        nupkg := tmpDir "\avalonedit.nupkg.zip"
+        try {
+            if !DirExist(tmpDir)
+                DirCreate(tmpDir)
+            ToolTip("Downloading AvalonEdit from NuGet...")
+            Download("https://www.nuget.org/api/v2/package/AvalonEdit/6.3.0.90", nupkg)
+            ; NuGet packages are ZIP files — extract the DLL
+            q := Chr(34)
+            psCmd := "powershell.exe -NoProfile -Command " q "Expand-Archive -Path '" nupkg "' -DestinationPath '" tmpDir "' -Force; Copy-Item '" tmpDir "\lib\net462\ICSharpCode.AvalonEdit.dll' '" aeDll "' -Force" q
+            RunWait(psCmd, "", "Hide")
+            if FileExist(aeDll) {
+                ; Force recompile since we now have the DLL
+                try FileDelete(libDir "\ahk-xaml.dll")
+                try FileDelete(A_Temp "\AhkWpf\ahk-xaml.dll")
+                ToolTip("AvalonEdit downloaded and installed successfully!")
+                SetTimer(() => ToolTip(), -4000)
+                return true
+            } else {
+                ToolTip("Failed to extract AvalonEdit DLL from NuGet package.")
+                SetTimer(() => ToolTip(), -4000)
+            }
+        } catch as err {
+            ToolTip("Failed to download AvalonEdit: " err.Message)
+            SetTimer(() => ToolTip(), -4000)
+        }
+        ; Cleanup
+        try DirDelete(tmpDir, true)
+        return false
+    }
+
+    ; Auto-download DocumentFormat.OpenXml from NuGet if not present in lib/OpenXml/
+    static RestoreDocumentDlls() {
+        if (!IsSet(XAML_ENABLE_DOCUMENT) || !XAML_ENABLE_DOCUMENT)
+            return false
+        libDir := ""
+        SplitPath(A_LineFile, , &libDir)
+        oxDir := libDir "\OpenXml"
+        oxDll := oxDir "\DocumentFormat.OpenXml.dll"
+        if FileExist(oxDll)
+            return false
+
+        if !DirExist(oxDir)
+            DirCreate(oxDir)
+
+        tmpDir := A_Temp "\AhkWpf\nuget_openxml"
+        try {
+            if !DirExist(tmpDir)
+                DirCreate(tmpDir)
+            ToolTip("Downloading OpenXml SDK from NuGet...")
+            ; Download DocumentFormat.OpenXml (v2.20.0 for .NET Framework 4.x compatibility)
+            nupkg := tmpDir "\openxml.nupkg.zip"
+            Download("https://www.nuget.org/api/v2/package/DocumentFormat.OpenXml/2.20.0", nupkg)
+            q := Chr(34)
+            psCmd := "powershell.exe -NoProfile -Command " q "Expand-Archive -Path '" nupkg "' -DestinationPath '" tmpDir "' -Force; Copy-Item '" tmpDir "\lib\net46\DocumentFormat.OpenXml.dll' '" oxDll "' -Force" q
+            RunWait(psCmd, "", "Hide")
+            if FileExist(oxDll) {
+                try FileDelete(libDir "\ahk-xaml.dll")
+                try FileDelete(A_Temp "\AhkWpf\ahk-xaml.dll")
+                ToolTip("OpenXml SDK downloaded and installed successfully!")
+                SetTimer(() => ToolTip(), -4000)
+            } else {
+                ToolTip("Failed to extract OpenXml DLL from NuGet package.")
+                SetTimer(() => ToolTip(), -4000)
+            }
+        } catch as err {
+            ToolTip("Failed to download OpenXml SDK: " err.Message)
+            SetTimer(() => ToolTip(), -4000)
+        }
+        try DirDelete(tmpDir, true)
+        return FileExist(oxDll)
     }
 }
 
