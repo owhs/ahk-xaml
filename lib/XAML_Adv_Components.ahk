@@ -52,13 +52,13 @@ _CommandBar(this, name := "") {
 ; RICH POPOVER (Extension)
 ; ==============================================================================
 
-XAMLElement.Prototype.DefineProp("AddRichPopover", { Call: _AddRichPopover })
-_AddRichPopover(this) {
+XAMLElement.Prototype.DefineProp("AddRichPopover", { Call: _AddRichPopoverAdv })
+_AddRichPopoverAdv(this) {
     if !this._Props.Has("Name") && !this._Props.Has("x:Name")
         this.Name("PopoverTrigger_" XMenuBar.Count())
-    
+
     name := this._Props.Has("Name") ? this._Props["Name"] : this._Props["x:Name"]
-    
+
     parent := this._Parent
     popup := parent.Add("Popup")
         .SetProp("IsOpen", "{Binding IsChecked, ElementName=" name ", Mode=TwoWay}")
@@ -68,15 +68,15 @@ _AddRichPopover(this) {
         .SetProp("AllowsTransparency", "True")
         .SetProp("PopupAnimation", "Fade")
         .SetProp("VerticalOffset", "4")
-        
+
     border := popup.Add("Border")
         .Background("{DynamicResource DropdownBg}")
         .BorderBrush("{DynamicResource ControlBorder}")
         .BorderThickness("1")
         .CornerRadius("6")
-        
+
     border.Add("Border.Effect").Add("DropShadowEffect").BlurRadius("15").ShadowDepth("4").Opacity("0.3").Direction("270")
-    
+
     return border
 }
 
@@ -88,88 +88,95 @@ class XMenuBar {
     __New(parentXAML, name := "") {
         this.id := name != "" ? name : "MenuBar_" XMenuBar.Count()
         this.container := parentXAML.Add("Menu").Name(this.id)
-        
+
         ; Inject beautiful styles for Menu, MenuItem, and Separator
         this.container.InjectResources('
         (
-        <Style TargetType="Menu">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
-            <Setter Property="Padding" Value="2,4"/>
-        </Style>
-        <Style TargetType="Separator">
-            <Setter Property="Background" Value="{DynamicResource ControlBorder}"/>
-            <Setter Property="Height" Value="1"/>
-            <Setter Property="Margin" Value="4,4"/>
-        </Style>
-        <Style TargetType="MenuItem">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
-            <Setter Property="Padding" Value="8,5"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="MenuItem">
-                        <Border x:Name="BgBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" SnapsToDevicePixels="True">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Icon"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                
-                                <ContentPresenter x:Name="Icon" ContentSource="Icon" Margin="6,0" VerticalAlignment="Center"/>
-                                
-                                <ContentPresenter Grid.Column="1" x:Name="HeaderHost" ContentSource="Header" RecognizesAccessKey="True" Margin="8,3,15,3" VerticalAlignment="Center"/>
-                                
-                                <TextBlock Grid.Column="2" x:Name="GestureText" Text="{TemplateBinding InputGestureText}" Margin="10,0,10,0" VerticalAlignment="Center" Foreground="{DynamicResource TextSub}" FontSize="11"/>
-                                
-                                <Path Grid.Column="3" x:Name="Arrow" Data="M 0,0 L 3,3 L 0,6 Z" Fill="{DynamicResource TextSub}" Margin="6,0" VerticalAlignment="Center" Visibility="Collapsed"/>
-                                
-                                <Popup x:Name="PART_Popup" AllowsTransparency="True" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" Focusable="False" PopupAnimation="Fade">
-                                    <Border Background="{DynamicResource DropdownBg}" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" CornerRadius="6" Padding="4">
-                                        <Border.Effect>
-                                            <DropShadowEffect BlurRadius="15" ShadowDepth="4" Opacity="0.3" Direction="270" Color="Black"/>
-                                        </Border.Effect>
-                                        <ScrollViewer x:Name="SubMenuScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                            <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle" Grid.IsSharedSizeScope="True"/>
-                                        </ScrollViewer>
-                                    </Border>
-                                </Popup>
-                            </Grid>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="Role" Value="TopLevelHeader">
-                                <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed"/>
-                                <Setter TargetName="PART_Popup" Property="Placement" Value="Bottom"/>
-                                <Setter Property="Padding" Value="10,5"/>
-                            </Trigger>
-                            <Trigger Property="Role" Value="SubmenuHeader">
-                                <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
-                            </Trigger>
-                            <Trigger Property="Role" Value="SubmenuItem">
-                                <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#15FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter Property="Background" Value="#15FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsSubmenuOpen" Value="True">
-                                <Setter Property="Background" Value="#25FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+            <Style TargetType="Menu">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                <Setter Property="Padding" Value="2,4"/>
+            </Style>
+            <Style TargetType="Separator">
+                <Setter Property="Background" Value="{DynamicResource ControlBorder}"/>
+                <Setter Property="Height" Value="1"/>
+                <Setter Property="Margin" Value="4,4"/>
+            </Style>
+            <Style TargetType="MenuItem">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                <Setter Property="Padding" Value="8,5"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="BgBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" SnapsToDevicePixels="True">
+                                <Grid>
+                                    <Border x:Name="ActiveIndicator" Width="3" Background="{DynamicResource Accent}" HorizontalAlignment="Left" VerticalAlignment="Stretch" Margin="0,6" CornerRadius="1.5" Visibility="Collapsed" Panel.ZIndex="10"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="Icon"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <ContentPresenter x:Name="Icon" ContentSource="Icon" Margin="10,0,6,0" VerticalAlignment="Center"/>
+                                        
+                                        <ContentPresenter Grid.Column="1" x:Name="HeaderHost" ContentSource="Header" RecognizesAccessKey="True" Margin="8,3,15,3" VerticalAlignment="Center"/>
+                                        
+                                        <TextBlock Grid.Column="2" x:Name="GestureText" Text="{TemplateBinding InputGestureText}" Margin="10,0,10,0" VerticalAlignment="Center" Foreground="{DynamicResource TextSub}" FontSize="11"/>
+                                        
+                                        <Path Grid.Column="3" x:Name="Arrow" Data="M 0,0 L 3,3 L 0,6 Z" Fill="{DynamicResource TextSub}" Margin="6,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                                        
+                                        <Popup x:Name="PART_Popup" AllowsTransparency="True" IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}" Placement="Bottom" Focusable="False" PopupAnimation="Fade">
+                                            <Border Background="{DynamicResource DropdownBg}" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" CornerRadius="6" Padding="4">
+                                                <Border.Effect>
+                                                    <DropShadowEffect BlurRadius="15" ShadowDepth="4" Opacity="0.3" Direction="270" Color="Black"/>
+                                                </Border.Effect>
+                                                <ScrollViewer x:Name="SubMenuScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                    <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Cycle" KeyboardNavigation.TabNavigation="Cycle" Grid.IsSharedSizeScope="True"/>
+                                                </ScrollViewer>
+                                            </Border>
+                                        </Popup>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="Role" Value="TopLevelHeader">
+                                    <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed"/>
+                                    <Setter TargetName="PART_Popup" Property="Placement" Value="Bottom"/>
+                                    <Setter Property="Padding" Value="10,5"/>
+                                </Trigger>
+                                <Trigger Property="Role" Value="SubmenuHeader">
+                                    <Setter TargetName="Arrow" Property="Visibility" Value="Visible"/>
+                                    <Setter TargetName="PART_Popup" Property="Placement" Value="Right"/>
+                                </Trigger>
+                                <Trigger Property="Role" Value="SubmenuItem">
+                                    <Setter TargetName="Arrow" Property="Visibility" Value="Collapsed"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#15FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter Property="Background" Value="#15FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsSubmenuOpen" Value="True">
+                                    <Setter Property="Background" Value="#25FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="ActiveIndicator" Property="Visibility" Value="Visible"/>
+                                    <Setter Property="Background" Value="#10FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         )')
     }
 
@@ -188,10 +195,10 @@ class XMenuPopup {
     __New(menuItemElement) {
         this.container := menuItemElement
     }
-    
+
     AddItem(label, iconHex := "", actionName := "", hotkeyText := "") {
         item := this.container.Add("MenuItem").Header(label)
-        
+
         if (iconHex != "") {
             item.Add("MenuItem.Icon").Add("TextBlock")
                 .Text(iconHex)
@@ -200,18 +207,18 @@ class XMenuPopup {
                 .VerticalAlignment("Center")
                 .Foreground("{DynamicResource TextSub}")
         }
-        
+
         if (hotkeyText != "") {
             item.InputGestureText(hotkeyText)
         }
-        
+
         if (actionName != "") {
             item.Name(actionName)
         }
-        
+
         return item
     }
-    
+
     AddSeparator() {
         this.container.Add("Separator")
     }
@@ -3676,83 +3683,87 @@ class XDocumentEditor {
 
         ; Build the full Office 365-style UI
         this.container := parentXAML.Add("Grid").Name(this.id "_Container").Tag("Normal")
-        
+
         ; Inject styling resources into container
         styles := '
         (
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#15FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style TargetType="ToggleButton">
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#15FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="bg" Property="Background" Value="#25FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="[[ID]]_PageStyle" TargetType="Border">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#CCCCCC"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="MinHeight" Value="900"/>
-            <Setter Property="Width" Value="740"/>
-            <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Theme">
-                    <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
-                    <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Dark">
-                    <Setter Property="Background" Value="#1A1A1A"/>
-                    <Setter Property="BorderBrush" Value="#2A2A2A"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
-        <Style x:Key="[[ID]]_RtfStyle" TargetType="RichTextBox">
-            <Setter Property="Foreground" Value="Black"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding" Value="60,50"/>
-            <Style.Triggers>
-                <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Theme">
-                    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
-                </DataTrigger>
-                <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Dark">
-                    <Setter Property="Foreground" Value="#E0E0E0"/>
-                </DataTrigger>
-            </Style.Triggers>
-        </Style>
+            <Style TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="4">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bg" Property="Background" Value="#15FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="ToggleButton">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToggleButton">
+                            <Border x:Name="bg" Background="{TemplateBinding Background}" CornerRadius="4">
+                                <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}" Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="bg" Property="Background" Value="#15FFFFFF"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="bg" Property="Background" Value="#25FFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style x:Key="[[ID]]_PageStyle" TargetType="Border">
+                <Setter Property="Background" Value="White"/>
+                <Setter Property="BorderBrush" Value="#CCCCCC"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="MinHeight" Value="900"/>
+                <Setter Property="Width" Value="740"/>
+                <Setter Property="HorizontalAlignment" Value="Center"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Theme">
+                        <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
+                        <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Dark">
+                        <Setter Property="Background" Value="#1A1A1A"/>
+                        <Setter Property="BorderBrush" Value="#2A2A2A"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+            <Style x:Key="[[ID]]_RtfStyle" TargetType="RichTextBox">
+                <Setter Property="Foreground" Value="Black"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="60,50"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Theme">
+                        <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                    </DataTrigger>
+                    <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Dark">
+                        <Setter Property="Foreground" Value="#E0E0E0"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
         )'
         styles := StrReplace(styles, "[[ID]]", this.id)
         this.container.InjectResources(styles)
@@ -3761,10 +3772,10 @@ class XDocumentEditor {
         ; === TOOLBAR (Google Docs-style) ===
         toolbarBg := this.container.Add("Border").Grid_Row(0).Background("{DynamicResource BgColor}").Padding("12,4,12,6")
         toolbarInner := toolbarBg.Add("Border").Background("{DynamicResource SidebarColor}").CornerRadius("6").Padding("6,4").BorderBrush("{DynamicResource ControlBorder}").BorderThickness(1).ClipToBounds("True")
-        
+
         toolbarGrid := toolbarInner.Add("Grid")
         toolbarGrid.Cols("*", "Auto", "Auto")
-        
+
         toolbarWrap := toolbarGrid.Add("StackPanel").Orientation("Horizontal").VerticalAlignment("Center").Grid_Column(0).ClipToBounds("True")
 
         ; File group — E8A5=Page, E838=OpenLocal, E74E=Save, E28F=SaveCopy
@@ -3779,11 +3790,28 @@ class XDocumentEditor {
         this._TBtn(toolbarWrap, this.id "_BtnRedo", Chr(0xE7A6), "Redo")
         this._AddToolbarSep(toolbarWrap)
 
+        ; Style dropdown
+        styleCb := toolbarWrap.Add("ComboBox").Name(this.id "_StyleSelect").Width(110).Height(28).VerticalAlignment("Center").Margin("4,0")
+        styleCb.Add("ComboBoxItem").Content("Body Text").Tag("Body")
+        styleCb.Add("ComboBoxItem").Content("Header 1").Tag("H1")
+        styleCb.Add("ComboBoxItem").Content("Header 2").Tag("H2")
+        styleCb.Add("ComboBoxItem").Content("Header 3").Tag("H3")
+        styleCb.Add("ComboBoxItem").Content("Header 4").Tag("H4")
+        styleCb.Add("ComboBoxItem").Content("Header 5").Tag("H5")
+        styleCb.Add("ComboBoxItem").Content("Header 6").Tag("H6")
+        styleCb.SelectedIndex(0)
+
         ; Font family combo
         fontCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontFamily").Width(140).Height(28).VerticalAlignment("Center").Margin("4,0")
+        
+        fallbackItem := fontCb.Add("ComboBoxItem").Name(this.id "_FallbackFont").Visibility("Collapsed").Tag("Unknown")
+        fbSp := fallbackItem.Add("StackPanel").Orientation("Horizontal")
+        fbSp.Add("TextBlock").Text(Chr(0xE7BA)).FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").Foreground("Red").Margin("0,0,4,0").VerticalAlignment("Center").ToolTip("Font not installed locally")
+        fbSp.Add("TextBlock").Name(this.id "_FallbackFontText").Text("Unknown").VerticalAlignment("Center").FontStyle("Italic")
+
         systemFonts := XDocumentEditor._GetSystemFonts()
         for f in systemFonts {
-            fontCb.Add("ComboBoxItem").Content(f).FontFamily(f).FontSize(14)
+            fontCb.Add("ComboBoxItem").Content(f).FontFamily(f).FontSize(14).Tag(f)
         }
         defaultIdx := 0
         for idx, f in systemFonts {
@@ -3806,7 +3834,7 @@ class XDocumentEditor {
         this._TTextBtn(toolbarWrap, this.id "_BtnBold", "B", "Bold", "Bold", "Normal")
         this._TTextBtn(toolbarWrap, this.id "_BtnItalic", "I", "Italic", "Normal", "Italic")
         this._TTextBtn(toolbarWrap, this.id "_BtnUnderline", "U", "Underline", "Normal", "Normal")
-        
+
         ; Font Color Picker (Primary)
         fontColorBtn := this._TTextToggleBtn(toolbarWrap, this.id "_BtnFontColor", "A", "Font Color", "Bold", "Normal")
         this.fontColorPicker := fontColorBtn.ColorPickerPopover("#FFFF0000").OnChange(ObjBindMethod(this, "_OnLiveColor", "FontColor"))
@@ -3834,89 +3862,81 @@ class XDocumentEditor {
         ; === RIGHT-SIDE TOOLBAR (always visible) ===
         toolbarRight := toolbarGrid.Add("StackPanel").Orientation("Horizontal").VerticalAlignment("Center").Grid_Column(1)
 
-        outlineBtn := this._TToggleBtn(toolbarRight, this.id "_BtnOutline", Chr(0xE81E), "Document Outline")
-        this.outlinePopover := outlineBtn.AddRichPopover()
-        this.outlinePopover.MinWidth(260).Padding("14")
-        
-        outlinePanel := this.outlinePopover.Add("StackPanel")
-        outlinePanel.Add("TextBlock").Text("DOCUMENT OUTLINE").FontWeight("Bold").FontSize(11).Foreground("{DynamicResource TextSub}").Margin("0,0,0,12")
-        outlineSv := outlinePanel.Add("ScrollViewer").VerticalScrollBarVisibility("Auto").MaxHeight("320")
-        this.outlineSp := outlineSv.Add("StackPanel").Name(this.id "_OutlineContainer")
-        this.outlineSp.Add("TextBlock").Text("No headings in this document.").Foreground("{DynamicResource TextSub}").FontSize(12).FontStyle("Italic").Margin("0,4")
-        
+        this.outlineBtn := this._TToggleBtn(toolbarRight, this.id "_BtnOutline", Chr(0xE81E), "Document Outline")
+
         ; "More options" popover containing secondary/insert tools
         moreBtn := this._TToggleBtn(toolbarRight, this.id "_BtnMore", Chr(0xE712), "More Formatting Options")
         morePopover := moreBtn.AddRichPopover()
         morePopover.MinWidth(420).Padding("16")
-        
+
         moreSp := morePopover.Add("StackPanel")
-        
+
         ; --- Text Formatting Section ---
         moreSp.Add("TextBlock").Text("TEXT FORMATTING").FontWeight("Bold").FontSize(10).Foreground("{DynamicResource TextSub}").Margin("0,0,0,8")
         moreTextWrap := moreSp.Add("WrapPanel").Orientation("Horizontal").Margin("0,0,0,8")
-        
+
         ; Highlight Color
         highlightBtn := this._TToggleBtn(moreTextWrap, this.id "_BtnHighlight", Chr(0xE7E6), "Highlight")
         this.highlightPicker := highlightBtn.ColorPickerPopover("#FFFFFF00").OnChange(ObjBindMethod(this, "_OnLiveColor", "Highlight"))
-        
+
         this._TBtn(moreTextWrap, this.id "_BtnClear", Chr(0xECC9), "Clear Formatting")
         this._AddToolbarSep(moreTextWrap)
-        
+
         ; Strikethrough
         this._TTextBtn(moreTextWrap, this.id "_BtnStrike", "S", "Strikethrough", "Normal", "Normal")
         ; Superscript/Subscript
         this._TTextBtn(moreTextWrap, this.id "_BtnSuper", "x²", "Superscript", "Normal", "Normal")
         this._TTextBtn(moreTextWrap, this.id "_BtnSub", "x₂", "Subscript", "Normal", "Normal")
-        
+
         ; --- Alignment Section ---
         moreSp.Add("Border").Height(1).Background("{DynamicResource ControlBorder}").Margin("0,4,0,8")
         moreSp.Add("TextBlock").Text("ALIGNMENT / LISTS").FontWeight("Bold").FontSize(10).Foreground("{DynamicResource TextSub}").Margin("0,0,0,8")
         moreAlignWrap := moreSp.Add("WrapPanel").Orientation("Horizontal").Margin("0,0,0,8")
-        
+
         ; Alignment (duplicates from main toolbar)
         popAlignGrp := moreAlignWrap.Add("StackPanel").Orientation("Horizontal").Name(this.id "_PopoverAlignGrp").Visibility("Collapsed")
         this._TBtn(popAlignGrp, this.id "_BtnAlignL", Chr(0xE8E4), "Align Left")
         this._TBtn(popAlignGrp, this.id "_BtnAlignC", Chr(0xE8E3), "Align Center")
         this._TBtn(popAlignGrp, this.id "_BtnAlignR", Chr(0xE8E2), "Align Right")
-        
+
         ; Unique to popover
         this._TTextBtn(moreAlignWrap, this.id "_BtnAlignJ", "☰", "Justify", "Normal", "Normal")
         this._AddToolbarSep(moreAlignWrap)
-        
+
         ; Lists (duplicates)
         popListGrp := moreAlignWrap.Add("StackPanel").Orientation("Horizontal").Name(this.id "_PopoverListGrp").Visibility("Collapsed")
         this._TBtn(popListGrp, this.id "_BtnBullet", Chr(0xE8FD), "Bullet List")
         this._TBtn(popListGrp, this.id "_BtnNumber", Chr(0xE9D5), "Numbered List")
-        
+
         ; Unique to popover
         this._TBtn(moreAlignWrap, this.id "_BtnIndent", Chr(0xE7FD), "Increase Indent")
         this._TBtn(moreAlignWrap, this.id "_BtnOutdent", Chr(0xE7FC), "Decrease Indent")
-        
+
         ; --- Insert Section ---
         moreSp.Add("Border").Height(1).Background("{DynamicResource ControlBorder}").Margin("0,4,0,8")
         moreSp.Add("TextBlock").Text("INSERT").FontWeight("Bold").FontSize(10).Foreground("{DynamicResource TextSub}").Margin("0,0,0,8")
         moreInsertWrap := moreSp.Add("WrapPanel").Orientation("Horizontal").Margin("0,0,0,8")
-        
+
         this._TBtn(moreInsertWrap, this.id "_BtnTable", Chr(0xE8A4), "Insert Table (3x3)")
-        
+
         ; Insert (duplicates)
         popInsertGrp := moreInsertWrap.Add("StackPanel").Orientation("Horizontal").Name(this.id "_PopoverInsertGrp").Visibility("Collapsed")
         this._TBtn(popInsertGrp, this.id "_BtnImage", Chr(0xEB9F), "Insert Image")
         this._TBtn(popInsertGrp, this.id "_BtnLink", Chr(0xE71B), "Insert Hyperlink")
-        
+
         ; Unique to popover
         this._TTextBtn(moreInsertWrap, this.id "_BtnHR", "—", "Insert Horizontal Rule", "Normal", "Normal")
         this._TBtn(moreInsertWrap, this.id "_BtnFind", Chr(0xE721), "Find")
-        
+
         ; --- Table Tools Section ---
         moreSp.Add("Border").Height(1).Background("{DynamicResource ControlBorder}").Margin("0,4,0,8")
         moreSp.Add("TextBlock").Text("TABLE TOOLS").FontWeight("Bold").FontSize(10).Foreground("{DynamicResource TextSub}").Margin("0,0,0,8")
         moreTableWrap := moreSp.Add("WrapPanel").Orientation("Horizontal")
-        
+
         ; Table tools
         cellBgBtn := this._TTextToggleBtn(moreTableWrap, this.id "_BtnCellColor", "Cell Bg", "Table Cell Background Color", "Normal", "Normal")
         this.cellBgPicker := cellBgBtn.ColorPickerPopover("#FFFFFFFF").OnChange(ObjBindMethod(this, "_OnLiveColor", "TableCellBackground"))
-        
+
         this._TTextBtn(moreTableWrap, this.id "_BtnMergeCells", "Merge " Chr(0x2192), "Merge Table Cells Horizontally", "Normal", "Normal")
         this._AddToolbarSep(moreTableWrap)
         this._TTextBtn(moreTableWrap, this.id "_BtnAddRowBelow", Chr(0xE710) " Row+", "Add Row Below", "Normal", "Normal")
@@ -3934,10 +3954,21 @@ class XDocumentEditor {
             .Content(Chr(0xE70E)).ToolTip("Hide Menu Bar") ; Default is Chevron Up
 
         ; === EDITOR AREA (Google Docs-style centered page on canvas) ===
-        editorCanvas := this.container.Add("Border").Grid_Row(1).Background("{DynamicResource DropdownBg}")
+        editorWrapper := this.container.Add("Grid").Grid_Row(1).Background("{DynamicResource DropdownBg}")
+        editorWrapper.Cols("Auto", "*")
+        
+        this.outlinePane := editorWrapper.Add("Border").Name(this.id "_OutlinePane").Grid_Column(0).Width(280).Background("{DynamicResource SidebarColor}").BorderBrush("{DynamicResource ControlBorder}").BorderThickness("0,0,1,0").Visibility("Collapsed")
+        
+        outlinePanel := this.outlinePane.Add("StackPanel").Margin("16")
+        outlinePanel.Add("TextBlock").Text("DOCUMENT OUTLINE").FontWeight("Bold").FontSize(11).Foreground("{DynamicResource TextSub}").Margin("0,0,0,16")
+        outlineSv := outlinePanel.Add("ScrollViewer").VerticalScrollBarVisibility("Auto")
+        this.outlineSp := outlineSv.Add("StackPanel").Name(this.id "_OutlineContainer")
+        this.outlineSp.Add("TextBlock").Text("No headings in this document.").Foreground("{DynamicResource TextSub}").FontSize(12).FontStyle("Italic").Margin("0,4")
+
+        editorCanvas := editorWrapper.Add("Border").Grid_Column(1)
         editorSv := editorCanvas.Add("ScrollViewer").VerticalScrollBarVisibility("Auto").HorizontalScrollBarVisibility("Disabled")
         editorCenter := editorSv.Add("Grid").HorizontalAlignment("Center").Margin("0,30,0,60")
-        pageBorder := editorCenter.Add("Border").Style("{StaticResource " this.id "_PageStyle}")
+        pageBorder := editorCenter.Add("Border").Name(this.id "_PageBorder").Style("{StaticResource " this.id "_PageStyle}")
 
         this.rtb := pageBorder.Add("RichTextBox").Name(this.id).FontFamily("Segoe UI").FontSize(14)
             .AcceptsReturn("True").VerticalScrollBarVisibility("Disabled").HorizontalScrollBarVisibility("Disabled")
@@ -3967,7 +3998,7 @@ class XDocumentEditor {
         this.findPanel.Add("Border.Effect").Add("DropShadowEffect").BlurRadius(20).ShadowDepth(4).Opacity(0.15)
 
         findSp := this.findPanel.Add("StackPanel").Width(280)
-        
+
         ; Header
         findHeader := findSp.Add("Grid").Margin("0,0,0,12")
         findHeader.Cols("*", "Auto")
@@ -3975,15 +4006,15 @@ class XDocumentEditor {
         closeBtn := findHeader.Add("Button").Name(this.id "_BtnCloseFind").Content(Chr(0xE711)).Grid_Column(1)
             .FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").Background("Transparent").BorderThickness(0)
             .Foreground("{DynamicResource TextSub}").Cursor("Hand").Padding("4,2")
-            
+
         ; Find Input row
         findSp.Add("TextBlock").Text("Find").Foreground("{DynamicResource TextSub}").FontSize(11).Margin("0,0,0,4")
         findSp.Add("TextBox").Name(this.id "_FindInput").Padding("8,6").Margin("0,0,0,12").Background("{DynamicResource DropdownBg}")
-        
+
         ; Replace Input row
         findSp.Add("TextBlock").Text("Replace with").Foreground("{DynamicResource TextSub}").FontSize(11).Margin("0,0,0,4")
         findSp.Add("TextBox").Name(this.id "_ReplaceInput").Padding("8,6").Margin("0,0,0,16").Background("{DynamicResource DropdownBg}")
-        
+
         ; Preview Replace Checkbox
         findSp.Add("CheckBox").Name(this.id "_PreviewCheckbox").Content("Preview Replace").Margin("0,0,0,4").Foreground("{DynamicResource TextSub}").FontSize(11).Cursor("Hand")
         ; Match Case Checkbox (unchecked = case insensitive by default)
@@ -3992,15 +4023,15 @@ class XDocumentEditor {
         ; Buttons
         btnGrid := findSp.Add("Grid").Name(this.id "_NormalActionGrid")
         btnGrid.Cols("Auto", "*", "Auto")
-        
+
         findBtns := btnGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(0)
         findBtns.Add("Button").Name(this.id "_BtnFindPrev").Content(Chr(0xE74A)).FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").Padding("8,6").Margin("0,0,4,0").ToolTip("Find Previous").Background("Transparent").BorderThickness(1).Cursor("Hand")
         findBtns.Add("Button").Name(this.id "_BtnFindNext").Content(Chr(0xE74B)).FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").Padding("8,6").Margin("0,0,0,0").ToolTip("Find Next").Background("Transparent").BorderThickness(1).Cursor("Hand")
-        
+
         replBtns := btnGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(2).HorizontalAlignment("Right")
         replBtns.Add("Button").Name(this.id "_BtnReplace").Content("Replace").Padding("12,6").Margin("0,0,4,0").Background("Transparent").BorderThickness(1).Cursor("Hand")
         replBtns.Add("Button").Name(this.id "_BtnReplaceAll").Content("All").Padding("12,6").Background("Transparent").BorderThickness(1).Cursor("Hand")
-        
+
         btnGrid.Add("TextBlock").Name(this.id "_MatchCount").Text("").Grid_Column(1).VerticalAlignment("Center").HorizontalAlignment("Center").Foreground("{DynamicResource TextSub}").FontSize(11)
 
         ; Preview panel (Confirm / Cancel)
@@ -4008,10 +4039,10 @@ class XDocumentEditor {
         previewPanel.Add("Border").Height(1).Background("{DynamicResource ControlBorder}").Margin("0,0,0,12")
         previewPanel.Add("TextBlock").Text("Preview Mode Active").FontWeight("Bold").Foreground("{DynamicResource Accent}").Margin("0,0,0,4").FontSize(11)
         previewPanel.Add("TextBlock").Text("Confirm or Cancel the replacement:").Foreground("{DynamicResource TextSub}").Margin("0,0,0,12").FontSize(11)
-        
+
         pBtnGrid := previewPanel.Add("Grid")
         pBtnGrid.Cols("*", "Auto")
-        
+
         pConfirmBtn := pBtnGrid.Add("Button").Name(this.id "_BtnConfirmReplace").Content("Confirm").Padding("12,6").HorizontalAlignment("Left").Background("{DynamicResource Accent}").Foreground("White").BorderThickness(0).Cursor("Hand")
         pCancelBtn := pBtnGrid.Add("Button").Name(this.id "_BtnCancelReplace").Content("Cancel").Padding("12,6").Grid_Column(1).HorizontalAlignment("Right").Background("Transparent").BorderThickness(1).Cursor("Hand")
     }
@@ -4126,7 +4157,7 @@ class XDocumentEditor {
         ui.OnEvent(this.id "_BtnZoomOut", "Click", (*) => this._SetZoom(this.zoom - 10))
 
         ; Toggle Menu Bar
-        ui.OnEvent(this.id "_BtnToggleMenu", "Click", (*) => ToggleMenuBar())
+        ui.OnEvent(this.id "_BtnToggleMenu", "Click", ObjBindMethod(this, "_OnToggleMenu"))
 
         ; Document events
         ui.OnEvent(this.id, "DocumentLoaded", ObjBindMethod(this, "_OnDocLoaded"))
@@ -4134,7 +4165,7 @@ class XDocumentEditor {
         ui.OnEvent(this.id, "DocumentError", ObjBindMethod(this, "_OnDocError"))
         ui.OnEvent(this.id, "WordCount", ObjBindMethod(this, "_OnWordCount"))
 
-        ui.OnEvent(this.id "_BtnOutline", "Click", (*) => this._Cmd("GetOutline"))
+        ui.OnEvent(this.id "_BtnOutline", "Click", ObjBindMethod(this, "_OnOutlineToggle"))
         ui.OnEvent(this.id "_BtnMergeCells", "Click", (*) => this._Format("TableMergeRight"))
         ui.OnEvent(this.id "_BtnAddRowBelow", "Click", (*) => this._Format("TableAddRowBelow"))
         ui.OnEvent(this.id "_BtnAddRowAbove", "Click", (*) => this._Format("TableAddRowAbove"))
@@ -4155,20 +4186,24 @@ class XDocumentEditor {
         ui.OnEvent(this.id "_BtnConfirmReplace", "Click", (state, *) => this._FindAction("ConfirmReplace", state))
         ui.OnEvent(this.id "_BtnCancelReplace", "Click", (state, *) => this._FindAction("CancelReplace", state))
         ui.OnEvent(this.id "_FindInput", "TextChanged", (state, *) => this._OnFindTextChanged(state)).Limit(4)
-        
+
         ; Live preview: checkbox toggle + replace text change
         ui.OnEvent(this.id "_PreviewCheckbox", "Checked", (state, *) => this._UpdateLivePreview(state))
         ui.OnEvent(this.id "_PreviewCheckbox", "Unchecked", (state, *) => this._UpdateLivePreview(state))
         ui.OnEvent(this.id "_ReplaceInput", "TextChanged", (state, *) => this._OnReplaceTextChanged(state)).Limit(4)
+
+        ; Format matching events
+        ui.OnEvent(this.id "_StyleSelect", "SelectionChanged", (state, ctrl, event) => this._OnStyleChanged(state))
+        ui.OnEvent(this.id, "SelectionFormat", ObjBindMethod(this, "_OnSelectionFormat"))
 
         ; Initialize new document
         ui.Update(this.id, "Doc_NewDocument", "")
 
         ; Setup responsive toolbar — groups hidden in reverse priority order when toolbar narrows
         ; Insert first (least priority), then lists, then alignment (most priority = hidden last)
-        ui.Update(this.id, "Doc_SetupToolbarResponsive", 
-            this.id "_ToolbarInsertGrp|" this.id "_PopoverInsertGrp," 
-            this.id "_ToolbarListGrp|" this.id "_PopoverListGrp," 
+        ui.Update(this.id, "Doc_SetupToolbarResponsive",
+            this.id "_ToolbarInsertGrp|" this.id "_PopoverInsertGrp,"
+            this.id "_ToolbarListGrp|" this.id "_PopoverListGrp,"
             this.id "_ToolbarAlignGrp|" this.id "_PopoverAlignGrp")
     }
 
@@ -4308,21 +4343,21 @@ class XDocumentEditor {
     _FindAction(action, state := "") {
         if (!this.ui)
             return
-        
+
         findText := ""
         replText := ""
         isPreview := false
         matchCase := false
-        
+
         if (IsObject(state)) {
             findText := state.Has(this.id "_FindInput") ? state[this.id "_FindInput"] : ""
             replText := state.Has(this.id "_ReplaceInput") ? state[this.id "_ReplaceInput"] : ""
             isPreview := state.Has(this.id "_PreviewCheckbox") ? (state[this.id "_PreviewCheckbox"] == "True") : false
             matchCase := state.Has(this.id "_MatchCaseCheckbox") ? (state[this.id "_MatchCaseCheckbox"] == "True") : false
         }
-        
+
         mcFlag := matchCase ? "1" : "0"
-        
+
         if (action == "ConfirmReplace") {
             this._Cmd("ConfirmReplace", "")
             this.ui.Update(this.id "_PreviewPanel", "Visibility", "Collapsed")
@@ -4331,7 +4366,7 @@ class XDocumentEditor {
             this._Cmd("HighlightFinds", findText "|||MC:" mcFlag)
             return
         }
-        
+
         if (action == "CancelReplace") {
             this._Cmd("CancelReplace", "")
             this.ui.Update(this.id "_PreviewPanel", "Visibility", "Collapsed")
@@ -4362,13 +4397,13 @@ class XDocumentEditor {
     _UpdateLivePreview(state) {
         if (!this.ui)
             return
-        
+
         findText := state.Has(this.id "_FindInput") ? state[this.id "_FindInput"] : ""
         replText := state.Has(this.id "_ReplaceInput") ? state[this.id "_ReplaceInput"] : ""
         isPreview := state.Has(this.id "_PreviewCheckbox") ? (state[this.id "_PreviewCheckbox"] == "True") : false
         matchCase := state.Has(this.id "_MatchCaseCheckbox") ? (state[this.id "_MatchCaseCheckbox"] == "True") : false
         mcFlag := matchCase ? "1" : "0"
-        
+
         if (isPreview && findText != "" && replText != "") {
             ; Cancel any existing preview first (revert to original), then re-apply
             this._Cmd("CancelReplace", "")
@@ -4394,7 +4429,7 @@ class XDocumentEditor {
         isPreview := state.Has(this.id "_PreviewCheckbox") ? (state[this.id "_PreviewCheckbox"] == "True") : false
         matchCase := state.Has(this.id "_MatchCaseCheckbox") ? (state[this.id "_MatchCaseCheckbox"] == "True") : false
         mcFlag := matchCase ? "1" : "0"
-        
+
         if (isPreview) {
             ; Live preview is active — update it
             this._UpdateLivePreview(state)
@@ -4492,13 +4527,25 @@ class XDocumentEditor {
     }
 
     _OnFontFamilyChanged(state, ctrl, event) {
-        if (state.Has(this.id "_FontFamily"))
-            this._Format("FontFamily|" state[this.id "_FontFamily"])
+        if (state.Has(this.id "_FontFamily")) {
+            val := state[this.id "_FontFamily"]
+            if (this.HasProp("expectedFormatState") && this.expectedFormatState.Has("Font") && this.expectedFormatState["Font"] == val) {
+                this.expectedFormatState.Delete("Font")
+                return
+            }
+            this._Format("FontFamily|" val)
+        }
     }
 
     _OnFontSizeChanged(state, ctrl, event) {
-        if (state.Has(this.id "_FontSize"))
-            this._Format("FontSize|" state[this.id "_FontSize"])
+        if (state.Has(this.id "_FontSize")) {
+            val := state[this.id "_FontSize"]
+            if (this.HasProp("expectedFormatState") && this.expectedFormatState.Has("Size") && this.expectedFormatState["Size"] == val) {
+                this.expectedFormatState.Delete("Size")
+                return
+            }
+            this._Format("FontSize|" val)
+        }
     }
 
     _OnDocLoaded(state, ctrl, event) {
@@ -4507,6 +4554,26 @@ class XDocumentEditor {
 
     _OnDocSaved(state, ctrl, event) {
         ; Could show a notification
+    }
+
+    _OnOutlineToggle(ctrl, event, *) {
+        isChecked := this.ui.Query(this.id "_BtnOutline")
+        this.ui.Update(this.id "_OutlinePane", "Visibility", isChecked == "True" ? "Visible" : "Collapsed")
+        if (isChecked == "True")
+            this._Cmd("GetOutline")
+    }
+
+    _OnToggleMenu(ctrl, event, *) {
+        isChecked := this.ui.Query(this.id "_BtnToggleMenu")
+        if (isChecked == "True") {
+            this.ui.Update(this.id "_MenuBar", "Visibility", "Collapsed")
+            this.ui.Update(this.id "_BtnToggleMenu", "Content", Chr(0xE70D))
+            this.ui.Update(this.id "_BtnToggleMenu", "ToolTip", "Show Menu Bar")
+        } else {
+            this.ui.Update(this.id "_MenuBar", "Visibility", "Visible")
+            this.ui.Update(this.id "_BtnToggleMenu", "Content", Chr(0xE70E))
+            this.ui.Update(this.id "_BtnToggleMenu", "ToolTip", "Hide Menu Bar")
+        }
     }
 
     _OnDocError(state, ctrl, event) {
@@ -4534,9 +4601,111 @@ class XDocumentEditor {
         }
         this.currentTheme := mode
         this.ui.Update(this.id "_Container", "Tag", mode)
-        ; Apply dark mode color override
+        
+        ; Explicitly update PageBorder because DataTriggers in Resources fail to resolve ElementName
         if (mode == "Dark") {
+            this.ui.Update(this.id "_PageBorder", "Background", "#1E1E1E")
+            this.ui.Update(this.id "_PageBorder", "BorderBrush", "#333333")
             this.ui.Update(this.id, "Doc_ApplyDarkMode", "")
+        } else if (mode == "Theme") {
+            this.ui.Update(this.id "_PageBorder", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_PageBorder", "BorderBrush", "{DynamicResource ControlBorder}")
+        } else {
+            this.ui.Update(this.id "_PageBorder", "Background", "White")
+            this.ui.Update(this.id "_PageBorder", "BorderBrush", "#E0E0E0")
+        }
+    }
+
+    SetPageView(mode) {
+        if (!this.ui)
+            return
+        ; Apply width constraints on the Border wrapping the RTB
+        if (mode == "Paper") {
+            this.ui.Update(this.id "_Container", "MaxWidth", "800")
+            this.ui.Update(this.id "_Container", "Width", "800")
+            this.ui.Update(this.id "_Container", "Margin", "0,20")
+        } else if (mode == "Web") {
+            this.ui.Update(this.id "_Container", "MaxWidth", "1200")
+            this.ui.Update(this.id "_Container", "Width", "NaN")
+            this.ui.Update(this.id "_Container", "Margin", "0")
+        } else {
+            ; Feed View (Default)
+            this.ui.Update(this.id "_Container", "MaxWidth", "NaN")
+            this.ui.Update(this.id "_Container", "Width", "NaN")
+            this.ui.Update(this.id "_Container", "Margin", "0")
+        }
+    }
+
+    _OnStyleChanged(state) {
+        if (!state.Has(this.id "_StyleSelect"))
+            return
+        selectedTag := state[this.id "_StyleSelect"]
+        if (this.HasProp("expectedFormatState") && this.expectedFormatState.Has("Style") && this.expectedFormatState["Style"] == selectedTag) {
+            this.expectedFormatState.Delete("Style")
+            return
+        }
+        if (selectedTag != "") {
+            this._Cmd("FormatStyle", selectedTag)
+        }
+    }
+
+    _OnSelectionFormat(state, ctrl, event) {
+        if (!state.Has("SelectionFormat"))
+            return
+        fmt := state["SelectionFormat"]
+        
+        if (!this.HasProp("expectedFormatState"))
+            this.expectedFormatState := Map()
+
+        ; Expected format: B:1,I:0,U:0,S:0,Size:14,Style:Body
+        for prop in StrSplit(fmt, ",") {
+            kv := StrSplit(prop, ":")
+            if (kv.Length < 2)
+                continue
+            key := kv[1], val := kv[2]
+
+            if (key == "B")
+                this.ui.Update(this.id "_BtnBold", "IsChecked", val == "1" ? "True" : "False")
+            else if (key == "I")
+                this.ui.Update(this.id "_BtnItalic", "IsChecked", val == "1" ? "True" : "False")
+            else if (key == "U")
+                this.ui.Update(this.id "_BtnUnderline", "IsChecked", val == "1" ? "True" : "False")
+            else if (key == "S")
+                this.ui.Update(this.id "_BtnStrike", "IsChecked", val == "1" ? "True" : "False")
+            else if (key == "Style") {
+                idx := (val == "H1") ? 1 : ((val == "H2") ? 2 : ((val == "H3") ? 3 : ((val == "H4") ? 4 : ((val == "H5") ? 5 : ((val == "H6") ? 6 : 0)))))
+                this.expectedFormatState["Style"] := val
+                this.ui.Update(this.id "_StyleSelect", "SelectedIndex", idx)
+            } else if (key == "Size") {
+                this.expectedFormatState["Size"] := val
+                sizeArr := ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36", "48", "72"]
+                for i, s in sizeArr {
+                    if (s == val) {
+                        this.ui.Update(this.id "_FontSize", "SelectedIndex", i - 1)
+                        break
+                    }
+                }
+            } else if (key == "Font") {
+                this.expectedFormatState["Font"] := val
+                
+                isInstalled := false
+                for f in XDocumentEditor._GetSystemFonts() {
+                    if (f == val) {
+                        isInstalled := true
+                        break
+                    }
+                }
+                
+                if (isInstalled) {
+                    this.ui.Update(this.id "_FontFamily", "Text", val)
+                    this.ui.Update(this.id "_FallbackFont", "Visibility", "Collapsed")
+                } else {
+                    this.ui.Update(this.id "_FallbackFontText", "Text", val)
+                    this.ui.Update(this.id "_FallbackFont", "Tag", val)
+                    this.ui.Update(this.id "_FallbackFont", "Visibility", "Visible")
+                    this.ui.Update(this.id "_FontFamily", "SelectedIndex", "0")
+                }
+            }
         }
     }
 
@@ -4584,7 +4753,7 @@ class XColorPickerLive {
         this.container := popoverContainer
         this.container.MinWidth(300)
         this.container.Padding("10")
-        
+
         main := this.container.Add("StackPanel").Name(this.id)
 
         ; Preset Colors Row
@@ -4605,8 +4774,8 @@ class XColorPickerLive {
         for r, rowColors in presetColors {
             for c, hex in rowColors {
                 pName := this.id "_Preset_" r "_" c
-                this.presetNames.Push({Name: pName, Hex: hex})
-                btn := presetGrid.Add("Button").Name(pName).Grid_Row(r-1).Grid_Column(c-1).Width("24").Height("24").Margin("2").Background(hex).BorderThickness("1").BorderBrush("{DynamicResource ControlBorder}").Cursor("Hand").Focusable("False")
+                this.presetNames.Push({ Name: pName, Hex: hex })
+                btn := presetGrid.Add("Button").Name(pName).Grid_Row(r - 1).Grid_Column(c - 1).Width("24").Height("24").Margin("2").Background(hex).BorderThickness("1").BorderBrush("{DynamicResource ControlBorder}").Cursor("Hand").Focusable("False")
                 btn.InjectResources('<Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border x:Name="bg" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3"><ContentPresenter/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bg" Property="BorderBrush" Value="{DynamicResource Accent}"/><Setter TargetName="bg" Property="BorderThickness" Value="2"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter></Style>')
             }
         }
@@ -4675,16 +4844,16 @@ class XColorPickerLive {
 
     Bind(host) {
         this.ui := host
-        
+
         host.OnEvent(this.id "_ToggleAdvanced", "Click", ObjBindMethod(this, "_OnToggleAdvanced"))
-        
+
         for p in this.presetNames {
             host.OnEvent(p.Name, "Click", ObjBindMethod(this, "_OnPresetClick", p.Hex))
         }
 
         host.OnEvent(this.id "_HueSlider", "ValueChanged", ObjBindMethod(this, "_OnSliderChange")).Limit(60, false)
         host.OnEvent(this.id "_AlphaSlider", "ValueChanged", ObjBindMethod(this, "_OnSliderChange")).Limit(60, false)
-        
+
         host.OnEvent(this.id "_RInput", "TextChanged", ObjBindMethod(this, "_OnRGBChange"))
         host.OnEvent(this.id "_GInput", "TextChanged", ObjBindMethod(this, "_OnRGBChange"))
         host.OnEvent(this.id "_BInput", "TextChanged", ObjBindMethod(this, "_OnRGBChange"))
@@ -4703,39 +4872,39 @@ class XColorPickerLive {
     _OnSliderChange(state, ctrl, event) {
         if (!state.Has(this.id "_HueSlider") || !state.Has(this.id "_AlphaSlider"))
             return
-            
+
         this.stateObj.Hue := Float(state[this.id "_HueSlider"])
         this.stateObj.Alpha := Integer(state[this.id "_AlphaSlider"])
-        
+
         r := 0, g := 0, b := 0
         this._HSVtoRGB(this.stateObj.Hue, 1.0, 1.0, &r, &g, &b)
         this.stateObj.R := r
         this.stateObj.G := g
         this.stateObj.B := b
-        
+
         this._UpdateUIFromState()
     }
 
     _OnRGBChange(state, ctrl, event) {
         if (!state.Has(this.id "_RInput") || !state.Has(this.id "_GInput") || !state.Has(this.id "_BInput"))
             return
-            
+
         this.stateObj.R := Max(0, Min(255, Integer(state[this.id "_RInput"])))
         this.stateObj.G := Max(0, Min(255, Integer(state[this.id "_GInput"])))
         this.stateObj.B := Max(0, Min(255, Integer(state[this.id "_BInput"])))
-        
+
         ; Estimate Hue from RGB
         h := 0.0, s := 0.0, v := 0.0
         this._RGBtoHSV(this.stateObj.R, this.stateObj.G, this.stateObj.B, &h, &s, &v)
         this.stateObj.Hue := h
-        
+
         this._UpdateUIFromState()
     }
 
     _OnHexChange(state, ctrl, event) {
         if (!state.Has(this.id "_HexInput"))
             return
-            
+
         hex := StrReplace(state[this.id "_HexInput"], "#")
         if (StrLen(hex) == 6) {
             this.stateObj.Alpha := 255
@@ -4750,30 +4919,30 @@ class XColorPickerLive {
         } else {
             return
         }
-        
+
         h := 0.0, s := 0.0, v := 0.0
         this._RGBtoHSV(this.stateObj.R, this.stateObj.G, this.stateObj.B, &h, &s, &v)
         this.stateObj.Hue := h
-        
+
         this._UpdateUIFromState()
     }
 
     _UpdateUIFromState() {
         hex := Format("#{:02X}{:02X}{:02X}{:02X}", this.stateObj.Alpha, this.stateObj.R, this.stateObj.G, this.stateObj.B)
         this.stateObj.Color := hex
-        
+
         updates := []
-        updates.Push({ControlName: this.id "_ColorPreview", PropertyName: "Background", Value: hex})
-        updates.Push({ControlName: this.id "_HexInput", PropertyName: "Text", Value: hex})
-        updates.Push({ControlName: this.id "_RInput", PropertyName: "Text", Value: this.stateObj.R})
-        updates.Push({ControlName: this.id "_GInput", PropertyName: "Text", Value: this.stateObj.G})
-        updates.Push({ControlName: this.id "_BInput", PropertyName: "Text", Value: this.stateObj.B})
-        
+        updates.Push({ ControlName: this.id "_ColorPreview", PropertyName: "Background", Value: hex })
+        updates.Push({ ControlName: this.id "_HexInput", PropertyName: "Text", Value: hex })
+        updates.Push({ ControlName: this.id "_RInput", PropertyName: "Text", Value: this.stateObj.R })
+        updates.Push({ ControlName: this.id "_GInput", PropertyName: "Text", Value: this.stateObj.G })
+        updates.Push({ ControlName: this.id "_BInput", PropertyName: "Text", Value: this.stateObj.B })
+
         baseHex := Format("#FF{:02X}{:02X}{:02X}", this.stateObj.R, this.stateObj.G, this.stateObj.B)
-        updates.Push({ControlName: this.id "_AlphaFillRect", PropertyName: "Fill", Value: baseHex})
-        
+        updates.Push({ ControlName: this.id "_AlphaFillRect", PropertyName: "Fill", Value: baseHex })
+
         this.ui.BatchUpdate(updates)
-        
+
         if (this._changeCb != "") {
             cb := this._changeCb
             cb(hex)
@@ -4784,7 +4953,7 @@ class XColorPickerLive {
         c := v * s
         x := c * (1 - Abs(Mod(h / 60.0, 2) - 1))
         m := v - c
-        
+
         r1 := 0, g1 := 0, b1 := 0
         if (h >= 0 && h < 60) {
             r1 := c, g1 := x, b1 := 0
@@ -4799,7 +4968,7 @@ class XColorPickerLive {
         } else {
             r1 := c, g1 := 0, b1 := x
         }
-        
+
         r := Integer((r1 + m) * 255)
         g := Integer((g1 + m) * 255)
         b := Integer((b1 + m) * 255)
@@ -4809,11 +4978,11 @@ class XColorPickerLive {
         rNorm := r / 255.0
         gNorm := g / 255.0
         bNorm := b / 255.0
-        
+
         cmax := Max(rNorm, gNorm, bNorm)
         cmin := Min(rNorm, gNorm, bNorm)
         diff := cmax - cmin
-        
+
         if (cmax == cmin)
             h := 0
         else if (cmax == rNorm)
@@ -4822,12 +4991,12 @@ class XColorPickerLive {
             h := Mod((60 * ((bNorm - rNorm) / diff) + 120), 360)
         else if (cmax == bNorm)
             h := Mod((60 * ((rNorm - gNorm) / diff) + 240), 360)
-            
+
         if (cmax == 0)
             s := 0
         else
             s := (diff / cmax)
-            
+
         v := cmax
     }
 

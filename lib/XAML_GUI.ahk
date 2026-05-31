@@ -22,6 +22,7 @@ class XAML_GUI {
         this.showMinMax := hasOpt("MinMaxButtons") ? getOpt("MinMaxButtons") : true
         this.showIcon := hasOpt("AppIcon") ? getOpt("AppIcon") : true
         this.titleBarHeight := hasOpt("TitleBarHeight") ? getOpt("TitleBarHeight") : 50
+        this.windowState := hasOpt("WindowState") ? getOpt("WindowState") : "Normal"
 
         ; Expose the root generator for customization
         this.X := XAML_Generator("Grid").Name("AppGrid").Background("{DynamicResource BgColor}").Focusable("True")
@@ -538,6 +539,10 @@ class XAML_GUI {
 
         if (this.showIcon) {
             this.host.Update("AppIcon", "Source", "HICON:" hIcon)
+        }
+
+        if (this.windowState != "Normal") {
+            this.host.Update("Window", "WindowState", this.windowState)
         }
 
         ; Apply lightweight events if opted in

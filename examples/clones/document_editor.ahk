@@ -34,7 +34,7 @@ global menuTempShown := false
 global currentDocTheme := "Normal"
 
 ; --- Build the UI ---
-options := Map("Sidebar", true, "BurgerMenu", true, "TitleBarHeight", 36, "MinMaxButtons", true, "AppIcon", true)
+options := Map("Sidebar", true, "BurgerMenu", true, "TitleBarHeight", 36, "MinMaxButtons", true, "AppIcon", true, "WindowState", "Maximized")
 global app := XAML_GUI("Untitled document", options)
 app.tabs.Visibility("Collapsed")
 
@@ -72,6 +72,10 @@ viewMenu.AddItem("Show Menu Bar", Chr(0xE700), "MenuViewToggleMenuBar", "Ctrl+M"
 viewMenu.AddSeparator()
 viewMenu.AddItem("Theme Document", Chr(0xE790), "MenuViewThemeDoc", "").SetProp("IsCheckable", "True")
 viewMenu.AddItem("Dark Document", Chr(0xE793), "MenuViewDarkDoc", "").SetProp("IsCheckable", "True")
+viewMenu.AddSeparator()
+viewMenu.AddItem("Feed View (Default)", Chr(0xE8F1), "MenuViewFeed", "").SetProp("IsCheckable", "True").SetProp("IsChecked", "True")
+viewMenu.AddItem("Paper View", Chr(0xE8A5), "MenuViewPaper", "").SetProp("IsCheckable", "True")
+viewMenu.AddItem("Web View", Chr(0xE774), "MenuViewWeb", "").SetProp("IsCheckable", "True")
 viewMenu.AddSeparator()
 viewMenu.AddItem("Zoom 100%", "", "MenuViewZoom100", "Ctrl+0")
 viewMenu.AddItem("Zoom In", Chr(0xE8A3), "MenuViewZoomIn", "Ctrl++")
@@ -180,6 +184,9 @@ ui.OnEvent("MenuEditReplace", "Click", (*) => docEditor._ReplaceDialog())
 ui.OnEvent("MenuViewToggleMenuBar", "Click", (*) => ToggleMenuBar())
 ui.OnEvent("MenuViewThemeDoc", "Click", (*) => ToggleDocTheme("Theme"))
 ui.OnEvent("MenuViewDarkDoc", "Click", (*) => ToggleDocTheme("Dark"))
+ui.OnEvent("MenuViewFeed", "Click", (*) => TogglePageView("Feed"))
+ui.OnEvent("MenuViewPaper", "Click", (*) => TogglePageView("Paper"))
+ui.OnEvent("MenuViewWeb", "Click", (*) => TogglePageView("Web"))
 ui.OnEvent("MenuViewZoom100", "Click", (*) => docEditor._SetZoom(100))
 ui.OnEvent("MenuViewZoomIn", "Click", (*) => docEditor._SetZoom(docEditor.zoom + 10))
 ui.OnEvent("MenuViewZoomOut", "Click", (*) => docEditor._SetZoom(docEditor.zoom - 10))
@@ -238,6 +245,39 @@ global menuTempShown := false
 global currentDocTheme := "Normal"
 
 ; --- Core Actions ---
+
+ToggleDocTheme(mode) {
+    global currentDocTheme
+    ; Toggle off if already active
+    if (currentDocTheme == mode) {
+        mode := "Normal"
+    }
+    
+    currentDocTheme := mode
+    
+    ; Ensure checkboxes reflect truth
+    ui.Update("MenuViewThemeDoc", "IsChecked", mode == "Theme" ? "True" : "False")
+    ui.Update("MenuViewDarkDoc", "IsChecked", mode == "Dark" ? "True" : "False")
+    
+    docEditor.SetDocumentTheme(mode)
+}
+
+TogglePageView(mode) {
+    ui.Update("MenuViewFeed", "IsChecked", mode == "Feed" ? "True" : "False")
+    ui.Update("MenuViewPaper", "IsChecked", mode == "Paper" ? "True" : "False")
+    ui.Update("MenuViewWeb", "IsChecked", mode == "Web" ? "True" : "False")
+    docEditor.SetPageView(mode)
+}
+
+ToggleMenuBar() {
+    global menuBarCollapsed, menuTempShown
+    menuBarCollapsed := !menuBarCollapsed
+    ui.Update("MenuViewToggleMenuBar", "IsChecked", menuBarCollapsed ? "False" : "True")
+    ui.Update("MenuBarBorder", "Visibility", menuBarCollapsed ? "Collapsed" : "Visible")
+    if (!menuBarCollapsed && menuTempShown)
+        menuTempShown := false
+}
+
 DoNewDocument() {
     global currentDocTheme
     ; Reset theme before clearing document
@@ -303,27 +343,7 @@ ShowAbout() {
     XDialog.Show(opts)
 }
 
-; --- Menu Bar Logic ---
-ToggleMenuBar() {
-    global menuBarCollapsed, menuTempShown
-    menuBarCollapsed := !menuBarCollapsed
-    ui.Update("MenuViewToggleMenuBar", "IsChecked", menuBarCollapsed ? "False" : "True")
-    ui.Update("MenuBarBorder", "Visibility", menuBarCollapsed ? "Collapsed" : "Visible")
-    if (!menuBarCollapsed && menuTempShown)
-        menuTempShown := false
-}
 
-ToggleDocTheme(mode) {
-    global currentDocTheme
-    if (mode == "Theme") {
-        currentDocTheme := (currentDocTheme == "Theme") ? "Normal" : "Theme"
-    } else if (mode == "Dark") {
-        currentDocTheme := (currentDocTheme == "Dark") ? "Normal" : "Dark"
-    }
-    ui.Update("MenuViewThemeDoc", "IsChecked", currentDocTheme == "Theme" ? "True" : "False")
-    ui.Update("MenuViewDarkDoc", "IsChecked", currentDocTheme == "Dark" ? "True" : "False")
-    docEditor.SetDocumentTheme(currentDocTheme)
-}
 
 ; --- Alt Key Menu Reveal ---
 IsDocEditorActive() => WinActive("ahk_id " ui.wpfHwnd)
@@ -441,7 +461,7 @@ OutlineReceived(state, ctrl, event) {
             text := StrReplace(text, "<", "&lt;")
             text := StrReplace(text, ">", "&gt;")
 
-            margin := (level == "H1") ? "0,4,0,4" : ((level == "H2") ? "12,4,0,4" : "24,4,0,4")
+            margin := (level == "H1") ? "0,4,0,4" : ((level == "H2") ? "12,4,0,4" : ((level == "H3") ? "24,4,0,4" : ((level == "H4") ? "36,4,0,4" : ((level == "H5") ? "48,4,0,4" : "60,4,0,4"))))
             fontSize := (level == "H1") ? "13" : ((level == "H2") ? "12" : "11")
             fontWeight := (level == "H1") ? "Bold" : "Normal"
 

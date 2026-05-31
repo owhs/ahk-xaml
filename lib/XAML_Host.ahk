@@ -358,7 +358,7 @@ class XAMLHost {
         snipLbl := "", snipEdit := ""
         if (snippet != "") {
             errGui.SetFont("s11 bold c003366", "Segoe UI")
-            snipLbl := errGui.Add("Text", "y+15", "Generated XAML Snippet:")
+            snipLbl := errGui.Add("Text", "y+15", InStr(title, "Compile Error") ? "Code Snippet:" : "Generated XAML Snippet:")
             errGui.SetFont("s9 norm cE0E0E0", "Consolas")
             snipEdit := CodeBox.Add(errGui, "y+5 w860 h150 ReadOnly +VScroll +HScroll -Wrap Background1E1E1E", "`r`n" snippet, 0xE0E0E0)
 
@@ -634,7 +634,45 @@ class XAMLHost {
 
         if !FileExist(sharedExe) {
             errOut := FileExist(errLog) ? FileRead(errLog) : "Unknown compilation error."
-            XAMLHost.ShowErrorDialog("Engine Compile Error", "Failed to compile background engine.", "", errOut)
+            snippet := ""
+            reason := ""
+            
+            if RegExMatch(errOut, "m)^([a-zA-Z]:\\[^\(]+)\((\d+),(\d+)\):\s*error\s*(CS\d+:\s*[^\r\n]+)", &match) {
+                filePath := match[1]
+                lineNum := Integer(match[2])
+                colNum := Integer(match[3])
+                reason := match[4]
+                
+                if FileExist(filePath) {
+                    try {
+                        lines := StrSplit(FileRead(filePath), "`n", "`r")
+                        if (lineNum > 0 && lineNum <= lines.Length) {
+                            codeLine := lines[lineNum]
+                            pointerLine := ""
+                            loop colNum - 1
+                                pointerLine .= " "
+                            pointerLine .= "^"
+                            
+                            startLine := Max(1, lineNum - 3)
+                            endLine := Min(lines.Length, lineNum + 3)
+                            
+                            for idx, lineStr in lines {
+                                if (idx >= startLine && idx <= endLine) {
+                                    if (idx == lineNum) {
+                                        snippet .= ">> " idx ":  " codeLine "`n"
+                                        snippet .= "   " RegExReplace(idx, ".", " ") "   " pointerLine "`n"
+                                    } else {
+                                        snippet .= "   " idx ":  " lineStr "`n"
+                                    }
+                                }
+                            }
+                            snippet := Trim(snippet, "`n")
+                        }
+                    }
+                }
+            }
+            
+            XAMLHost.ShowErrorDialog("Engine Compile Error", "Failed to compile background engine.", snippet, errOut, false, reason)
             return false
         }
         return true
