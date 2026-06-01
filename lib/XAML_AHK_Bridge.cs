@@ -6361,6 +6361,15 @@ public class AhkWpfEngine
             }
             catch { }
         }
+
+        foreach (var ev in element.GetType().GetEvents(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            try
+            {
+                sb.AppendFormat("Events|0|1|{0}:{1}=CLR Event\n", ev.EventHandlerType.Name, ev.Name);
+            }
+            catch { }
+        }
         return sb.ToString();
     }
 }
