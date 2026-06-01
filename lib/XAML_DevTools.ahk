@@ -22,13 +22,14 @@ class XAML_DevTools {
         global XAML_DevTools_Instance := this
 
         this.hashToName := Map()
+        this.hashToUid := Map()
         this.pipelineLogs := []
 
         ; Register event callbacks on target host's background engine
         this.target.OnEvent("Engine", "DevToolsTree", ObjBindMethod(this, "OnTreeReceived"))
         this.target.OnEvent("Engine", "DevToolsProps", ObjBindMethod(this, "OnPropsReceived"))
 
-        this.app := XAML_GUI("Developer Tools - " this.target.id, Map("Sidebar", true, "TitleBarHeight", 45))
+        this.app := XAML_GUI("Developer Tools - " this.target.id, Map("Sidebar", true, "TitleBarHeight", 45, "CloseAction", "None"))
 
         ; Setup theme and list defaults
         this.app.X.InjectResources('
@@ -37,26 +38,89 @@ class XAML_DevTools {
                 <Setter Property="Foreground" Value="{DynamicResource TextMain}" />
                 <Setter Property="Padding" Value="2" />
             </Style>
+            <Style TargetType="Button">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextSub}"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="10,4"/>
+                <Setter Property="Height" Value="25"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="#1AFFFFFF"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="#2AFFFFFF"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style TargetType="ToggleButton">
-                <Setter Property="Background" Value="{DynamicResource ControlBg}" />
-                <Setter Property="Foreground" Value="{DynamicResource TextMain}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="Padding" Value="10,2" />
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextSub}"/>
+                <Setter Property="BorderBrush" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Padding" Value="10,4"/>
+                <Setter Property="Height" Value="25"/>
+                <Setter Property="Cursor" Value="Hand"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ToggleButton">
-                            <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Border x:Name="border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsChecked" Value="True">
-                                    <Setter TargetName="border" Property="Background" Value="{DynamicResource Accent}" />
-                                    <Setter Property="Foreground" Value="White" />
-                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                                    <Setter TargetName="border" Property="Background" Value="#1D2A3A"/>
+                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
                                 </Trigger>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="border" Property="Opacity" Value="0.8" />
+                                    <Setter TargetName="border" Property="Background" Value="#1AFFFFFF"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <Style TargetType="CheckBox">
+                <Setter Property="Foreground" Value="{DynamicResource TextSub}"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <BulletDecorator Background="Transparent" SnapsToDevicePixels="true">
+                                <BulletDecorator.Bullet>
+                                    <Grid>
+                                        <Border x:Name="border" Width="14" Height="14" CornerRadius="2" BorderThickness="1" BorderBrush="#555555" Background="#222222" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <Path x:Name="checkMark" Data="M 2,5 L 5,8 L 10,2" Stroke="White" StrokeThickness="2" Visibility="Collapsed" SnapsToDevicePixels="true" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </BulletDecorator.Bullet>
+                                <ContentPresenter Margin="6,0,0,0" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                            </BulletDecorator>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="true">
+                                    <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
+                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                                    <Setter TargetName="border" Property="Background" Value="{DynamicResource Accent}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="true">
+                                    <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource Accent}"/>
+                                    <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -118,6 +182,12 @@ class XAML_DevTools {
         this.app.host.OnEvent("BtnRefreshTree", "Click", ObjBindMethod(this, "RequestTree"))
         this.app.host.OnEvent("BtnInspect", "Click", ObjBindMethod(this, "OnInspectToggle"))
 
+        ; Explicitly track required DevTools controls for event state dumps
+        this.app.host.Track("TreeElements")
+        this.app.host.Track("LogPipeline")
+        this.app.host.Track("BtnTogglePipelineDetails")
+        this.app.host.Track("BtnFilterDevTools")
+
         ; Listen for global events from the target application (sent from background engine)
         this.targetGui.host.OnEvent("AppWindow", "InspectPicked", ObjBindMethod(this, "OnInspectPicked"))
 
@@ -126,6 +196,7 @@ class XAML_DevTools {
         this.app.host.OnEvent("BtnClearPipeline", "Click", ObjBindMethod(this, "OnClearPipeline"))
         this.app.host.OnEvent("LogPipeline", "SelectionChanged", ObjBindMethod(this, "OnPipelineSelected"))
         this.app.host.OnEvent("BtnTogglePipelineDetails", "Click", ObjBindMethod(this, "OnTogglePipelineDetails"))
+        this.app.host.OnEvent("BtnFilterDevTools", "Click", ObjBindMethod(this, "OnFilterDevToolsChanged"))
         this.app.host.OnEvent("BtnClearConsole", "Click", (*) => this.app.host.Update("LogConsole", "Text", ""))
 
         this.app.host.OnEvent("BtnFilterAlpha", "Click", ObjBindMethod(this, "OnPropFilterChanged"))
@@ -143,9 +214,6 @@ class XAML_DevTools {
 
         ; Initial request
         this.RequestTree()
-
-        ; Initial request
-        this.RequestTree()
     }
 
     BuildElementsTab(tab) {
@@ -155,9 +223,9 @@ class XAML_DevTools {
         leftPanel := grid.Add("Grid").Grid_Column(0)
         leftPanel.Rows("Auto", "*")
 
-        toolbar := leftPanel.Add("StackPanel").Orientation("Horizontal").Margin("0,0,0,5")
-        toolbar.Add("Button").Name("BtnRefreshTree").Content("Refresh Tree").Use("PrimaryBtn").Width(100).Height(25)
-        toolbar.Add("ToggleButton").Name("BtnInspect").Content("Inspect").Use("PrimaryBtn").Width(80).Height(25).Margin("5,0,0,0")
+        toolbar := leftPanel.Add("StackPanel").Orientation("Horizontal").Margin("0,0,0,8")
+        toolbar.Add("Button").Name("BtnRefreshTree").Content("Refresh Tree").Margin("0,0,5,0")
+        toolbar.Add("ToggleButton").Name("BtnInspect").Content("Inspect")
 
         leftPanel.Add("Border").Grid_Row(1).Use("CardPanel").Add("TreeView").Name("TreeElements").Background("Transparent").BorderThickness(0)
 
@@ -198,13 +266,14 @@ class XAML_DevTools {
         ; Create a popover stacked with checkboxes
         pop := filterBtn.AddRichPopover()
         pop.MinWidth(220)
-        pop.Add("TextBlock").Text("Filter Properties").FontWeight("Bold").FontSize(12).Margin("0,0,0,10").Foreground("{DynamicResource TextMain}")
 
-        pop.Add("CheckBox").Name("BtnFilterAlpha").Content("Sort Alphabetically (A-Z)").Margin("0,4,0,4").IsChecked("True")
-        pop.Add("CheckBox").Name("BtnFilterGroup").Content("Group by Category").Margin("0,4,0,4").IsChecked("True")
-        pop.Add("CheckBox").Name("BtnFilterLocal").Content("Show Local Properties Only").Margin("0,4,0,4")
-        pop.Add("CheckBox").Name("BtnFilterValid").Content("Hide Empty / Null Values").Margin("0,4,0,4")
-        pop.Add("CheckBox").Name("BtnFilterEdit").Content("Show Writeable Only (R/W)").Margin("0,4,0,4")
+        sp := pop.Add("StackPanel")
+        sp.Add("TextBlock").Text("Filter Properties").FontWeight("Bold").FontSize(12).Margin("0,0,0,10").Foreground("{DynamicResource TextMain}")
+        sp.Add("CheckBox").Name("BtnFilterAlpha").Content("Sort Alphabetically (A-Z)").Margin("0,4,0,4").IsChecked("True")
+        sp.Add("CheckBox").Name("BtnFilterGroup").Content("Group by Category").Margin("0,4,0,4").IsChecked("True")
+        sp.Add("CheckBox").Name("BtnFilterLocal").Content("Show Local Properties Only").Margin("0,4,0,4")
+        sp.Add("CheckBox").Name("BtnFilterValid").Content("Hide Empty / Null Values").Margin("0,4,0,4")
+        sp.Add("CheckBox").Name("BtnFilterEdit").Content("Show Writeable Only (R/W)").Margin("0,4,0,4")
 
         cb := toolbarProps.Add("ComboBox").Name("ComboPresets").Width(100).Height(24).Margin("0,0,5,0").Foreground("{DynamicResource TextMain}").Background("{DynamicResource ControlBg}")
         cb.Add("ComboBoxItem").Content("All").IsSelected("True")
@@ -237,9 +306,10 @@ class XAML_DevTools {
         grid := tab.Add("Grid")
         grid.Rows("Auto", "*")
 
-        toolbar := grid.Add("StackPanel").Orientation("Horizontal").Margin("0,0,0,5")
-        toolbar.Add("Button").Name("BtnClearPipeline").Content("Clear Log").Use("PrimaryBtn").Width(80).Height(25)
-        toolbar.Add("ToggleButton").Name("BtnTogglePipelineDetails").Content("Show Details").Use("PrimaryBtn").Width(100).Height(25).Margin("5,0,0,0").IsChecked("True")
+        toolbar := grid.Add("StackPanel").Orientation("Horizontal").Margin("0,0,0,8")
+        toolbar.Add("Button").Name("BtnClearPipeline").Content("Clear Log").Margin("0,0,5,0")
+        toolbar.Add("ToggleButton").Name("BtnTogglePipelineDetails").Content("Show Details").IsChecked("True").Margin("0,0,10,0")
+        toolbar.Add("CheckBox").Name("BtnFilterDevTools").Content("Hide DevTools Traffic").IsChecked("True").VerticalAlignment("Center")
 
         mainGrid := grid.Add("Grid").Grid_Row(1)
         mainGrid.Cols("*", "Auto", "Auto")
@@ -249,23 +319,39 @@ class XAML_DevTools {
 
         mainGrid.Add("GridSplitter").Name("PipelineSplitter").Grid_Column(1).Width(5).HorizontalAlignment("Center").Background("Transparent")
 
-        rightBorder := mainGrid.Add("Border").Name("PipelineDetails").Grid_Column(2).Width(300).Use("CardPanel").Margin("5,0,0,0")
-        rightBorder.Add("TextBox").Name("TxtPipelineDetails").Background("Transparent").BorderThickness(0).Foreground("{DynamicResource TextMain}").IsReadOnly("True").VerticalScrollBarVisibility("Auto").TextWrapping("Wrap").FontFamily("Consolas").Padding("5")
+        rightBorder := mainGrid.Add("Border").Name("PipelineDetails").Grid_Column(2).Width(400).Use("CardPanel").Margin("5,0,0,0")
+
+        ; TabControl in the right details panel
+        detailsTabCtrl := rightBorder.Add("TabControl").Name("PipelineDetailsTabs").Background("Transparent").BorderThickness("0,1,0,0").BorderBrush("{DynamicResource ControlBorder}")
+
+        ; Headers Tab
+        tabHeaders := detailsTabCtrl.Add("TabItem").Header("Headers")
+        svHeaders := tabHeaders.Add("ScrollViewer").VerticalScrollBarVisibility("Auto").Margin("0,10,0,0")
+        this.pipelineHeadersPanel := svHeaders.Add("StackPanel").Name("PanelPipelineHeaders").Margin("5,10,5,10")
+
+        ; Payload Tab
+        tabPayload := detailsTabCtrl.Add("TabItem").Header("Payload")
+        svPayload := tabPayload.Add("ScrollViewer").VerticalScrollBarVisibility("Auto").Margin("0,10,0,0")
+        this.pipelinePayloadPanel := svPayload.Add("StackPanel").Name("PanelPipelinePayload").Margin("5,10,5,10")
+
+        ; Preview Tab
+        tabPreview := detailsTabCtrl.Add("TabItem").Header("Preview")
+        svPreview := tabPreview.Add("ScrollViewer").VerticalScrollBarVisibility("Auto").Margin("0,10,0,0")
+        this.pipelinePreviewPanel := svPreview.Add("StackPanel").Name("PanelPipelinePreview").Margin("5,10,5,10")
     }
 
     BuildConsoleTab(tab) {
         grid := tab.Add("Grid")
         grid.Rows("Auto", "*", "Auto")
-
-        toolbar := grid.Add("StackPanel").Orientation("Horizontal").Margin("0,0,0,5")
-        toolbar.Add("Button").Name("BtnClearConsole").Content("Clear").Use("PrimaryBtn").Width(80).Height(25)
+        toolbar := grid.Add("StackPanel").Orientation("Horizontal").Margin("0,0,0,8")
+        toolbar.Add("Button").Name("BtnClearConsole").Content("Clear")
 
         grid.Add("Border").Grid_Row(1).Use("CardPanel").Margin("0,0,0,10").Add("TextBox").Name("LogConsole").Background("Transparent").BorderThickness(0).Foreground("{DynamicResource TextMain}").IsReadOnly("True").VerticalScrollBarVisibility("Auto").TextWrapping("Wrap").FontFamily("Consolas")
 
         inputGrid := grid.Add("Grid").Grid_Row(2)
         inputGrid.Cols("*", "Auto")
         inputGrid.Add("TextBox").Name("InputConsole").FontFamily("Consolas").Height(30)
-        inputGrid.Add("Button").Name("BtnConsoleRun").Grid_Column(1).Content("Run").Use("PrimaryBtn").Width(80).Margin("10,0,0,0")
+        inputGrid.Add("Button").Name("BtnConsoleRun").Grid_Column(1).Content("Run").Width(80).Margin("10,0,0,0")
     }
 
     RequestTree(*) {
@@ -278,6 +364,7 @@ class XAML_DevTools {
             return
 
         this.hashToName := Map()
+        this.hashToUid := Map()
         lines := StrSplit(rawTree, "`n", "`r")
         xml := ""
         openLevels := []
@@ -306,6 +393,7 @@ class XAML_DevTools {
             displayName .= "  [" size "]"
 
             uid := parts.Length >= 8 ? parts[8] : ""
+            this.hashToUid[hash] := uid
             if (uid != "")
                 displayName .= " [Line: " uid "]"
 
@@ -796,23 +884,33 @@ class XAML_DevTools {
                 }
 
                 isHooked := false
-                hookedText := displayVal
+                hookedText := "—"
                 if (ctrlName != "" && this.target.events.Has(ctrlName) && this.target.events[ctrlName].Has(p.Name)) {
                     evtList := this.target.events[ctrlName][p.Name]
                     if (evtList.Length > 0) {
                         isHooked := true
                         cb := evtList[1].Callback
                         cbName := this.GetCallbackName(cb)
+
+                        if (cbName == "(inline)") {
+                            uid := this.hashToUid.Has(this.selectedHash) ? this.hashToUid[this.selectedHash] : ""
+                            sourceCode := this.GetCallbackSource(uid, p.Name)
+                            if (sourceCode != "") {
+                                cbName := sourceCode
+                            }
+                        }
+
                         hookedText := "Hooked: " . cbName
                     }
                 }
 
-                labelColor := isHooked ? "#A6E3A1" : "#BD93F9" ; Green if hooked, Purple for normal CLR event
+                labelColor := isHooked ? "#A6E3A1" : "#888888" ; Green if hooked, Muted gray if not
+                opacity := isHooked ? "1.0" : "0.55"
                 bgColor := (Mod(eventIndex, 2) == 0) ? "#0AFFFFFF" : "Transparent"
 
                 eventsXml .= Format('
                 ( LTrim
-                    <Grid Margin="0" Background="{4}">
+                    <Grid Margin="0" Background="{4}" Opacity="{5}">
                     <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="160" />
                     <ColumnDefinition Width="*" />
@@ -820,7 +918,7 @@ class XAML_DevTools {
                     <TextBlock Text="{2}" Foreground="{3}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2}" TextTrimming="CharacterEllipsis" />
                     <TextBox Grid.Column="1" Text="{1}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
                     </Grid>
-                )', this.EscapeXml(hookedText), displayName, labelColor, bgColor)
+                )', this.EscapeXml(hookedText), displayName, labelColor, bgColor, opacity)
             }
         }
 
@@ -836,45 +934,250 @@ class XAML_DevTools {
     LogIPC(dir, payload) {
         ts := FormatTime(, "HH:mm:ss") "." A_MSec
         dirIcon := (dir == "IN") ? "<-" : "->"
-        
-        summary := ts . " " . dirIcon . " " . this.SummarizePayload(dir, payload)
-        
+
         ; Save raw message with timestamp for details look up
         rawMsg := ts . " " . dirIcon . " " . payload
         this.pipelineLogs.Push(rawMsg)
-        
+
+        ; Check if we should filter this message
+        hideDevTools := false
+        try hideDevTools := (this.app.host.Query("BtnFilterDevTools") == "True")
+
+        lines := StrSplit(payload, "`n", "`r")
+        firstLine := lines[1]
+
+        isDevToolsMsg := false
+        if (SubStr(firstLine, 1, 6) == "EVENT|") {
+            parts := StrSplit(firstLine, "|", , 5)
+            ctrlName := parts.Length >= 3 ? parts[3] : ""
+            eventName := parts.Length >= 4 ? parts[4] : ""
+            if (ctrlName == "Engine" && (eventName == "DevToolsTree" || eventName == "DevToolsProps"))
+                isDevToolsMsg := true
+            else if (ctrlName == "AppWindow" && eventName == "InspectPicked")
+                isDevToolsMsg := true
+        } else {
+            parts := StrSplit(firstLine, "|", , 3)
+            ctrlName := parts.Length >= 1 ? parts[1] : ""
+            eventName := parts.Length >= 2 ? parts[2] : ""
+            if (ctrlName == "DEVTOOLS")
+                isDevToolsMsg := true
+        }
+
+        if (hideDevTools && isDevToolsMsg)
+            return
+
+        summary := ts . " " . dirIcon . " " . this.SummarizePayload(dir, payload)
         this.app.host.Update("LogPipeline", "AddItem", summary)
+    }
+
+    OnFilterDevToolsChanged(state, ctrl, event) {
+        this.RenderPipelineList()
+    }
+
+    RenderPipelineList() {
+        this.app.host.Update("LogPipeline", "ClearItems", "")
+        
+        hideDevTools := false
+        try hideDevTools := (this.app.host.Query("BtnFilterDevTools") == "True")
+
+        for rawMsg in this.pipelineLogs {
+            pos := InStr(rawMsg, " ")
+            if (!pos)
+                continue
+            ts := SubStr(rawMsg, 1, pos - 1)
+
+            rest := SubStr(rawMsg, pos + 1)
+            posDir := InStr(rest, " ")
+            if (!posDir)
+                continue
+            dirIcon := SubStr(rest, 1, posDir - 1)
+            payload := SubStr(rest, posDir + 1)
+
+            lines := StrSplit(payload, "`n", "`r")
+            firstLine := lines[1]
+
+            isDevToolsMsg := false
+            if (SubStr(firstLine, 1, 6) == "EVENT|") {
+                parts := StrSplit(firstLine, "|", , 5)
+                ctrlName := parts.Length >= 3 ? parts[3] : ""
+                eventName := parts.Length >= 4 ? parts[4] : ""
+                if (ctrlName == "Engine" && (eventName == "DevToolsTree" || eventName == "DevToolsProps"))
+                    isDevToolsMsg := true
+                else if (ctrlName == "AppWindow" && eventName == "InspectPicked")
+                    isDevToolsMsg := true
+            } else {
+                parts := StrSplit(firstLine, "|", , 3)
+                ctrlName := parts.Length >= 1 ? parts[1] : ""
+                eventName := parts.Length >= 2 ? parts[2] : ""
+                if (ctrlName == "DEVTOOLS")
+                    isDevToolsMsg := true
+            }
+
+            if (hideDevTools && isDevToolsMsg)
+                continue
+
+            summary := ts . " " . dirIcon . " " . this.SummarizePayload(dirIcon == "<-" ? "IN" : "OUT", payload)
+            this.app.host.Update("LogPipeline", "AddItem", summary)
+        }
     }
 
     GetCallbackName(cb) {
         if (Type(cb) == "String")
             return cb
+        name := ""
         try {
             if (HasProp(cb, "Name"))
-                return cb.Name
+                name := cb.Name
         }
         try {
-            return cb.Name
+            if (name == "")
+                name := cb.Name
         }
-        return Type(cb)
+        if (name == "") {
+            t := Type(cb)
+            if (t == "Func")
+                return "(inline)"
+            if (t == "BoundFunc")
+                return "(bound)"
+            return t
+        }
+        return name
+    }
+
+    GetCallbackSource(uid, eventName) {
+        if (uid == "")
+            return ""
+        pos := InStr(uid, ":")
+        if (!pos)
+            return ""
+        filename := SubStr(uid, 1, pos - 1)
+        lineNum := Integer(SubStr(uid, pos + 1))
+
+        filePath := A_ScriptDir . "\" . filename
+        if (!FileExist(filePath)) {
+            filePath := A_WorkingDir . "\" . filename
+            if (!FileExist(filePath)) {
+                filePath := A_ScriptDir . "\examples\basic\" . filename
+                if (!FileExist(filePath))
+                    return ""
+            }
+        }
+
+        try {
+            fileContent := FileRead(filePath)
+            lines := StrSplit(fileContent, "`n", "`r")
+
+            startLine := lineNum
+            endLine := Min(lines.Length, lineNum + 8)
+
+            fullBlock := ""
+            loop endLine - startLine + 1 {
+                currIdx := startLine + A_Index - 1
+                fullBlock .= lines[currIdx] . "`n"
+            }
+
+            pattern := "i)\.On\(\s*[" . Chr(34) . Chr(39) . "]" . eventName . "[" . Chr(34) . Chr(39) . "]\s*,\s*(.*)"
+            if (RegExMatch(fullBlock, pattern, &match)) {
+                rest := match[1]
+
+                parenCount := 1
+                callbackStr := ""
+                loop Parse, rest {
+                    char := A_LoopField
+                    if (char == "(")
+                        parenCount++
+                    else if (char == ")") {
+                        parenCount--
+                        if (parenCount == 0)
+                            break
+                    }
+                    callbackStr .= char
+                }
+                return Trim(callbackStr)
+            }
+        }
+        return ""
+    }
+
+    OnTogglePipelineDetails(state, ctrl, event) {
+        isChecked := state.Has("BtnTogglePipelineDetails") && state["BtnTogglePipelineDetails"] == "True"
+        if (isChecked) {
+            this.app.host.Update("PipelineDetails", "Visibility", "Visible")
+            this.app.host.Update("PipelineSplitter", "Visibility", "Visible")
+        } else {
+            this.app.host.Update("PipelineDetails", "Visibility", "Collapsed")
+            this.app.host.Update("PipelineSplitter", "Visibility", "Collapsed")
+        }
+    }
+
+    SummarizePayload(dir, payload) {
+        lines := StrSplit(payload, "`n", "`r")
+        firstLine := lines[1]
+        
+        if (SubStr(firstLine, 1, 6) == "EVENT|") {
+            parts := StrSplit(firstLine, "|", , 5)
+            ctrlName := parts.Length >= 3 ? parts[3] : ""
+            eventName := parts.Length >= 4 ? parts[4] : ""
+            
+            summary := "EVENT [" . ctrlName . " : " . eventName . "]"
+            
+            customPayload := parts.Length >= 5 ? parts[5] : ""
+            stateCount := lines.Length - 1
+            if (lines[lines.Length] == "") {
+                stateCount := Max(0, stateCount - 1)
+            }
+            
+            if (customPayload != "") {
+                pLoadDec := XAMLHost.DecodeValue(customPayload)
+                len := StrLen(pLoadDec)
+                if (len > 1000) {
+                    summary .= " 📦 [" . Round(len / 1024, 1) . " KB]"
+                } else if (len > 0) {
+                    summary .= " 📦 [" . len . " ch]"
+                }
+            } else if (stateCount > 0) {
+                summary .= " 📦 [" . stateCount . " state vars]"
+            }
+            return summary
+        } else {
+            parts := StrSplit(firstLine, "|", , 3)
+            ctrlName := parts.Length >= 1 ? parts[1] : ""
+            eventName := parts.Length >= 2 ? parts[2] : ""
+            summary := ctrlName . " [" . eventName . "]"
+            
+            customPayload := parts.Length >= 3 ? parts[3] : ""
+            if (customPayload != "") {
+                pLoadDec := (dir == "OUT") ? customPayload : XAMLHost.DecodeValue(customPayload)
+                if (pLoadDec != "") {
+                    if (StrLen(pLoadDec) < 40) {
+                        summary .= " = " . pLoadDec
+                    } else {
+                        summary .= " 📦 [" . StrLen(pLoadDec) . " ch]"
+                    }
+                }
+            }
+            return summary
+        }
     }
 
     OnClearPipeline(*) {
         this.pipelineLogs := []
         this.app.host.Update("LogPipeline", "ClearItems", "")
-        this.app.host.Update("TxtPipelineDetails", "Text", "")
+        this.app.host.Update("PanelPipelineHeaders", "ClearItems", "")
+        this.app.host.Update("PanelPipelinePayload", "ClearItems", "")
+        this.app.host.Update("PanelPipelinePreview", "ClearItems", "")
     }
 
     OnPipelineSelected(state, ctrl, event) {
-        selectedText := state["LogPipeline"]
+        selectedText := state.Has("LogPipeline") ? state["LogPipeline"] : (state.Has("SelectionChanged") ? state["SelectionChanged"] : "")
         if (selectedText == "")
             return
-            
+
         pos := InStr(selectedText, " ")
         if (!pos)
             return
         ts := SubStr(selectedText, 1, pos - 1)
-        
+
         rawMsg := ""
         for item in this.pipelineLogs {
             if (SubStr(item, 1, pos - 1) == ts) {
@@ -882,78 +1185,392 @@ class XAML_DevTools {
                 break
             }
         }
-        
+
         if (rawMsg != "") {
-            formatted := this.FormatRawPayload(rawMsg)
-            this.app.host.Update("TxtPipelineDetails", "Text", formatted)
+            this.RenderPipelineDetails(rawMsg)
         }
     }
 
-    OnTogglePipelineDetails(state, ctrl, event) {
-        isChecked := state["BtnTogglePipelineDetails"] == "True"
-        this.app.host.Update("PipelineSplitter", "Visibility", isChecked ? "Visible" : "Collapsed")
-        this.app.host.Update("PipelineDetails", "Visibility", isChecked ? "Visible" : "Collapsed")
-    }
+    RenderPipelineDetails(rawMsg) {
+        this.app.host.Update("PanelPipelineHeaders", "ClearItems", "")
+        this.app.host.Update("PanelPipelinePayload", "ClearItems", "")
+        this.app.host.Update("PanelPipelinePreview", "ClearItems", "")
 
-    SummarizePayload(dir, payload) {
-        if (SubStr(payload, 1, 6) == "EVENT|") {
-            parts := StrSplit(payload, "|", , 5)
-            if (parts.Length >= 4) {
-                ctrlName := parts[3]
-                eventName := parts[4]
-                return "EVENT [" . ctrlName . " : " . eventName . "]"
+        pos := InStr(rawMsg, " ")
+        if (!pos)
+            return
+        ts := SubStr(rawMsg, 1, pos - 1)
+
+        rest := SubStr(rawMsg, pos + 1)
+        posDir := InStr(rest, " ")
+        if (!posDir)
+            return
+        dirIcon := SubStr(rest, 1, posDir - 1)
+
+        payload := SubStr(rest, posDir + 1)
+
+        lines := StrSplit(payload, "`n", "`r")
+        firstLine := lines[1]
+
+        isEvent := false
+
+        if (SubStr(firstLine, 1, 6) == "EVENT|") {
+            isEvent := true
+            parts := StrSplit(firstLine, "|", , 5)
+            type := parts[1]
+            winId := parts.Length >= 2 ? parts[2] : ""
+            ctrlName := parts.Length >= 3 ? parts[3] : ""
+            eventName := parts.Length >= 4 ? parts[4] : ""
+            pLoad := parts.Length >= 5 ? parts[5] : ""
+        } else {
+            parts := StrSplit(firstLine, "|", , 3)
+            type := (dirIcon == "->") ? "Command (Update)" : "Query"
+            ctrlName := parts.Length >= 1 ? parts[1] : ""
+            eventName := parts.Length >= 2 ? parts[2] : ""
+            pLoad := parts.Length >= 3 ? parts[3] : ""
+        }
+
+        pLoadDec := ""
+        if (pLoad != "") {
+            pLoadDec := (dirIcon == "->") ? pLoad : XAMLHost.DecodeValue(pLoad)
+            pLoadDec := StrReplace(pLoadDec, "&#x7C;", "|")
+            pLoadDec := StrReplace(pLoadDec, "&#x3D;", "=")
+            pLoadDec := StrReplace(pLoadDec, "&#x0A;", "`n")
+            pLoadDec := StrReplace(pLoadDec, "&#x0D;", "`r")
+        }
+
+        ; Parse stateMap for regular events
+        stateMap := Map()
+        loop lines.Length {
+            if (A_Index == 1 || lines[A_Index] == "")
+                continue
+            line := lines[A_Index]
+            posEq := InStr(line, "=")
+            if (posEq) {
+                k := SubStr(line, 1, posEq - 1)
+                valEnc := SubStr(line, posEq + 1)
+                valDec := XAMLHost.DecodeValue(valEnc)
+                stateMap[k] := valDec
+            }
+        }
+
+        ; --- A. RENDER HEADERS TAB ---
+        headersXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
+        headersXml .= '<TextBlock Text="General Info" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+
+        generalItems := [
+            { Key: "Timestamp", Val: ts }, 
+            { Key: "Direction", Val: (dirIcon == "<-") ? "Incoming (<-)" : "Outgoing (->)" }, 
+            { Key: "Type", Val: type }, 
+            { Key: "Control Name", Val: ctrlName }, 
+            { Key: "Event / Property", Val: eventName }
+        ]
+        if (isEvent && winId != "") {
+            generalItems.Push({ Key: "Window ID", Val: winId })
+        }
+
+        for idx, item in generalItems {
+            bgColor := (Mod(idx, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+            headersXml .= Format('
+            ( LTrim
+                <Grid Margin="0" Background="{3}">
+                <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130" />
+                <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{1}" Foreground="{DynamicResource TextSub}" FontWeight="Normal" VerticalAlignment="Center" Margin="5,4,5,4" />
+                <TextBox Grid.Column="1" Text="{2}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
+                </Grid>
+            )', this.EscapeXml(item.Key), this.EscapeXml(item.Val), bgColor)
+        }
+        headersXml .= '</StackPanel>'
+        this.app.host.Update("PanelPipelineHeaders", "AddXamlItem", headersXml)
+
+        ; --- B. RENDER RAW PAYLOAD TAB ---
+        payloadXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
+        
+        pText := ""
+        if (pLoadDec != "") {
+            pText := pLoadDec
+        } else if (stateMap.Count > 0) {
+            for k, v in stateMap {
+                pText .= k . " = " . v . "`r`n"
             }
         }
         
-        parts := StrSplit(payload, "|", , 3)
-        if (parts.Length >= 2) {
-            ctrl := parts[1]
-            prop := parts[2]
-            return ctrl . " [" . prop . "]"
+        if (pText == "") {
+            payloadXml .= '<TextBlock Text="No payload data." Foreground="{DynamicResource TextSub}" FontStyle="Italic" Margin="5,10,0,0" />'
+        } else {
+            payloadXml .= '<TextBlock Text="Raw Payload" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+            payloadXml .= '<TextBox Text="' this.EscapeXml(pText) '" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" />'
         }
-        
-        return payload
-    }
+        payloadXml .= '</StackPanel>'
+        this.app.host.Update("PanelPipelinePayload", "AddXamlItem", payloadXml)
 
-    FormatRawPayload(rawMsg) {
-        pos := InStr(rawMsg, "EVENT|")
-        if (pos) {
-            tsDir := SubStr(rawMsg, 1, pos - 1)
-            payload := SubStr(rawMsg, pos)
+        ; --- C. RENDER PREVIEW TAB ---
+        previewXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
+
+        hasPreview := false
+
+        if (eventName == "DevToolsTree" && pLoadDec != "") {
+            hasPreview := true
+            previewXml .= '<TextBlock Text="Parsed Visual Tree Table" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+
+            previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}">'
+            previewXml .= '<Grid>'
+            previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>'
+
+            previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="35"/><ColumnDefinition Width="100"/><ColumnDefinition Width="70"/><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>'
+            previewXml .= '<TextBlock Text="Lvl" FontWeight="Bold" Margin="4" Grid.Column="0" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="Type" FontWeight="Bold" Margin="4" Grid.Column="1" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="Name" FontWeight="Bold" Margin="4" Grid.Column="2" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="Size" FontWeight="Bold" Margin="4" Grid.Column="3" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="Visibility" FontWeight="Bold" Margin="4" Grid.Column="4" Foreground="#CCCCCC"/>'
+            previewXml .= '</Grid>'
+
+            previewXml .= '<StackPanel Grid.Row="1">'
+
+            tLines := StrSplit(pLoadDec, "`n", "`r")
+            tIdx := 0
+            for line in tLines {
+                if (line == "")
+                    continue
+                parts := StrSplit(line, "|")
+                if (parts.Length < 7)
+                    continue
+                tIdx++
+                if (tIdx > 30) {
+                    previewXml .= '<TextBlock Text="... and ' (tLines.Length - 30) ' more elements" FontStyle="Italic" Foreground="{DynamicResource TextSub}" Margin="5,4" />'
+                    break
+                }
+
+                level := parts[1]
+                type := parts[2]
+                name := parts[3]
+                size := parts[4] "x" parts[5]
+                visibility := parts[6]
+
+                bgColor := (Mod(tIdx, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                previewXml .= Format('
+                ( LTrim
+                    <Grid Background="{6}">
+                    <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="35"/>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="70"/>
+                    <ColumnDefinition Width="100"/>
+                    <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{1}" Margin="4" FontSize="11" Foreground="#CCCCCC" />
+                    <TextBlock Grid.Column="1" Text="{2}" Margin="4" FontSize="11" Foreground="#A6E3A1" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="{3}" Margin="4" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="3" Text="{4}" Margin="4" FontSize="11" Foreground="#CCCCCC" />
+                    <TextBlock Grid.Column="4" Text="{5}" Margin="4" FontSize="11" Foreground="{DynamicResource TextSub}" TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                )', level, this.EscapeXml(type), this.EscapeXml(name), size, visibility, bgColor)
+            }
+            previewXml .= '</StackPanel></Grid></Border>'
+        }
+        else if (eventName == "DevToolsProps" && pLoadDec != "") {
+            hasPreview := true
+            previewXml .= '<TextBlock Text="Parsed Properties Table" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+
+            previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}">'
+            previewXml .= '<Grid>'
+            previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>'
+
+            previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/><ColumnDefinition Width="30"/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions>'
+            previewXml .= '<TextBlock Text="Property" FontWeight="Bold" Margin="4" Grid.Column="0" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="Value" FontWeight="Bold" Margin="4" Grid.Column="1" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="Loc" FontWeight="Bold" Margin="4" Grid.Column="2" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="RO" FontWeight="Bold" Margin="4" Grid.Column="3" Foreground="#CCCCCC"/>'
+            previewXml .= '</Grid>'
+
+            previewXml .= '<StackPanel Grid.Row="1">'
+
+            tLines := StrSplit(pLoadDec, "`n", "`r")
+            tIdx := 0
+            for idx, line in tLines {
+                if (idx == 1 || line == "")
+                    continue
+                parts := StrSplit(line, "|", , 4)
+                if (parts.Length < 4)
+                    continue
+                category := parts[1]
+                isLocal := parts[2] == "1" ? "L" : "-"
+                isReadOnly := parts[3] == "1" ? "R" : "-"
+                rest := parts[4]
+
+                posEq := InStr(rest, "=")
+                if (!posEq)
+                    continue
+                leftPart := SubStr(rest, 1, posEq - 1)
+                propVal := SubStr(rest, posEq + 1)
+
+                posCol := InStr(leftPart, ":")
+                if (!posCol)
+                    continue
+                propName := SubStr(leftPart, posCol + 1)
+
+                tIdx++
+                if (tIdx > 40) {
+                    previewXml .= '<TextBlock Text="... and ' (tLines.Length - 40) ' more properties" FontStyle="Italic" Foreground="{DynamicResource TextSub}" Margin="5,4" />'
+                    break
+                }
+
+                bgColor := (Mod(tIdx, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                previewXml .= Format('
+                ( LTrim
+                    <Grid Background="{5}">
+                    <Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinition Width="100"/>
+                    <Grid.ColumnDefinition Width="*"/>
+                    <Grid.ColumnDefinition Width="30"/>
+                    <Grid.ColumnDefinition Width="30"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{1}" Margin="4" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="{2}" Margin="4" FontSize="11" Foreground="#CE9178" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="{3}" Margin="4" FontSize="11" Foreground="#CCCCCC" HorizontalAlignment="Center" />
+                    <TextBlock Grid.Column="3" Text="{4}" Margin="4" FontSize="11" Foreground="#CCCCCC" HorizontalAlignment="Center" />
+                    </Grid>
+                )', this.EscapeXml(propName), this.EscapeXml(propVal), isLocal, isReadOnly, bgColor)
+            }
+
+            previewXml .= '</StackPanel></Grid></Border>'
+        }
+        else if (stateMap.Count > 0) {
+            hasPreview := true
+            previewXml .= '<TextBlock Text="Event State Dump (Tracked Controls)" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+
+            previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}">'
+            previewXml .= '<Grid>'
+            previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>'
+
+            previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>'
+            previewXml .= '<TextBlock Text="Tracked Control" FontWeight="Bold" Margin="6" Grid.Column="0" Foreground="#E5C07B"/>'
+            previewXml .= '<TextBlock Text="Current Value" FontWeight="Bold" Margin="6" Grid.Column="1" Foreground="#E5C07B"/>'
+            previewXml .= '</Grid>'
+
+            previewXml .= '<StackPanel Grid.Row="1">'
+
+            tIdx := 0
+            for k, v in stateMap {
+                tIdx++
+                bgColor := (Mod(tIdx, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                previewXml .= Format('
+                ( LTrim
+                    <Grid Background="{3}">
+                    <Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinition Width="150"/>
+                    <Grid.ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{1}" Margin="6" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="1" Text="{2}" Margin="6" FontSize="11" Foreground="#CE9178" TextWrapping="Wrap" />
+                    </Grid>
+                )', this.EscapeXml(k), this.EscapeXml(v), bgColor)
+            }
+
+            previewXml .= '</StackPanel></Grid></Border>'
+        }
+        else if ((eventName == "Drop" || eventName == "FileDrop") && pLoadDec != "") {
+            hasPreview := true
+            previewXml .= '<TextBlock Text="Dropped Files" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+            previewXml .= '<StackPanel>'
+            files := StrSplit(pLoadDec, "|")
+            for idx, file in files {
+                if (file == "")
+                    continue
+                bgColor := (Mod(idx, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                previewXml .= Format('
+                ( LTrim
+                    <Grid Background="{2}" Margin="0,2">
+                    <Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinition Width="Auto"/>
+                    <Grid.ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="📄" Margin="6" FontSize="12" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="{1}" Margin="6" FontSize="11" Foreground="#CCCCCC" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                    </Grid>
+                )', this.EscapeXml(file), bgColor)
+            }
+            previewXml .= '</StackPanel>'
+        }
+        else if (eventName == "WebMessageReceived" && pLoadDec != "") {
+            hasPreview := true
+            previewXml .= '<TextBlock Text="Web Message (JSON)" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
             
-            parts := StrSplit(payload, "|")
-            res := tsDir . "`n"
-            res .= "Type: " . parts[1] . "`n"
-            if (parts.Length >= 2) res .= "Window ID: " . parts[2] . "`n"
-            if (parts.Length >= 3) res .= "Control: " . parts[3] . "`n"
-            if (parts.Length >= 4) res .= "Event: " . parts[4] . "`n"
-            if (parts.Length >= 5) {
-                res .= "Payload:`n----------------`n"
-                pVal := parts[5]
-                pVal := StrReplace(pVal, "&#x7C;", "|")
-                pVal := StrReplace(pVal, "&#x3D;", "=")
-                pVal := StrReplace(pVal, "&#x0A;", "`n")
-                pVal := StrReplace(pVal, "&#x0D;", "`r")
-                res .= pVal
-            }
-            return res
+            formattedJson := pLoadDec
+            formattedJson := StrReplace(formattedJson, ',"', ',`n  "')
+            formattedJson := StrReplace(formattedJson, '{"', '{`n  "')
+            formattedJson := StrReplace(formattedJson, '"}', '"`n}')
+            
+            previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}" Padding="8">'
+            previewXml .= '<TextBox Text="' this.EscapeXml(formattedJson) '" Background="Transparent" Foreground="#A6E3A1" BorderThickness="0" FontFamily="Consolas" FontSize="11" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" />'
+            previewXml .= '</Border>'
         }
-        
-        pos := InStr(rawMsg, " -> ")
-        if (pos) {
-            tsDir := SubStr(rawMsg, 1, pos + 3)
-            payload := SubStr(rawMsg, pos + 4)
-            parts := StrSplit(payload, "|")
-            res := tsDir . "`n"
-            if (parts.Length >= 1) res .= "Control: " . parts[1] . "`n"
-            if (parts.Length >= 2) res .= "Property: " . parts[2] . "`n"
+        else if (eventName == "CaretChanged" && pLoadDec != "") {
+            hasPreview := true
+            previewXml .= '<TextBlock Text="Caret Position" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+            parts := StrSplit(pLoadDec, ",")
             if (parts.Length >= 3) {
-                res .= "Value: " . parts[3] . "`n"
+                line := parts[1]
+                col := parts[2]
+                offset := parts[3]
+                
+                previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}" Padding="10">'
+                previewXml .= '<Grid>'
+                previewXml .= '<Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>'
+                
+                previewXml .= '<StackPanel Grid.Column="0" HorizontalAlignment="Center">'
+                previewXml .= '<TextBlock Text="Line" Foreground="{DynamicResource TextSub}" FontSize="10" HorizontalAlignment="Center"/>'
+                previewXml .= '<TextBlock Text="' line '" Foreground="#A6E3A1" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>'
+                previewXml .= '</StackPanel>'
+                
+                previewXml .= '<StackPanel Grid.Column="1" HorizontalAlignment="Center">'
+                previewXml .= '<TextBlock Text="Column" Foreground="{DynamicResource TextSub}" FontSize="10" HorizontalAlignment="Center"/>'
+                previewXml .= '<TextBlock Text="' col '" Foreground="#9CDCFE" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>'
+                previewXml .= '</StackPanel>'
+                
+                previewXml .= '<StackPanel Grid.Column="2" HorizontalAlignment="Center">'
+                previewXml .= '<TextBlock Text="Character Offset" Foreground="{DynamicResource TextSub}" FontSize="10" HorizontalAlignment="Center"/>'
+                previewXml .= '<TextBlock Text="' offset '" Foreground="#CE9178" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>'
+                previewXml .= '</StackPanel>'
+                
+                previewXml .= '</Grid></Border>'
             }
-            return res
         }
-        
-        return rawMsg
+        else if (eventName == "WordCount" && pLoadDec != "") {
+            hasPreview := true
+            previewXml .= '<TextBlock Text="Document Statistics" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+            parts := StrSplit(pLoadDec, ",")
+            if (parts.Length >= 2) {
+                words := parts[1]
+                chars := parts[2]
+                
+                previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}" Padding="10">'
+                previewXml .= '<Grid>'
+                previewXml .= '<Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>'
+                
+                previewXml .= '<StackPanel Grid.Column="0" HorizontalAlignment="Center">'
+                previewXml .= '<TextBlock Text="Words" Foreground="{DynamicResource TextSub}" FontSize="10" HorizontalAlignment="Center"/>'
+                previewXml .= '<TextBlock Text="' words '" Foreground="#A6E3A1" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>'
+                previewXml .= '</StackPanel>'
+                
+                previewXml .= '<StackPanel Grid.Column="1" HorizontalAlignment="Center">'
+                previewXml .= '<TextBlock Text="Characters" Foreground="{DynamicResource TextSub}" FontSize="10" HorizontalAlignment="Center"/>'
+                previewXml .= '<TextBlock Text="' chars '" Foreground="#9CDCFE" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>'
+                previewXml .= '</StackPanel>'
+                
+                previewXml .= '</Grid></Border>'
+            }
+        }
+
+        if (!hasPreview) {
+            previewXml .= '<TextBlock Text="No preview available for this event type." Foreground="{DynamicResource TextSub}" FontStyle="Italic" Margin="5,10,0,0" />'
+        }
+
+        previewXml .= '</StackPanel>'
+        this.app.host.Update("PanelPipelinePreview", "AddXamlItem", previewXml)
     }
 
     OnConsoleRun(*) {

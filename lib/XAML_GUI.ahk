@@ -24,6 +24,7 @@ class XAML_GUI {
         this.showIcon := hasOpt("AppIcon") ? getOpt("AppIcon") : true
         this.titleBarHeight := hasOpt("TitleBarHeight") ? getOpt("TitleBarHeight") : 50
         this.windowState := hasOpt("WindowState") ? getOpt("WindowState") : "Normal"
+        this.closeAction := hasOpt("CloseAction") ? getOpt("CloseAction") : "ExitApp"
 
         ; Expose the root generator for customization
         this.X := XAML_Generator("Grid").Name("AppGrid").Background("{DynamicResource BgColor}").Focusable("True")
@@ -115,12 +116,9 @@ class XAML_GUI {
 
         sp.Add("TextBlock").Text("BORDER RADIUS").Margin("0,15,0,5")
         radiusCombo := sp.Add("ComboBox").Name("ComboRadius").Height(35).Margin("0,0,0,15")
-        radiusCombo.Add("ComboBoxItem").Content("Sharp (0)")
-        radiusCombo.Add("ComboBoxItem").Content("Rounded (4)")
-        radiusCombo.Add("ComboBoxItem").Content("Smooth (8)")
-        radiusCombo.Add("ComboBoxItem").Content("Extra Smooth (12)")
-        radiusCombo.Add("ComboBoxItem").Content("Fluid (16)")
-        radiusCombo.SelectedIndex(2) ; Default to Smooth (8)
+        radiusCombo.Add("ComboBoxItem").Content("Square (0)")
+        radiusCombo.Add("ComboBoxItem").Content("Routed (8)")
+        radiusCombo.SelectedIndex(1) ; Default to Smooth (8)
 
         ; Expose for customization
         this.sidebarPanel := sp
@@ -344,7 +342,11 @@ class XAML_GUI {
 
     BindBaseEvents() {
         this.host.OnEvent("Window", "Loaded", ObjBindMethod(this, "OnUIReady"))
-        this.host.OnEvent("Window", "Closed", (*) => ExitApp())
+        if (this.closeAction == "ExitApp") {
+            this.host.OnEvent("Window", "Closed", (*) => ExitApp())
+        } else if (IsObject(this.closeAction) && HasMethod(this.closeAction, "Call")) {
+            this.host.OnEvent("Window", "Closed", this.closeAction)
+        }
 
         this.host.OnEvent("ComboTheme", "SelectionChanged", ObjBindMethod(this, "ThemeChanged"))
         this.host.OnEvent("ComboScale", "SelectionChanged", ObjBindMethod(this, "ScaleChanged"))

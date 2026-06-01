@@ -1519,7 +1519,7 @@ public class AhkWpfEngine
             }
         }
 
-        if (Application.Current != null)
+        if (Application.Current != null && !win.Title.StartsWith("Developer Tools - "))
         {
             Application.Current.Resources["WindowRadius"] = win.Resources["WindowRadius"];
             Application.Current.Resources["CloseBtnRadius"] = win.Resources["CloseBtnRadius"];
@@ -2702,7 +2702,7 @@ public class AhkWpfEngine
                     if (parts[1] == "WindowRadius")
                     {
                         win.Resources["BaseWindowRadius"] = new System.Windows.CornerRadiusConverter().ConvertFromString(val);
-                        if (Application.Current != null) Application.Current.Resources["BaseWindowRadius"] = win.Resources["BaseWindowRadius"];
+                        if (Application.Current != null && !win.Title.StartsWith("Developer Tools - ")) Application.Current.Resources["BaseWindowRadius"] = win.Resources["BaseWindowRadius"];
                         UpdateSnapState(win);
                     }
                     else
@@ -2750,7 +2750,7 @@ public class AhkWpfEngine
                     }
                 }
             }
-            if (Application.Current != null) Application.Current.Resources[parts[1]] = win.Resources[parts[1]];
+            if (Application.Current != null && !win.Title.StartsWith("Developer Tools - ")) Application.Current.Resources[parts[1]] = win.Resources[parts[1]];
             // Force-apply ScrollBarWidth to all ScrollBar elements in the visual tree
             if (parts[1] == "ScrollBarWidth" && win.Resources[parts[1]] is double)
             {
@@ -2796,12 +2796,24 @@ public class AhkWpfEngine
             {
                 if (parts[1] == "AddItem" && ctrl is ItemsControl)
                 {
-                    ((ItemsControl)ctrl).Items.Add(parts[2]);
                     if (ctrl is ListBox)
                     {
                         ListBox lb = (ListBox)ctrl;
-                        lb.SelectedIndex = lb.Items.Count - 1;
-                        lb.ScrollIntoView(lb.SelectedItem);
+                        int prevIdx = lb.SelectedIndex;
+                        lb.Items.Add(parts[2]);
+                        if (prevIdx != -1)
+                        {
+                            lb.SelectedIndex = prevIdx;
+                        }
+                        else
+                        {
+                            lb.SelectedIndex = lb.Items.Count - 1;
+                            lb.ScrollIntoView(lb.SelectedItem);
+                        }
+                    }
+                    else
+                    {
+                        ((ItemsControl)ctrl).Items.Add(parts[2]);
                     }
                 }
                 else if (parts[1] == "AddXamlItem")
