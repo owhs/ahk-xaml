@@ -6326,15 +6326,29 @@ public class AhkWpfEngine
                 if (prop.GetIndexParameters().Length > 0) continue;
 
                 bool isLocal = false;
+                bool isReadOnly = !prop.CanWrite || prop.GetSetMethod(false) == null;
                 System.ComponentModel.DependencyPropertyDescriptor dpDescriptor = System.ComponentModel.DependencyPropertyDescriptor.FromName(prop.Name, element.GetType(), element.GetType());
                 if (dpDescriptor != null)
                 {
+                    if (dpDescriptor.IsReadOnly) isReadOnly = true;
                     var vs = System.Windows.DependencyPropertyHelper.GetValueSource(element, dpDescriptor.DependencyProperty);
                     isLocal = (vs.BaseValueSource == System.Windows.BaseValueSource.Local);
                 }
 
                 object val = prop.GetValue(element, null);
-                string strVal = val != null ? val.ToString() : "null";
+                string strVal = "null";
+                if (val != null)
+                {
+                    if (val is System.Collections.ICollection)
+                    {
+                        System.Collections.ICollection coll = (System.Collections.ICollection)val;
+                        strVal = string.Format("Collection ({0} items)", coll.Count);
+                    }
+                    else
+                    {
+                        strVal = val.ToString();
+                    }
+                }
 
                 string category = "Other";
                 if (typeof(Delegate).IsAssignableFrom(prop.PropertyType) || prop.PropertyType.IsSubclassOf(typeof(Delegate)) || prop.Name.Contains("Event")) category = "Events";
@@ -6343,7 +6357,7 @@ public class AhkWpfEngine
 
                 strVal = strVal.Replace("|", "&#x7C;").Replace("=", "&#x3D;").Replace("\n", "&#x0A;").Replace("\r", "&#x0D;");
 
-                sb.AppendFormat("{0}|{1}|{2}:{3}={4}\n", category, isLocal ? "1" : "0", prop.PropertyType.Name, prop.Name, strVal);
+                sb.AppendFormat("{0}|{1}|{2}|{3}:{4}={5}\n", category, isLocal ? "1" : "0", isReadOnly ? "1" : "0", prop.PropertyType.Name, prop.Name, strVal);
             }
             catch { }
         }

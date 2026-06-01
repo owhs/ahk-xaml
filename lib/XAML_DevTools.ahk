@@ -140,6 +140,7 @@ class XAML_DevTools {
         toolbarProps.Add("ToggleButton").Name("BtnFilterGroup").Content("Group").Width(55).Height(24).ToolTip("Group Properties").Margin("0,0,5,0").IsChecked("True")
         toolbarProps.Add("ToggleButton").Name("BtnFilterLocal").Content("Local").Width(55).Height(24).ToolTip("Show Local Only").Margin("0,0,5,0")
         toolbarProps.Add("ToggleButton").Name("BtnFilterValid").Content("Valid").Width(55).Height(24).ToolTip("Hide Empty").Margin("0,0,5,0")
+        toolbarProps.Add("ToggleButton").Name("BtnFilterEdit").Content("R/W Only").Width(75).Height(24).ToolTip("Hide Read-Only Properties").Margin("0,0,5,0")
         cb := toolbarProps.Add("ComboBox").Name("ComboPresets").Width(100).Height(24).Margin("0,0,5,0").Foreground("{DynamicResource TextMain}").Background("{DynamicResource ControlBg}")
         cb.Add("ComboBoxItem").Content("All").IsSelected("True")
         cb.Add("ComboBoxItem").Content("Events")
@@ -290,13 +291,14 @@ class XAML_DevTools {
                 
             line := lines[A_Index]
             
-            parts := StrSplit(line, "|", , 3)
-            if (parts.Length < 3)
+            parts := StrSplit(line, "|", , 4)
+            if (parts.Length < 4)
                 continue
                 
             category := parts[1]
             isLocal := parts[2] == "1"
-            rest := parts[3]
+            isReadOnly := parts[3] == "1"
+            rest := parts[4]
             
             pos := InStr(rest, "=")
             if !pos
@@ -322,6 +324,7 @@ class XAML_DevTools {
             this.currentProps.Push({
                 Cat: category,
                 Local: isLocal,
+                ReadOnly: isReadOnly,
                 Type: propType,
                 Name: propName,
                 Val: propVal
@@ -343,6 +346,7 @@ class XAML_DevTools {
         group := this.app.host.Query("BtnFilterGroup") == "True"
         filterLocal := this.app.host.Query("BtnFilterLocal") == "True"
         valid := this.app.host.Query("BtnFilterValid") == "True"
+        editOnly := this.app.host.Query("BtnFilterEdit") == "True"
         searchQ := StrLower(this.app.host.Query("TxtPropSearch"))
         preset := this.app.host.Query("ComboPresets")
         
@@ -382,6 +386,8 @@ class XAML_DevTools {
         
         for p in props {
             if (filterLocal && !p.Local)
+                continue
+            if (editOnly && p.ReadOnly)
                 continue
             if (valid && (p.Val == "null" || p.Val == ""))
                 continue
@@ -439,10 +445,11 @@ class XAML_DevTools {
                 
                 labelColor := p.Local ? "#4EC9B0" : "#9CDCFE"
                 bgColor := (Mod(index, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                opacity := p.ReadOnly ? "0.45" : "1.0"
                 
                 xml .= Format('
                 ( LTrim
-                    <Grid Margin="0" Background="{6}">
+                    <Grid Margin="0" Background="{6}" Opacity="{7}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="140" />
                             <ColumnDefinition Width="*" />
@@ -450,7 +457,7 @@ class XAML_DevTools {
                         <TextBlock Text="{1}" Foreground="{4}" FontWeight="Normal" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2} (Local: {5})" TextTrimming="CharacterEllipsis" />
                         <TextBox Grid.Column="1" Text="{3}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
                     </Grid>
-                )', displayName, p.Type, displayVal, labelColor, p.Local ? "Yes" : "No", bgColor)
+                )', displayName, p.Type, displayVal, labelColor, p.Local ? "Yes" : "No", bgColor, opacity)
             }
             
             if (group) {
