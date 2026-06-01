@@ -26,6 +26,9 @@ The `XAML_GUI` class scaffolds a complete, modern application window with DWM Mi
 
 ```ahk
 options := Map(
+    "Width", 940,            ; Default window width (optional)
+    "Height", 700,           ; Default window height (optional)
+    "Resize", true,          ; Enable/disable window resizing (optional, default true)
     "Sidebar", true,         ; Show/hide left sidebar
     "BurgerMenu", true,      ; Show/hide hamburger toggle in titlebar
     "MinMaxButtons", true,   ; Show/hide minimize/maximize buttons

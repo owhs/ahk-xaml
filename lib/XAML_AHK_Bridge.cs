@@ -52,6 +52,10 @@ public class AhkWpfEngine
     public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")]
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    [DllImport("user32.dll")]
+    public static extern IntPtr LoadCursor(IntPtr hInstance, int lpCursorName);
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetCursor(IntPtr hCursor);
     [DllImport("dwmapi.dll")]
     public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
@@ -293,6 +297,32 @@ public class AhkWpfEngine
         return null;
     }
 
+    private static void Slider_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var s = sender as Slider;
+        if (s == null) return;
+
+        var track = s.Template.FindName("PART_Track", s) as Track;
+        if (track != null && track.Thumb != null && track.Thumb.IsMouseOver)
+            return;
+
+        if (track != null && track.Thumb != null)
+        {
+            s.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    s.UpdateLayout();
+                    var args = new System.Windows.Input.MouseButtonEventArgs(e.MouseDevice, e.Timestamp, System.Windows.Input.MouseButton.Left);
+                    args.RoutedEvent = UIElement.MouseLeftButtonDownEvent;
+                    track.Thumb.RaiseEvent(args);
+                }
+                catch { }
+            }), System.Windows.Threading.DispatcherPriority.Input);
+        }
+    }
+
+
     /// <summary>
     /// Three-tier component style loader for ultra-fast startup:
     /// 1. BAML binary from embedded resource (fastest — no XML parsing)
@@ -383,6 +413,7 @@ public class AhkWpfEngine
     {
         try
         {
+            EventManager.RegisterClassHandler(typeof(Slider), Slider.PreviewMouseLeftButtonDownEvent, new System.Windows.Input.MouseButtonEventHandler(Slider_PreviewMouseLeftButtonDown), true);
             if (args.Length >= 3 && args[0] == "--daemon")
             {
                 if (args.Contains("--no-log"))
@@ -637,6 +668,10 @@ public class AhkWpfEngine
         string eventsContent = parts.Length > 1 ? parts[1] : "";
 
         winId = id; ahkHwnd = (IntPtr)long.Parse(hwndStr);
+        lock (_activeEngines)
+        {
+            _activeEngines[winId] = this;
+        }
         tracked = trackedCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
 
         byte[] xamlBytes = Encoding.UTF8.GetBytes(xamlContent);
@@ -713,7 +748,14 @@ public class AhkWpfEngine
             }
             SendToAhk("EVENT|" + winId + "|Window|Closing\n");
         };
-        win.Closed += (s, e) => { SendToAhk("EVENT|" + winId + "|Window|Closed\n"); };
+        win.Closed += (s, e) => 
+        { 
+            SendToAhk("EVENT|" + winId + "|Window|Closed\n"); 
+            lock (_activeEngines)
+            {
+                _activeEngines.Remove(winId);
+            }
+        };
 
         // Bind events
         if (!string.IsNullOrEmpty(eventsContent))
@@ -755,6 +797,10 @@ public class AhkWpfEngine
     public void RunEngine(string id, string hwndStr, string trackedCsv, string scriptName, string xamlFilePath, string eventsFilePath, string ownerHwndStr = "0", bool isDaemon = false)
     {
         winId = id; ahkHwnd = (IntPtr)long.Parse(hwndStr);
+        lock (_activeEngines)
+        {
+            _activeEngines[winId] = this;
+        }
         tracked = trackedCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
 
         string xamlContent = "";
@@ -1228,7 +1274,14 @@ public class AhkWpfEngine
             }
             SendToAhk("EVENT|" + winId + "|Window|Closing\n");
         };
-        win.Closed += (s, e) => { SendToAhk("EVENT|" + winId + "|Window|Closed\n"); };
+        win.Closed += (s, e) => 
+        { 
+            SendToAhk("EVENT|" + winId + "|Window|Closed\n"); 
+            lock (_activeEngines)
+            {
+                _activeEngines.Remove(winId);
+            }
+        };
 
         // Unified event binding — merge all event sources
         // eventsContent may come from: inline data, .bin, or BAML companion .events file
@@ -2146,6 +2199,79 @@ public class AhkWpfEngine
             }
             catch { }
             handled = true;
+        }
+        else if (msg == 0x0084) // WM_NCHITTEST
+        {
+            try
+            {
+                var btn = win.FindName("BtnMaximize") as System.Windows.Controls.Button;
+                if (btn != null && btn.IsVisible)
+                {
+                    short screenX = (short)(lParam.ToInt64() & 0xFFFF);
+                    short screenY = (short)((lParam.ToInt64() >> 16) & 0xFFFF);
+
+                    Point topLeft = btn.PointToScreen(new Point(0, 0));
+                    Point bottomRight = btn.PointToScreen(new Point(btn.ActualWidth, btn.ActualHeight));
+
+                    if (screenX >= topLeft.X && screenX <= bottomRight.X &&
+                        screenY >= topLeft.Y && screenY <= bottomRight.Y)
+                    {
+                        // Apply custom hover highlight (same as #20FFFFFF style trigger)
+                        btn.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(0x20, 0xFF, 0xFF, 0xFF));
+
+                        handled = true;
+                        return new IntPtr(9); // HTMAXBUTTON
+                    }
+                    else
+                    {
+                        // Reset background if cursor moved off the button
+                        if (btn.Background != System.Windows.Media.Brushes.Transparent)
+                        {
+                            btn.Background = System.Windows.Media.Brushes.Transparent;
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+        else if (msg == 0x0020) // WM_SETCURSOR
+        {
+            try
+            {
+                int hitTest = (int)(lParam.ToInt64() & 0xFFFF);
+                if (hitTest == 9) // HTMAXBUTTON
+                {
+                    IntPtr hCursor = LoadCursor(IntPtr.Zero, 32649); // IDC_HAND
+                    if (hCursor != IntPtr.Zero)
+                    {
+                        SetCursor(hCursor);
+                        handled = true;
+                        return new IntPtr(1); // True
+                    }
+                }
+            }
+            catch { }
+        }
+        else if (msg == 0x02A2 || msg == 0x02A3) // WM_NCMOUSELEAVE or WM_MOUSELEAVE
+        {
+            try
+            {
+                var btn = win.FindName("BtnMaximize") as System.Windows.Controls.Button;
+                if (btn != null && btn.Background != System.Windows.Media.Brushes.Transparent)
+                {
+                    btn.Background = System.Windows.Media.Brushes.Transparent;
+                }
+            }
+            catch { }
+        }
+        else if (msg == 0x00A1) // WM_NCLBUTTONDOWN
+        {
+            if (wParam.ToInt32() == 9) // HTMAXBUTTON
+            {
+                win.WindowState = win.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+                handled = true;
+                return IntPtr.Zero;
+            }
         }
         else if (msg == 0x0024)
         { // WM_GETMINMAXINFO
@@ -6324,12 +6450,44 @@ public class AhkWpfEngine
         return sb.ToString();
     }
 
+    private static readonly System.Collections.Generic.Dictionary<System.Type, System.Reflection.PropertyInfo[]> _propertiesCache = 
+        new System.Collections.Generic.Dictionary<System.Type, System.Reflection.PropertyInfo[]>();
+        
+    private static readonly System.Collections.Generic.Dictionary<System.Type, System.Reflection.EventInfo[]> _eventsCache = 
+        new System.Collections.Generic.Dictionary<System.Type, System.Reflection.EventInfo[]>();
+
+    private static readonly System.Collections.Generic.Dictionary<string, System.ComponentModel.DependencyPropertyDescriptor> _dpDescriptorCache = 
+        new System.Collections.Generic.Dictionary<string, System.ComponentModel.DependencyPropertyDescriptor>();
+
+    private static readonly System.Collections.Generic.Dictionary<string, AhkWpfEngine> _activeEngines = 
+        new System.Collections.Generic.Dictionary<string, AhkWpfEngine>();
+
+    public static AhkWpfEngine GetEngine(string id)
+    {
+        lock (_activeEngines)
+        {
+            AhkWpfEngine eng;
+            _activeEngines.TryGetValue(id, out eng);
+            return eng;
+        }
+    }
+
     private string InspectElementProperties(FrameworkElement element)
     {
         if (element == null) return "";
         var sb = new StringBuilder();
 
-        var properties = element.GetType().GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        System.Type type = element.GetType();
+        System.Reflection.PropertyInfo[] properties;
+        lock (_propertiesCache)
+        {
+            if (!_propertiesCache.TryGetValue(type, out properties))
+            {
+                properties = type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                _propertiesCache[type] = properties;
+            }
+        }
+
         foreach (var prop in properties)
         {
             try
@@ -6339,7 +6497,18 @@ public class AhkWpfEngine
 
                 bool isLocal = false;
                 bool isReadOnly = !prop.CanWrite || prop.GetSetMethod(false) == null;
-                System.ComponentModel.DependencyPropertyDescriptor dpDescriptor = System.ComponentModel.DependencyPropertyDescriptor.FromName(prop.Name, element.GetType(), element.GetType());
+                
+                string key = type.FullName + "." + prop.Name;
+                System.ComponentModel.DependencyPropertyDescriptor dpDescriptor;
+                lock (_dpDescriptorCache)
+                {
+                    if (!_dpDescriptorCache.TryGetValue(key, out dpDescriptor))
+                    {
+                        dpDescriptor = System.ComponentModel.DependencyPropertyDescriptor.FromName(prop.Name, type, type);
+                        _dpDescriptorCache[key] = dpDescriptor;
+                    }
+                }
+
                 if (dpDescriptor != null)
                 {
                     if (dpDescriptor.IsReadOnly) isReadOnly = true;
@@ -6374,7 +6543,17 @@ public class AhkWpfEngine
             catch { }
         }
 
-        foreach (var ev in element.GetType().GetEvents(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        System.Reflection.EventInfo[] events;
+        lock (_eventsCache)
+        {
+            if (!_eventsCache.TryGetValue(type, out events))
+            {
+                events = type.GetEvents(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                _eventsCache[type] = events;
+            }
+        }
+
+        foreach (var ev in events)
         {
             try
             {

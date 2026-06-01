@@ -74,9 +74,12 @@ _AddRichPopoverAdv(this) {
         .BorderBrush("{DynamicResource ControlBorder}")
         .BorderThickness("1")
         .CornerRadius("6")
+        .Padding("10")
+        .Margin("4")
 
     border.Add("Border.Effect").Add("DropShadowEffect").BlurRadius("15").ShadowDepth("4").Opacity("0.3").Direction("270")
 
+    border.DefineProp("Add", { Call: _PopoverBorder_Add })
     return border
 }
 
@@ -4792,7 +4795,7 @@ class XColorPickerLive {
 
         sliders := sliderGrid.Add("StackPanel").Grid_Column(1).VerticalAlignment("Center").Margin("0,0,10,0")
 
-        hueBg := sliders.Add("Border").Height("8").CornerRadius("4").Margin("0,0,0,10").Add("Border.Background").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
+        hueBg := sliders.Add("Border").Height("8").CornerRadius("4").Margin("0,0,0,10").IsHitTestVisible("False").Add("Border.Background").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFF0000").Offset("0")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFFFF00").Offset("0.16")
         hueBg.Add("GradientStop").SetProp('Color', "#FF00FF00").Offset("0.33")
@@ -4800,14 +4803,19 @@ class XColorPickerLive {
         hueBg.Add("GradientStop").SetProp('Color', "#FF0000FF").Offset("0.66")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFF00FF").Offset("0.83")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFF0000").Offset("1")
-        sliders.Add("Slider").Name(this.id "_HueSlider").Minimum("0").Maximum("360").Value("0").Margin("0,-14,0,0")
+        sliders.Add("Slider").Name(this.id "_HueSlider").Minimum("0").Maximum("360").Value("0").Margin("0,-20,0,0")
+            .ThumbShape("Line").ThumbWidth(8).ThumbHeight(20).ThumbColor("#FFFFFF").ThumbBorderColor("#FF222222").ThumbBorderThickness(1.5).ThumbCornerRadius(1.5).ThumbShadow(true)
+            .TrackHeight(32).TrackColor("Transparent").TrackBg("Transparent")
 
-        alphaBg := sliders.Add("Border").Height("8").CornerRadius("4").Background("Transparent").ClipToBounds("True")
+        alphaBg := sliders.Add("Border").Height("8").CornerRadius("4").Background("Transparent").ClipToBounds("True").IsHitTestVisible("False")
         alphaFill := alphaBg.Add("Rectangle").Name(this.id "_AlphaFillRect").Fill("White")
         mask := alphaFill.Add("Rectangle.OpacityMask").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
         mask.Add("GradientStop").SetProp('Color', "Transparent").Offset("0")
         mask.Add("GradientStop").SetProp('Color', "White").Offset("1")
-        sliders.Add("Slider").Name(this.id "_AlphaSlider").Minimum("0").Maximum("255").Value("255").Margin("0,-12,0,0")
+        
+        sliders.Add("Slider").Name(this.id "_AlphaSlider").Minimum("0").Maximum("255").Value("255").Margin("0,-20,0,0")
+            .ThumbShape("Line").ThumbWidth(8).ThumbHeight(20).ThumbColor("#FFFFFF").ThumbBorderColor("#FF222222").ThumbBorderThickness(1.5).ThumbCornerRadius(1.5).ThumbShadow(true)
+            .TrackHeight(32).TrackColor("Transparent").TrackBg("Transparent")
 
         sliderGrid.Add("Border").Name(this.id "_ColorPreview").Grid_Column(2).Width("32").Height("32").CornerRadius("16").Background(defaultColor).BorderBrush("{DynamicResource ControlBorder}").BorderThickness("1")
 

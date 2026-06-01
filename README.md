@@ -143,7 +143,6 @@ ahk-xaml/
 └── ARCHITECTURE.md               # Core engine, compilation pipeline, and C# bridge
 ```
 
-
 ## Further Reading
 
 This repository has been fully modularized. For deep dives into specific areas, please see the following documentation files:

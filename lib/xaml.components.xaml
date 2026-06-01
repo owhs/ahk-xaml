@@ -179,6 +179,7 @@
     </Style>
 
     <Style TargetType="Slider">
+        <Setter Property="IsMoveToPointEnabled" Value="True"/>
         <Setter Property="FocusVisualStyle" Value="{DynamicResource GlobalFocusVisual}"/>
         <Setter Property="Template">
             <Setter.Value>

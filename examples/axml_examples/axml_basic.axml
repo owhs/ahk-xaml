@@ -30,7 +30,7 @@ StackPanel:
   Margin: "20"
   
   TextBlock:
-    Text: "AXML God Tier Test"
+    Text: "AXML Test"
     FontSize: 24
     FontWeight: "SemiBold"
     Margin: "0,0,0,20"

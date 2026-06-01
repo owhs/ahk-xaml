@@ -322,12 +322,13 @@ BuildRichComponentsTab(tab) {
     ; --- USING NEW COMPONENT CLASSES ---
     tok := XTokenizer(app, panel, { InitialTags: ["system32", "drivers"], LogTarget: "LogList" })
     app.RegisterTokenizer(tok)
+    app.X.InjectResources('<SolidColorBrush x:Key="SelectedColorBrush" Color="#FF0A84FF"/>')
     ; -----------------------------------
 
     panel.Add("TextBlock").Text("ADVANCED COLOR PICKER").Margin("0,0,0,8").Foreground("{DynamicResource TextSub}").FontSize(11).FontWeight("Bold")
     cpBtn := panel.Add("Button").Name("BtnOpenColorPicker").Width(150).HorizontalAlignment("Left").Margin("0,0,0,20").Background("{DynamicResource ControlBg}").BorderBrush("{DynamicResource ControlBorder}").BorderThickness(1).Foreground("{DynamicResource TextMain}").Padding("10,6").Cursor("Hand")
     cpSp2 := cpBtn.Add("StackPanel").Orientation("Horizontal")
-    cpSp2.Add("Border").Name("BtnColorPreview").Width(12).Height(12).CornerRadius("6").Background("#FF0A84FF").Margin("0,0,8,0").BorderBrush("{DynamicResource ControlBorder}").BorderThickness("1")
+    cpSp2.Add("Border").Name("BtnColorPreview").Width(12).Height(12).CornerRadius("6").Background("{DynamicResource SelectedColorBrush}").Margin("0,0,8,0").BorderBrush("{DynamicResource ControlBorder}").BorderThickness("1")
     cpSp2.Add("TextBlock").Text("Select Color...")
 
     panel.Add("TextBlock").Text("CONTEXT MENU").Use("PageTitle").Margin("0,20,0,0")

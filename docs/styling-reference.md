@@ -351,3 +351,88 @@ AXML-specific features:
 - **Auto-detect `Text`/`Content`**: `Text: "Submit"` on a Button automatically maps to `Content`
 - **Event shorthand**: `OnClick: HandlerName` instead of `On("Click", "HandlerName")`
 - **State binding**: `Value: $MyVariable` for automatic two-way binding
+
+---
+
+## 8. Customizing Control Templates (Abstract Sliders)
+
+AHK-XAML provides premium, fully abstracted property builders for the `Slider` control. This completely eliminates the need to write raw XAML or inject templates when customizing sliders.
+
+Instead, you can configure the visuals (such as shapes, widths, colors, borders, shadows, and track click snapping) directly using chainable AHK methods!
+
+### Configurable Slider Options
+
+| Method | Description | Default |
+|---|---|---|
+| `ThumbShape(value)` | Sets the thumb shape: `"Circle"`, `"Ellipse"`, `"Line"`, or `"Rectangle"`. | `"Circle"` |
+| `ThumbWidth(number)` | Width of the thumb. | `18` |
+| `ThumbHeight(number)` | Height of the thumb. | `18` |
+| `ThumbColor(color)` | Fill color of the thumb. | `"{DynamicResource Accent}"` |
+| `ThumbBorderColor(color)`| Border brush color. | `"Transparent"` |
+| `ThumbBorderThickness(n)`| Thickness of the thumb border. | `0` |
+| `ThumbCornerRadius(n)` | Corner radius of the thumb (only applies to `"Line"`/`"Rectangle"`). | `1.5` |
+| `ThumbShadow(boolean)` | Enables/disables a drop shadow effect on the thumb (`true` or `false`). | `false` |
+| `TrackHeight(number)` | Height of the hit-test and visual track area. | `6` |
+| `TrackColor(color)` | Color of the active portion of the track (left/decrease repeat button). | `"{DynamicResource Accent}"` |
+| `TrackBackground(color)`| Color of the inactive portion of the track (right/increase repeat button).| `"{DynamicResource ControlBorder}"` |
+| `IsMoveToPointEnabled(b)`| Enable native point-snapping (click-to-jump) on the track. | `true` (when customized) |
+
+### Examples
+
+#### Modern Tactile Line Slider
+Create a sleek slider with a vertical line marker thumb, a transparent track background (perfect for overlays like gradients or color pickers), and drop shadows:
+
+```ahk
+main.Add("Slider").Name("MySlider")
+    .ThumbShape("Line")
+    .ThumbWidth(8)
+    .ThumbHeight(20)
+    .ThumbColor("#FFFFFF")
+    .ThumbBorderColor("#FF222222")
+    .ThumbBorderThickness(1.5)
+    .ThumbCornerRadius(1.5)
+    .ThumbShadow(true)
+    .TrackHeight(24)
+    .TrackColor("Transparent")
+    .TrackBackground("Transparent")
+```
+
+#### Custom Themed Circular Slider
+Create a styled circular slider with specific track colors and shadows:
+
+```ahk
+main.Add("Slider").Name("Volume")
+    .ThumbShape("Circle")
+    .ThumbWidth(16)
+    .ThumbHeight(16)
+    .ThumbColor("#0A84FF")
+    .ThumbShadow(true)
+    .TrackHeight(8)
+    .TrackColor("#0A84FF")
+    .TrackBackground("#20ffffff")
+```
+
+### Integration with `DefineTemplate`
+
+You can combine these options with `DefineTemplate` to define styles at the application level and use them elegantly with chaining:
+
+```ahk
+; Register a template named "LineThumbSlider"
+app.X.DefineTemplate("LineThumbSlider", (slider) => slider
+    .ThumbShape("Line")
+    .ThumbWidth(8)
+    .ThumbHeight(20)
+    .ThumbColor("#FFFFFF")
+    .ThumbBorderColor("#FF222222")
+    .ThumbBorderThickness(1.5)
+    .ThumbCornerRadius(1.5)
+    .ThumbShadow(true)
+    .TrackHeight(24)
+    .TrackColor("Transparent")
+    .TrackBackground("Transparent")
+)
+
+; Usage is clean and concise
+main.Add("Slider").Name("Brightness").Use("LineThumbSlider")
+main.Add("Slider").Name("Contrast").Use("LineThumbSlider")
+```

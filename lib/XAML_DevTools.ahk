@@ -24,6 +24,19 @@ class XAML_DevTools {
         this.hashToName := Map()
         this.hashToUid := Map()
         this.pipelineLogs := []
+        this.boundCommitSelection := ObjBindMethod(this, "CommitSelection")
+
+        ; Cache filter states locally to avoid expensive synchronous IPC queries
+        this.activeTab := "0"
+        this.filterAlpha := true
+        this.filterGroup := true
+        this.filterLocal := false
+        this.filterValid := false
+        this.filterEdit := false
+        this.searchQ := ""
+        this.searchEventQ := ""
+        this.preset := "All"
+        this.hideDevTools := true
 
         ; Register event callbacks on target host's background engine
         this.target.OnEvent("Engine", "DevToolsTree", ObjBindMethod(this, "OnTreeReceived"))
@@ -187,6 +200,14 @@ class XAML_DevTools {
         this.app.host.Track("LogPipeline")
         this.app.host.Track("BtnTogglePipelineDetails")
         this.app.host.Track("BtnFilterDevTools")
+        this.app.host.Track("BtnFilterAlpha")
+        this.app.host.Track("BtnFilterGroup")
+        this.app.host.Track("BtnFilterLocal")
+        this.app.host.Track("BtnFilterValid")
+        this.app.host.Track("BtnFilterEdit")
+        this.app.host.Track("TxtPropSearch")
+        this.app.host.Track("TxtEventSearch")
+        this.app.host.Track("ComboPresets")
 
         ; Listen for global events from the target application (sent from background engine)
         this.targetGui.host.OnEvent("AppWindow", "InspectPicked", ObjBindMethod(this, "OnInspectPicked"))
@@ -198,6 +219,9 @@ class XAML_DevTools {
         this.app.host.OnEvent("BtnTogglePipelineDetails", "Click", ObjBindMethod(this, "OnTogglePipelineDetails"))
         this.app.host.OnEvent("BtnFilterDevTools", "Click", ObjBindMethod(this, "OnFilterDevToolsChanged"))
         this.app.host.OnEvent("BtnClearConsole", "Click", (*) => this.app.host.Update("LogConsole", "Text", ""))
+
+        this.app.host.Track("PropsTabs")
+        this.app.host.OnEvent("PropsTabs", "SelectionChanged", ObjBindMethod(this, "OnPropsTabChanged"))
 
         this.app.host.OnEvent("BtnFilterAlpha", "Click", ObjBindMethod(this, "OnPropFilterChanged"))
         this.app.host.OnEvent("BtnFilterGroup", "Click", ObjBindMethod(this, "OnPropFilterChanged"))
@@ -315,7 +339,8 @@ class XAML_DevTools {
         mainGrid.Cols("*", "Auto", "Auto")
 
         leftBorder := mainGrid.Add("Border").Grid_Column(0).Use("CardPanel")
-        leftBorder.Add("ListBox").Name("LogPipeline").Background("Transparent").BorderThickness(0).Foreground("{DynamicResource TextMain}").FontFamily("Consolas").Padding("5").SetProp("ScrollViewer.HorizontalScrollBarVisibility", "Disabled")
+        logLb := leftBorder.Add("ListBox").Name("LogPipeline").Background("Transparent").BorderThickness(0).Foreground("{DynamicResource TextMain}").Padding("0").SetProp("ScrollViewer.HorizontalScrollBarVisibility", "Disabled").SetProp("SelectedValuePath", "Tag")
+        logLb.InjectResources('<Style TargetType="ListBoxItem"><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/><Setter Property="BorderThickness" Value="0"/></Style>')
 
         mainGrid.Add("GridSplitter").Name("PipelineSplitter").Grid_Column(1).Width(5).HorizontalAlignment("Center").Background("Transparent")
 
@@ -438,9 +463,16 @@ class XAML_DevTools {
 
         this.selectedHash := selectedHash
 
-        ; Query target window's elements to highlight and get properties
-        this.target.Update("DEVTOOLS", "Highlight", selectedHash)
-        this.target.Update("DEVTOOLS", "GetProps", selectedHash)
+        ; Debounce properties fetching and highlighting by 80ms to keep keyboard navigation silky smooth
+        SetTimer(this.boundCommitSelection, -80)
+    }
+
+    CommitSelection() {
+        if (!this.HasProp("selectedHash") || this.selectedHash == "")
+            return
+
+        this.target.Update("DEVTOOLS", "Highlight", this.selectedHash)
+        this.target.Update("DEVTOOLS", "GetProps", this.selectedHash)
     }
 
     OnPropsReceived(state, ctrl, event) {
@@ -512,7 +544,27 @@ class XAML_DevTools {
         this.RenderProps()
     }
 
-    OnPropFilterChanged(*) {
+    OnPropFilterChanged(state, ctrl, event) {
+        if (!state.Has(event) && !state.Has(ctrl))
+            return
+        val := state.Has(event) ? state[event] : state[ctrl]
+        if (ctrl == "BtnFilterAlpha")
+            this.filterAlpha := (val == "True")
+        else if (ctrl == "BtnFilterGroup")
+            this.filterGroup := (val == "True")
+        else if (ctrl == "BtnFilterLocal")
+            this.filterLocal := (val == "True")
+        else if (ctrl == "BtnFilterValid")
+            this.filterValid := (val == "True")
+        else if (ctrl == "BtnFilterEdit")
+            this.filterEdit := (val == "True")
+        else if (ctrl == "TxtPropSearch")
+            this.searchQ := StrLower(val)
+        else if (ctrl == "TxtEventSearch")
+            this.searchEventQ := StrLower(val)
+        else if (ctrl == "ComboPresets")
+            this.preset := val
+
         this.RenderProps()
     }
 
@@ -557,23 +609,26 @@ class XAML_DevTools {
         return str
     }
 
+    OnPropsTabChanged(state, ctrl, event) {
+        if (!state.Has(event) && !state.Has(ctrl))
+            return
+        val := state.Has(event) ? state[event] : state[ctrl]
+        this.activeTab := val
+        this.RenderProps()
+    }
+
     RenderProps() {
         if (!this.HasProp("currentProps"))
             return
 
-        alpha := this.app.host.Query("BtnFilterAlpha") == "True"
-        group := this.app.host.Query("BtnFilterGroup") == "True"
-        filterLocal := this.app.host.Query("BtnFilterLocal") == "True"
-        valid := this.app.host.Query("BtnFilterValid") == "True"
-        editOnly := this.app.host.Query("BtnFilterEdit") == "True"
-        searchQ := StrLower(this.app.host.Query("TxtPropSearch"))
-        preset := this.app.host.Query("ComboPresets")
-
-        ; Clear all four panels
-        this.app.host.Update("PanelPropsStyles", "ClearItems", "")
-        this.app.host.Update("PanelPropsComputed", "ClearItems", "")
-        this.app.host.Update("PanelProps", "ClearItems", "")
-        this.app.host.Update("PanelPropsEvents", "ClearItems", "")
+        activeTab := this.activeTab
+        alpha := this.filterAlpha
+        group := this.filterGroup
+        filterLocal := this.filterLocal
+        valid := this.filterValid
+        editOnly := this.filterEdit
+        searchQ := this.searchQ
+        preset := this.preset
 
         props := []
         for p in this.currentProps
@@ -595,340 +650,343 @@ class XAML_DevTools {
             }
         }
 
-        ; --- 1. RENDER STYLES TAB ---
-        stylesXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Margin="5,10,5,10">'
+        if (activeTab == "0") {
+            this.app.host.Update("PanelPropsStyles", "ClearItems", "")
+            ; --- 1. RENDER STYLES TAB ---
+            stylesXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Margin="5,10,5,10">'
 
-        ; Local styles block
-        stylesXml .= '<TextBlock Text="element.style {" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>'
-        localStyleCount := 0
-        for p in props {
-            if (p.Cat == "Style" && p.Local) {
-                localStyleCount++
-                displayName := this.EscapeXml(p.Name)
-                displayVal := this.EscapeXml(p.Val)
+            ; Local styles block
+            stylesXml .= '<TextBlock Text="element.style {" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>'
+            localStyleCount := 0
+            for p in props {
+                if (p.Cat == "Style" && p.Local) {
+                    localStyleCount++
+                    displayName := this.EscapeXml(p.Name)
+                    displayVal := this.EscapeXml(p.Val)
 
-                opacity := p.ReadOnly ? "0.45" : "1.0"
-                roComment := p.ReadOnly ? '  <Run Text="  /* read-only */" Foreground="#6A9955" FontStyle="Italic"/>' : ''
+                    opacity := p.ReadOnly ? "0.45" : "1.0"
+                    roComment := p.ReadOnly ? '  <Run Text="  /* read-only */" Foreground="#6A9955" FontStyle="Italic"/>' : ''
 
-                stylesXml .= Format('
-                ( LTrim
-                    <Grid Margin="15,2,5,2" Opacity="{5}">
-                    <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="•" Foreground="#666666" Margin="0,0,8,0" FontFamily="Consolas" FontSize="11.5" />
-                    <TextBlock Grid.Column="1" FontFamily="Consolas" FontSize="11.5" TextWrapping="Wrap" ToolTip="{4}">
-                    <Run Text="{1}" Foreground="#4EC9B0" />
-                    <Run Text=": " Foreground="#CCCCCC" />
-                    <Run Text="{2}" Foreground="#CE9178" />
-                    <Run Text=";" Foreground="#CCCCCC" />
-                    {3}
-                    </TextBlock>
-                    </Grid>
-                )', displayName, displayVal, roComment, p.Type, opacity)
-            }
-        }
-
-        if (localStyleCount == 0) {
-            stylesXml .= '<TextBlock Text="  /* no local styles applied */" Foreground="#6A9955" FontFamily="Consolas" FontSize="11.5" FontStyle="Italic" Margin="15,2,5,2"/>'
-        }
-        stylesXml .= '<TextBlock Text="}" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,5,0,15"/>'
-
-        ; Inherited styles block
-        stylesXml .= '<TextBlock Text="Style (Inherited / Resources) {" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>'
-        inheritedStyleCount := 0
-        for p in props {
-            if (p.Cat == "Style" && !p.Local) {
-                inheritedStyleCount++
-                displayName := this.EscapeXml(p.Name)
-                displayVal := this.EscapeXml(p.Val)
-
-                opacity := p.ReadOnly ? "0.45" : "1.0"
-                roComment := p.ReadOnly ? '  <Run Text="  /* read-only */" Foreground="#6A9955" FontStyle="Italic"/>' : ''
-
-                stylesXml .= Format('
-                ( LTrim
-                    <Grid Margin="15,2,5,2" Opacity="{5}">
-                    <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="•" Foreground="#666666" Margin="0,0,8,0" FontFamily="Consolas" FontSize="11.5" />
-                    <TextBlock Grid.Column="1" FontFamily="Consolas" FontSize="11.5" TextWrapping="Wrap" ToolTip="{4}">
-                    <Run Text="{1}" Foreground="#9CDCFE" />
-                    <Run Text=": " Foreground="#CCCCCC" />
-                    <Run Text="{2}" Foreground="#CE9178" />
-                    <Run Text=";" Foreground="#CCCCCC" />
-                    {3}
-                    </TextBlock>
-                    </Grid>
-                )', displayName, displayVal, roComment, p.Type, opacity)
-            }
-        }
-
-        if (inheritedStyleCount == 0) {
-            stylesXml .= '<TextBlock Text="  /* no inherited styles */" Foreground="#6A9955" FontFamily="Consolas" FontSize="11.5" FontStyle="Italic" Margin="15,2,5,2"/>'
-        }
-        stylesXml .= '<TextBlock Text="}" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,5,0,0"/>'
-        stylesXml .= '</StackPanel>'
-
-        this.app.host.Update("PanelPropsStyles", "AddXamlItem", stylesXml)
-
-
-        ; --- 2. RENDER COMPUTED BOX MODEL TAB ---
-        marginThick := this.ParseThickness(this.GetPropVal("Margin", "0"))
-        paddingThick := this.ParseThickness(this.GetPropVal("Padding", "0"))
-        borderThick := this.ParseThickness(this.GetPropVal("BorderThickness", "0"))
-
-        actW := this.GetPropVal("ActualWidth", "-")
-        actH := this.GetPropVal("ActualHeight", "-")
-        if (actW != "-") {
-            try actW := Round(Number(actW))
-        }
-        if (actH != "-") {
-            try actH := Round(Number(actH))
-        }
-
-        compXml := '<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" HorizontalAlignment="Center" Margin="5,15,5,15" Background="Transparent">'
-        compXml .= '<Border Background="#F9CC9D" CornerRadius="2" BorderThickness="1" BorderBrush="#E5B98A" Padding="4">'
-        compXml .= '<Grid><TextBlock Text="margin" Foreground="#555555" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,0,0,0"/>'
-        compXml .= '<StackPanel Orientation="Vertical">'
-        compXml .= '<TextBlock Text="' marginThick.Top '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
-        compXml .= '<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>'
-        compXml .= '<TextBlock Grid.Column="0" Text="' marginThick.Left '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="2,0,10,0"/>'
-
-        ; Border Box
-        compXml .= '<Border Grid.Column="1" Background="#FDE89C" CornerRadius="2" BorderThickness="1" BorderBrush="#E5D38A" Padding="4">'
-        compXml .= '<Grid><TextBlock Text="border" Foreground="#555555" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,0,0,0"/>'
-        compXml .= '<StackPanel Orientation="Vertical">'
-        compXml .= '<TextBlock Text="' borderThick.Top '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
-        compXml .= '<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>'
-        compXml .= '<TextBlock Grid.Column="0" Text="' borderThick.Left '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="2,0,10,0"/>'
-
-        ; Padding Box
-        compXml .= '<Border Grid.Column="1" Background="#C3E88D" CornerRadius="2" BorderThickness="1" BorderBrush="#B2D381" Padding="4">'
-        compXml .= '<Grid><TextBlock Text="padding" Foreground="#555555" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,0,0,0"/>'
-        compXml .= '<StackPanel Orientation="Vertical">'
-        compXml .= '<TextBlock Text="' paddingThick.Top '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
-        compXml .= '<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>'
-        compXml .= '<TextBlock Grid.Column="0" Text="' paddingThick.Left '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="2,0,10,0"/>'
-
-        ; Content Box
-        compXml .= '<Border Grid.Column="1" Background="#A6D3F9" CornerRadius="2" BorderThickness="1" BorderBrush="#94BEE2" Padding="15,6">'
-        compXml .= '<TextBlock Text="' actW ' × ' actH '" Foreground="#222222" FontSize="10.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>'
-        compXml .= '</Border>'
-
-        compXml .= '<TextBlock Grid.Column="2" Text="' paddingThick.Right '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="10,0,2,0"/>'
-        compXml .= '</Grid>'
-        compXml .= '<TextBlock Text="' paddingThick.Bottom '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
-        compXml .= '</StackPanel></Grid></Border>'
-
-        compXml .= '<TextBlock Grid.Column="2" Text="' borderThick.Right '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="10,0,2,0"/>'
-        compXml .= '</Grid>'
-        compXml .= '<TextBlock Text="' borderThick.Bottom '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
-        compXml .= '</StackPanel></Grid></Border>'
-
-        compXml .= '<TextBlock Grid.Column="2" Text="' marginThick.Right '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="10,0,2,0"/>'
-        compXml .= '</Grid>'
-        compXml .= '<TextBlock Text="' marginThick.Bottom '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
-        compXml .= '</StackPanel></Grid></Border>'
-        compXml .= '</Grid>'
-
-        layoutXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Margin="0,15,0,0">'
-        layoutXml .= '<TextBlock Text="Computed Layout Properties" Foreground="{DynamicResource TextSub}" FontWeight="Bold" FontSize="11" Margin="5,0,0,10"/>'
-
-        layoutIndex := 0
-        for p in props {
-            lname := StrLower(p.Name)
-            if (InStr(lname, "margin") || InStr(lname, "padding") || InStr(lname, "align") || InStr(lname, "width") || InStr(lname, "height") || InStr(lname, "grid.") || InStr(lname, "canvas.") || InStr(lname, "row") || InStr(lname, "column") || InStr(lname, "thickness") || InStr(lname, "visibility") || InStr(lname, "dock")) {
-
-                layoutIndex++
-                displayName := this.EscapeXml(p.Name)
-                displayVal := this.EscapeXml(p.Val)
-
-                labelColor := p.Local ? "#4EC9B0" : "#9CDCFE"
-                bgColor := (Mod(layoutIndex, 2) == 0) ? "#0AFFFFFF" : "Transparent"
-                opacity := p.ReadOnly ? "0.45" : "1.0"
-
-                layoutXml .= Format('
-                ( LTrim
-                    <Grid Margin="0" Background="{6}" Opacity="{7}">
-                    <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140" />
-                    <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{1}" Foreground="{4}" FontWeight="Normal" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2} (Local: {5})" TextTrimming="CharacterEllipsis" />
-                    <TextBox Grid.Column="1" Text="{3}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
-                    </Grid>
-                )', displayName, p.Type, displayVal, labelColor, p.Local ? "Yes" : "No", bgColor, opacity)
-            }
-        }
-        layoutXml .= '</StackPanel>'
-
-        this.app.host.Update("PanelPropsComputed", "AddXamlItem", compXml)
-        this.app.host.Update("PanelPropsComputed", "AddXamlItem", layoutXml)
-
-
-        ; --- 3. RENDER ALL PROPERTIES TAB ---
-        xml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
-
-        groups := Map()
-        if (group) {
-            groups["Style"] := []
-            groups["Properties"] := []
-            groups["Events"] := []
-            groups["Other"] := []
-        } else {
-            groups["All"] := []
-        }
-
-        for p in props {
-            if (filterLocal && !p.Local)
-                continue
-            if (editOnly && p.ReadOnly)
-                continue
-            if (valid && (p.Val == "null" || p.Val == ""))
-                continue
-
-            if (searchQ != "") {
-                if (!InStr(StrLower(p.Name), searchQ) && !InStr(StrLower(p.Val), searchQ))
-                    continue
+                    stylesXml .= Format('
+                    ( LTrim
+                        <Grid Margin="15,2,5,2" Opacity="{5}">
+                        <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="•" Foreground="#666666" Margin="0,0,8,0" FontFamily="Consolas" FontSize="11.5" />
+                        <TextBlock Grid.Column="1" FontFamily="Consolas" FontSize="11.5" TextWrapping="Wrap" ToolTip="{4}">
+                        <Run Text="{1}" Foreground="#4EC9B0" />
+                        <Run Text=": " Foreground="#CCCCCC" />
+                        <Run Text="{2}" Foreground="#CE9178" />
+                        <Run Text=";" Foreground="#CCCCCC" />
+                        {3}
+                        </TextBlock>
+                        </Grid>
+                    )', displayName, displayVal, roComment, p.Type, opacity)
+                }
             }
 
-            if (preset != "" && preset != "All") {
+            if (localStyleCount == 0) {
+                stylesXml .= '<TextBlock Text="  /* no local styles applied */" Foreground="#6A9955" FontFamily="Consolas" FontSize="11.5" FontStyle="Italic" Margin="15,2,5,2"/>'
+            }
+            stylesXml .= '<TextBlock Text="}" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,5,0,15"/>'
+
+            ; Inherited styles block
+            stylesXml .= '<TextBlock Text="Style (Inherited / Resources) {" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>'
+            inheritedStyleCount := 0
+            for p in props {
+                if (p.Cat == "Style" && !p.Local) {
+                    inheritedStyleCount++
+                    displayName := this.EscapeXml(p.Name)
+                    displayVal := this.EscapeXml(p.Val)
+
+                    opacity := p.ReadOnly ? "0.45" : "1.0"
+                    roComment := p.ReadOnly ? '  <Run Text="  /* read-only */" Foreground="#6A9955" FontStyle="Italic"/>' : ''
+
+                    stylesXml .= Format('
+                    ( LTrim
+                        <Grid Margin="15,2,5,2" Opacity="{5}">
+                        <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="•" Foreground="#666666" Margin="0,0,8,0" FontFamily="Consolas" FontSize="11.5" />
+                        <TextBlock Grid.Column="1" FontFamily="Consolas" FontSize="11.5" TextWrapping="Wrap" ToolTip="{4}">
+                        <Run Text="{1}" Foreground="#9CDCFE" />
+                        <Run Text=": " Foreground="#CCCCCC" />
+                        <Run Text="{2}" Foreground="#CE9178" />
+                        <Run Text=";" Foreground="#CCCCCC" />
+                        {3}
+                        </TextBlock>
+                        </Grid>
+                    )', displayName, displayVal, roComment, p.Type, opacity)
+                }
+            }
+
+            if (inheritedStyleCount == 0) {
+                stylesXml .= '<TextBlock Text="  /* no inherited styles */" Foreground="#6A9955" FontFamily="Consolas" FontSize="11.5" FontStyle="Italic" Margin="15,2,5,2"/>'
+            }
+            stylesXml .= '<TextBlock Text="}" Foreground="#DCDCAA" FontFamily="Consolas" FontSize="12" FontWeight="Bold" Margin="0,5,0,0"/>'
+            stylesXml .= '</StackPanel>'
+
+            this.app.host.Update("PanelPropsStyles", "AddXamlItem", stylesXml)
+        } else if (activeTab == "1") {
+            this.app.host.Update("PanelPropsComputed", "ClearItems", "")
+            ; --- 2. RENDER COMPUTED BOX MODEL TAB ---
+            marginThick := this.ParseThickness(this.GetPropVal("Margin", "0"))
+            paddingThick := this.ParseThickness(this.GetPropVal("Padding", "0"))
+            borderThick := this.ParseThickness(this.GetPropVal("BorderThickness", "0"))
+
+            actW := this.GetPropVal("ActualWidth", "-")
+            actH := this.GetPropVal("ActualHeight", "-")
+            if (actW != "-") {
+                try actW := Round(Number(actW))
+            }
+            if (actH != "-") {
+                try actH := Round(Number(actH))
+            }
+
+            compXml := '<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" HorizontalAlignment="Center" Margin="5,15,5,15" Background="Transparent">'
+            compXml .= '<Border Background="#F9CC9D" CornerRadius="2" BorderThickness="1" BorderBrush="#E5B98A" Padding="4">'
+            compXml .= '<Grid><TextBlock Text="margin" Foreground="#555555" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,0,0,0"/>'
+            compXml .= '<StackPanel Orientation="Vertical">'
+            compXml .= '<TextBlock Text="' marginThick.Top '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
+            compXml .= '<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>'
+            compXml .= '<TextBlock Grid.Column="0" Text="' marginThick.Left '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="2,0,10,0"/>'
+
+            ; Border Box
+            compXml .= '<Border Grid.Column="1" Background="#FDE89C" CornerRadius="2" BorderThickness="1" BorderBrush="#E5D38A" Padding="4">'
+            compXml .= '<Grid><TextBlock Text="border" Foreground="#555555" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,0,0,0"/>'
+            compXml .= '<StackPanel Orientation="Vertical">'
+            compXml .= '<TextBlock Text="' borderThick.Top '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
+            compXml .= '<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>'
+            compXml .= '<TextBlock Grid.Column="0" Text="' borderThick.Left '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="2,0,10,0"/>'
+
+            ; Padding Box
+            compXml .= '<Border Grid.Column="1" Background="#C3E88D" CornerRadius="2" BorderThickness="1" BorderBrush="#B2D381" Padding="4">'
+            compXml .= '<Grid><TextBlock Text="padding" Foreground="#555555" FontSize="9" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="2,0,0,0"/>'
+            compXml .= '<StackPanel Orientation="Vertical">'
+            compXml .= '<TextBlock Text="' paddingThick.Top '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
+            compXml .= '<Grid><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>'
+            compXml .= '<TextBlock Grid.Column="0" Text="' paddingThick.Left '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="2,0,10,0"/>'
+
+            ; Content Box
+            compXml .= '<Border Grid.Column="1" Background="#A6D3F9" CornerRadius="2" BorderThickness="1" BorderBrush="#94BEE2" Padding="15,6">'
+            compXml .= '<TextBlock Text="' actW ' × ' actH '" Foreground="#222222" FontSize="10.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>'
+            compXml .= '</Border>'
+
+            compXml .= '<TextBlock Grid.Column="2" Text="' paddingThick.Right '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="10,0,2,0"/>'
+            compXml .= '</Grid>'
+            compXml .= '<TextBlock Text="' paddingThick.Bottom '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
+            compXml .= '</StackPanel></Grid></Border>'
+
+            compXml .= '<TextBlock Grid.Column="2" Text="' borderThick.Right '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="10,0,2,0"/>'
+            compXml .= '</Grid>'
+            compXml .= '<TextBlock Text="' borderThick.Bottom '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
+            compXml .= '</StackPanel></Grid></Border>'
+
+            compXml .= '<TextBlock Grid.Column="2" Text="' marginThick.Right '" Foreground="#444444" FontSize="10" VerticalAlignment="Center" Margin="10,0,2,0"/>'
+            compXml .= '</Grid>'
+            compXml .= '<TextBlock Text="' marginThick.Bottom '" Foreground="#444444" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,2"/>'
+            compXml .= '</StackPanel></Grid></Border>'
+            compXml .= '</Grid>'
+
+            layoutXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Margin="0,15,0,0">'
+            layoutXml .= '<TextBlock Text="Computed Layout Properties" Foreground="{DynamicResource TextSub}" FontWeight="Bold" FontSize="11" Margin="5,0,0,10"/>'
+
+            layoutIndex := 0
+            for p in props {
                 lname := StrLower(p.Name)
-                match := false
-                if (preset == "Mouse & Keys" && (InStr(lname, "mouse") || InStr(lname, "key") || InStr(lname, "click") || InStr(lname, "focus")))
-                    match := true
-                else if (preset == "Layout" && (InStr(lname, "margin") || InStr(lname, "padding") || InStr(lname, "align") || InStr(lname, "width") || InStr(lname, "height") || InStr(lname, "size")))
-                    match := true
-                else if (preset == "Theme" && (InStr(lname, "background") || InStr(lname, "foreground") || InStr(lname, "brush") || InStr(lname, "color") || InStr(lname, "border") || InStr(lname, "opacity") || InStr(lname, "fill") || InStr(lname, "stroke")))
-                    match := true
-                else if (preset == "Scroll" && InStr(lname, "scroll"))
-                    match := true
-                else if (preset == "Text" && (InStr(lname, "font") || InStr(lname, "text")))
-                    match := true
-                else if (preset == "Events" && p.Cat == "Events")
-                    match := true
+                if (InStr(lname, "margin") || InStr(lname, "padding") || InStr(lname, "align") || InStr(lname, "width") || InStr(lname, "height") || InStr(lname, "grid.") || InStr(lname, "canvas.") || InStr(lname, "row") || InStr(lname, "column") || InStr(lname, "thickness") || InStr(lname, "visibility") || InStr(lname, "dock")) {
 
-                if (!match)
+                    layoutIndex++
+                    displayName := this.EscapeXml(p.Name)
+                    displayVal := this.EscapeXml(p.Val)
+
+                    labelColor := p.Local ? "#4EC9B0" : "#9CDCFE"
+                    bgColor := (Mod(layoutIndex, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                    opacity := p.ReadOnly ? "0.45" : "1.0"
+
+                    layoutXml .= Format('
+                    ( LTrim
+                        <Grid Margin="0" Background="{6}" Opacity="{7}">
+                        <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{1}" Foreground="{4}" FontWeight="Normal" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2} (Local: {5})" TextTrimming="CharacterEllipsis" />
+                        <TextBox Grid.Column="1" Text="{3}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
+                        </Grid>
+                    )', displayName, p.Type, displayVal, labelColor, p.Local ? "Yes" : "No", bgColor, opacity)
+                }
+            }
+            layoutXml .= '</StackPanel>'
+
+            this.app.host.Update("PanelPropsComputed", "AddXamlItem", compXml)
+            this.app.host.Update("PanelPropsComputed", "AddXamlItem", layoutXml)
+        } else if (activeTab == "2") {
+            this.app.host.Update("PanelProps", "ClearItems", "")
+            ; --- 3. RENDER ALL PROPERTIES TAB ---
+            xml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
+
+            groups := Map()
+            if (group) {
+                groups["Style"] := []
+                groups["Properties"] := []
+                groups["Events"] := []
+                groups["Other"] := []
+            } else {
+                groups["All"] := []
+            }
+
+            for p in props {
+                if (filterLocal && !p.Local)
                     continue
-            }
+                if (editOnly && p.ReadOnly)
+                    continue
+                if (valid && (p.Val == "null" || p.Val == ""))
+                    continue
 
-            cat := group ? p.Cat : "All"
-            if (!groups.Has(cat))
-                groups[cat] := []
-            groups[cat].Push(p)
-        }
-
-        for cat, list in groups {
-            if (list.Length == 0)
-                continue
-
-            if (group) {
-                xml .= '<Expander IsExpanded="True" Margin="0,2,0,0"><Expander.Header><TextBlock Text="' cat '" Foreground="#E6E6E6" FontWeight="Bold" Margin="0"/></Expander.Header><StackPanel Margin="0,2,0,5">'
-            }
-
-            for index, p in list {
-                displayName := this.EscapeXml(p.Name)
-                displayVal := this.EscapeXml(p.Val)
-
-                labelColor := p.Local ? "#4EC9B0" : "#9CDCFE"
-                bgColor := (Mod(index, 2) == 0) ? "#0AFFFFFF" : "Transparent"
-                opacity := p.ReadOnly ? "0.45" : "1.0"
-
-                xml .= Format('
-                ( LTrim
-                    <Grid Margin="0" Background="{6}" Opacity="{7}">
-                    <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="140" />
-                    <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{1}" Foreground="{4}" FontWeight="Normal" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2} (Local: {5})" TextTrimming="CharacterEllipsis" />
-                    <TextBox Grid.Column="1" Text="{3}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
-                    </Grid>
-                )', displayName, p.Type, displayVal, labelColor, p.Local ? "Yes" : "No", bgColor, opacity)
-            }
-
-            if (group) {
-                xml .= '</StackPanel></Expander>'
-            }
-        }
-
-        xml .= '</StackPanel>'
-
-        this.app.host.Update("PanelProps", "AddXamlItem", xml)
-
-
-        ; --- 4. RENDER EVENTS TAB ---
-        eventSearchQ := StrLower(this.app.host.Query("TxtEventSearch"))
-        eventsXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
-
-        eventIndex := 0
-        for p in props {
-            if (p.Cat == "Events") {
-                if (eventSearchQ != "") {
-                    if (!InStr(StrLower(p.Name), eventSearchQ) && !InStr(StrLower(p.Val), eventSearchQ))
+                if (searchQ != "") {
+                    if (!InStr(StrLower(p.Name), searchQ) && !InStr(StrLower(p.Val), searchQ))
                         continue
                 }
 
-                eventIndex++
-                displayName := this.EscapeXml(p.Name)
-                displayVal := this.EscapeXml(p.Val)
+                if (preset != "" && preset != "All") {
+                    lname := StrLower(p.Name)
+                    match := false
+                    if (preset == "Mouse & Keys" && (InStr(lname, "mouse") || InStr(lname, "key") || InStr(lname, "click") || InStr(lname, "focus")))
+                        match := true
+                    else if (preset == "Layout" && (InStr(lname, "margin") || InStr(lname, "padding") || InStr(lname, "align") || InStr(lname, "width") || InStr(lname, "height") || InStr(lname, "size")))
+                        match := true
+                    else if (preset == "Theme" && (InStr(lname, "background") || InStr(lname, "foreground") || InStr(lname, "brush") || InStr(lname, "color") || InStr(lname, "border") || InStr(lname, "opacity") || InStr(lname, "fill") || InStr(lname, "stroke")))
+                        match := true
+                    else if (preset == "Scroll" && InStr(lname, "scroll"))
+                        match := true
+                    else if (preset == "Text" && (InStr(lname, "font") || InStr(lname, "text")))
+                        match := true
+                    else if (preset == "Events" && p.Cat == "Events")
+                        match := true
 
-                ; Check if target has AHK event callback registered
-                ctrlName := ""
-                if (this.HasProp("selectedHash") && this.selectedHash != "" && this.hashToName.Has(this.selectedHash)) {
-                    ctrlName := this.hashToName[this.selectedHash]
+                    if (!match)
+                        continue
                 }
 
-                isHooked := false
-                hookedText := "—"
-                if (ctrlName != "" && this.target.events.Has(ctrlName) && this.target.events[ctrlName].Has(p.Name)) {
-                    evtList := this.target.events[ctrlName][p.Name]
-                    if (evtList.Length > 0) {
-                        isHooked := true
-                        cb := evtList[1].Callback
-                        cbName := this.GetCallbackName(cb)
-
-                        if (cbName == "(inline)") {
-                            uid := this.hashToUid.Has(this.selectedHash) ? this.hashToUid[this.selectedHash] : ""
-                            sourceCode := this.GetCallbackSource(uid, p.Name)
-                            if (sourceCode != "") {
-                                cbName := sourceCode
-                            }
-                        }
-
-                        hookedText := "Hooked: " . cbName
-                    }
-                }
-
-                labelColor := isHooked ? "#A6E3A1" : "#888888" ; Green if hooked, Muted gray if not
-                opacity := isHooked ? "1.0" : "0.55"
-                bgColor := (Mod(eventIndex, 2) == 0) ? "#0AFFFFFF" : "Transparent"
-
-                eventsXml .= Format('
-                ( LTrim
-                    <Grid Margin="0" Background="{4}" Opacity="{5}">
-                    <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="160" />
-                    <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{2}" Foreground="{3}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2}" TextTrimming="CharacterEllipsis" />
-                    <TextBox Grid.Column="1" Text="{1}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
-                    </Grid>
-                )', this.EscapeXml(hookedText), displayName, labelColor, bgColor, opacity)
+                cat := group ? p.Cat : "All"
+                if (!groups.Has(cat))
+                    groups[cat] := []
+                groups[cat].Push(p)
             }
+
+            for cat, list in groups {
+                if (list.Length == 0)
+                    continue
+
+                if (group) {
+                    xml .= '<Expander IsExpanded="True" Margin="0,2,0,0"><Expander.Header><TextBlock Text="' cat '" Foreground="#E6E6E6" FontWeight="Bold" Margin="0"/></Expander.Header><StackPanel Margin="0,2,0,5">'
+                }
+
+                for index, p in list {
+                    displayName := this.EscapeXml(p.Name)
+                    displayVal := this.EscapeXml(p.Val)
+
+                    labelColor := p.Local ? "#4EC9B0" : "#9CDCFE"
+                    bgColor := (Mod(index, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                    opacity := p.ReadOnly ? "0.45" : "1.0"
+
+                    xml .= Format('
+                    ( LTrim
+                        <Grid Margin="0" Background="{6}" Opacity="{7}">
+                        <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{1}" Foreground="{4}" FontWeight="Normal" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2} (Local: {5})" TextTrimming="CharacterEllipsis" />
+                        <TextBox Grid.Column="1" Text="{3}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
+                        </Grid>
+                    )', displayName, p.Type, displayVal, labelColor, p.Local ? "Yes" : "No", bgColor, opacity)
+                }
+
+                if (group) {
+                    xml .= '</StackPanel></Expander>'
+                }
+            }
+
+            xml .= '</StackPanel>'
+
+            this.app.host.Update("PanelProps", "AddXamlItem", xml)
+        } else if (activeTab == "3") {
+            this.app.host.Update("PanelPropsEvents", "ClearItems", "")
+            ; --- 4. RENDER EVENTS TAB ---
+            eventSearchQ := this.searchEventQ
+            eventsXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
+
+            eventIndex := 0
+            for p in props {
+                if (p.Cat == "Events") {
+                    if (eventSearchQ != "") {
+                        if (!InStr(StrLower(p.Name), eventSearchQ) && !InStr(StrLower(p.Val), eventSearchQ))
+                            continue
+                    }
+
+                    eventIndex++
+                    displayName := this.EscapeXml(p.Name)
+                    displayVal := this.EscapeXml(p.Val)
+
+                    ; Check if target has AHK event callback registered
+                    ctrlName := ""
+                    if (this.HasProp("selectedHash") && this.selectedHash != "" && this.hashToName.Has(this.selectedHash)) {
+                        ctrlName := this.hashToName[this.selectedHash]
+                    }
+
+                    isHooked := false
+                    hookedText := "—"
+                    if (ctrlName != "" && this.target.events.Has(ctrlName) && this.target.events[ctrlName].Has(p.Name)) {
+                        evtList := this.target.events[ctrlName][p.Name]
+                        if (evtList.Length > 0) {
+                            isHooked := true
+                            cb := evtList[1].Callback
+                            cbName := this.GetCallbackName(cb)
+
+                            if (cbName == "(inline)") {
+                                uid := this.hashToUid.Has(this.selectedHash) ? this.hashToUid[this.selectedHash] : ""
+                                sourceCode := this.GetCallbackSource(uid, p.Name)
+                                if (sourceCode != "") {
+                                    cbName := sourceCode
+                                }
+                            }
+
+                            hookedText := "Hooked: " . cbName
+                        }
+                    }
+
+                    labelColor := isHooked ? "#A6E3A1" : "#888888" ; Green if hooked, Muted gray if not
+                    opacity := isHooked ? "1.0" : "0.55"
+                    bgColor := (Mod(eventIndex, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+
+                    eventsXml .= Format('
+                    ( LTrim
+                        <Grid Margin="0" Background="{4}" Opacity="{5}">
+                        <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="160" />
+                        <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{2}" Foreground="{3}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="5,4,5,4" ToolTip="{2}" TextTrimming="CharacterEllipsis" />
+                        <TextBox Grid.Column="1" Text="{1}" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5,4" IsReadOnly="True" />
+                        </Grid>
+                    )', this.EscapeXml(hookedText), displayName, labelColor, bgColor, opacity)
+                }
+            }
+
+            if (eventIndex == 0) {
+                eventsXml .= '<TextBlock Text="No events registered." Foreground="{DynamicResource TextSub}" Margin="5,10,0,0" FontStyle="Italic"/>'
+            }
+
+            eventsXml .= '</StackPanel>'
+
+            this.app.host.Update("PanelPropsEvents", "AddXamlItem", eventsXml)
         }
-
-        if (eventIndex == 0) {
-            eventsXml .= '<TextBlock Text="No events registered." Foreground="{DynamicResource TextSub}" Margin="5,10,0,0" FontStyle="Italic"/>'
-        }
-
-        eventsXml .= '</StackPanel>'
-
-        this.app.host.Update("PanelPropsEvents", "AddXamlItem", eventsXml)
     }
 
     LogIPC(dir, payload) {
@@ -940,8 +998,7 @@ class XAML_DevTools {
         this.pipelineLogs.Push(rawMsg)
 
         ; Check if we should filter this message
-        hideDevTools := false
-        try hideDevTools := (this.app.host.Query("BtnFilterDevTools") == "True")
+        hideDevTools := this.hideDevTools
 
         lines := StrSplit(payload, "`n", "`r")
         firstLine := lines[1]
@@ -966,19 +1023,40 @@ class XAML_DevTools {
         if (hideDevTools && isDevToolsMsg)
             return
 
-        summary := ts . " " . dirIcon . " " . this.SummarizePayload(dir, payload)
-        this.app.host.Update("LogPipeline", "AddItem", summary)
+        msgParts := this.ParseIPCMessage(payload, dir)
+
+        ; Trigger tracing
+        trigger := ""
+        if (dir == "IN") {
+            isDevTools := (msgParts.Ctrl == "Engine" && (msgParts.Event == "DevToolsTree" || msgParts.Event == "DevToolsProps")) || (msgParts.Ctrl == "AppWindow" && msgParts.Event == "InspectPicked")
+            if (!isDevTools) {
+                this.lastEventTrace := "EVENT [" . msgParts.Ctrl . " : " . msgParts.Event . "]"
+                this.lastEventTime := A_TickCount
+            }
+        } else if (dir == "OUT") {
+            if (this.HasProp("lastEventTrace") && this.lastEventTrace != "" && A_TickCount - this.lastEventTime < 800) {
+                trigger := this.lastEventTrace
+            }
+        }
+
+        xaml := this.BuildLogItemXaml(ts, dir, msgParts.Type, msgParts.Ctrl, msgParts.Event, msgParts.Size, msgParts.Val, trigger, this.pipelineLogs.Length)
+        this.app.host.Update("LogPipeline", "AddXamlItem", xaml)
     }
 
     OnFilterDevToolsChanged(state, ctrl, event) {
+        if (!state.Has(event) && !state.Has(ctrl))
+            return
+        val := state.Has(event) ? state[event] : state[ctrl]
+        this.hideDevTools := (val == "True")
         this.RenderPipelineList()
     }
 
     RenderPipelineList() {
         this.app.host.Update("LogPipeline", "ClearItems", "")
         
-        hideDevTools := false
-        try hideDevTools := (this.app.host.Query("BtnFilterDevTools") == "True")
+        hideDevTools := this.hideDevTools
+
+        lastEventInLoop := ""
 
         for rawMsg in this.pipelineLogs {
             pos := InStr(rawMsg, " ")
@@ -992,6 +1070,7 @@ class XAML_DevTools {
                 continue
             dirIcon := SubStr(rest, 1, posDir - 1)
             payload := SubStr(rest, posDir + 1)
+            dir := (dirIcon == "<-") ? "IN" : "OUT"
 
             lines := StrSplit(payload, "`n", "`r")
             firstLine := lines[1]
@@ -1016,8 +1095,25 @@ class XAML_DevTools {
             if (hideDevTools && isDevToolsMsg)
                 continue
 
-            summary := ts . " " . dirIcon . " " . this.SummarizePayload(dirIcon == "<-" ? "IN" : "OUT", payload)
-            this.app.host.Update("LogPipeline", "AddItem", summary)
+            msgParts := this.ParseIPCMessage(payload, dir)
+
+            trigger := ""
+            if (dir == "OUT") {
+                if (lastEventInLoop != "") {
+                    trigger := lastEventInLoop
+                }
+            } else {
+                isDevTools := (msgParts.Ctrl == "Engine" && (msgParts.Event == "DevToolsTree" || msgParts.Event == "DevToolsProps")) || (msgParts.Ctrl == "AppWindow" && msgParts.Event == "InspectPicked")
+                if (!isDevTools) {
+                    lastEventInLoop := "EVENT [" . msgParts.Ctrl . " : " . msgParts.Event . "]"
+                } else {
+                    lastEventInLoop := ""
+                }
+            }
+            logIndex := A_Index
+
+            xaml := this.BuildLogItemXaml(ts, dir, msgParts.Type, msgParts.Ctrl, msgParts.Event, msgParts.Size, msgParts.Val, trigger, logIndex)
+            this.app.host.Update("LogPipeline", "AddXamlItem", xaml)
         }
     }
 
@@ -1110,6 +1206,202 @@ class XAML_DevTools {
         }
     }
 
+    ParseIPCMessage(payload, dir) {
+        isEvent := false
+        type := ""
+        ctrlName := ""
+        eventName := ""
+        pLoadDec := ""
+        winId := ""
+        stateMap := Map()
+
+        if (SubStr(payload, 1, 6) == "EVENT|") {
+            isEvent := true
+            parts := StrSplit(payload, "|", , 5)
+            type := parts[1]
+            winId := parts.Length >= 2 ? parts[2] : ""
+            ctrlName := parts.Length >= 3 ? parts[3] : ""
+            
+            if (parts.Length >= 5) {
+                eventName := parts[4]
+                pLoad := parts[5]
+                
+                ; Clean trailing newlines that might be appended by bridge packaging
+                if (SubStr(pLoad, -1) == "`n") {
+                    pLoad := SubStr(pLoad, 1, -1)
+                }
+                if (SubStr(pLoad, -1) == "`r") {
+                    pLoad := SubStr(pLoad, 1, -1)
+                }
+                
+                pLoadDec := XAMLHost.DecodeValue(pLoad)
+                pLoadDec := StrReplace(pLoadDec, "&#x7C;", "|")
+                pLoadDec := StrReplace(pLoadDec, "&#x3D;", "=")
+                pLoadDec := StrReplace(pLoadDec, "&#x0A;", "`n")
+                pLoadDec := StrReplace(pLoadDec, "&#x0D;", "`r")
+            } else if (parts.Length == 4) {
+                ; No custom payload, but might have state map
+                rest := parts[4]
+                subParts := StrSplit(rest, "`n", "`r")
+                eventName := subParts[1]
+                
+                loop subParts.Length {
+                    if (A_Index == 1 || subParts[A_Index] == "")
+                        continue
+                    line := subParts[A_Index]
+                    posEq := InStr(line, "=")
+                    if (posEq) {
+                        k := SubStr(line, 1, posEq - 1)
+                        valEnc := SubStr(line, posEq + 1)
+                        valDec := XAMLHost.DecodeValue(valEnc)
+                        stateMap[k] := valDec
+                    }
+                }
+            }
+        } else {
+            ; Outgoing or Query command
+            parts := StrSplit(payload, "|", , 3)
+            type := (dir == "OUT") ? "Command (Update)" : "Query"
+            ctrlName := parts.Length >= 1 ? parts[1] : ""
+            eventName := parts.Length >= 2 ? parts[2] : ""
+            pLoad := parts.Length >= 3 ? parts[3] : ""
+            
+            if (pLoad != "") {
+                if (SubStr(pLoad, -1) == "`n") {
+                    pLoad := SubStr(pLoad, 1, -1)
+                }
+                if (SubStr(pLoad, -1) == "`r") {
+                    pLoad := SubStr(pLoad, 1, -1)
+                }
+                pLoadDec := (dir == "OUT") ? pLoad : XAMLHost.DecodeValue(pLoad)
+                pLoadDec := StrReplace(pLoadDec, "&#x7C;", "|")
+                pLoadDec := StrReplace(pLoadDec, "&#x3D;", "=")
+                pLoadDec := StrReplace(pLoadDec, "&#x0A;", "`n")
+                pLoadDec := StrReplace(pLoadDec, "&#x0D;", "`r")
+            }
+        }
+        
+        ; Calculate beautiful display tags
+        sizeText := ""
+        valText := ""
+        
+        if (isEvent) {
+            if (pLoadDec != "") {
+                len := StrLen(pLoadDec)
+                if (len > 1000) {
+                    sizeText := "📦 [" . Round(len / 1024, 1) . " KB]"
+                } else if (len > 0) {
+                    sizeText := "📦 [" . len . " ch]"
+                }
+            } else if (stateMap.Count > 0) {
+                sizeText := "📦 [" . stateMap.Count . " state vars]"
+            }
+        } else {
+            if (pLoadDec != "") {
+                if (StrLen(pLoadDec) < 40 && !InStr(pLoadDec, "`n")) {
+                    valText := pLoadDec
+                } else {
+                    sizeText := "📦 [" . StrLen(pLoadDec) . " ch]"
+                }
+            }
+        }
+        
+        return {
+            Type: type,
+            Ctrl: ctrlName,
+            Event: eventName,
+            WinId: winId,
+            PayloadDec: pLoadDec,
+            StateMap: stateMap,
+            Size: sizeText,
+            Val: valText
+        }
+    }
+
+    BuildLogItemXaml(ts, dir, type, ctrlName, eventName, sizeText, valText, triggerText := "", logIndex := 0) {
+        bgColor := "Transparent"
+        badgeBg := "#222222"
+        badgeFg := "#888888"
+        badgeBorder := "#444444"
+        badgeText := "MSG"
+        
+        arrowIcon := "→"
+        arrowColor := "#0A84FF"
+        
+        if (dir == "IN") {
+            arrowIcon := "←"
+            arrowColor := "#32D74B"
+        }
+        
+        if (type == "EVENT") {
+            badgeBg := "#1A3322"
+            badgeFg := "#32D74B"
+            badgeBorder := "#285A35"
+            badgeText := "EVENT"
+        } else if (type == "Command (Update)") {
+            badgeBg := "#102A45"
+            badgeFg := "#0A84FF"
+            badgeBorder := "#1F4E79"
+            badgeText := "UPDATE"
+        } else if (type == "Query") {
+            badgeBg := "#352310"
+            badgeFg := "#FF9F0A"
+            badgeBorder := "#63421A"
+            badgeText := "QUERY"
+        } else if (ctrlName == "DEVTOOLS" || ctrlName == "Engine") {
+            badgeBg := "#2A2A2A"
+            badgeFg := "#AAAAAA"
+            badgeBorder := "#3F3F3F"
+            badgeText := "DEVTOOLS"
+        }
+        
+        summaryText := ""
+        if (type == "EVENT") {
+            summaryText := ctrlName . " : " . eventName
+            if (sizeText != "") {
+                summaryText .= "  " . sizeText
+            }
+        } else {
+            summaryText := ctrlName . " [" . eventName . "]"
+            if (valText != "") {
+                summaryText .= " = " . valText
+            }
+        }
+        
+        summaryTextEsc := this.EscapeXml(summaryText)
+        tsEsc := this.EscapeXml(ts)
+        triggerTextEsc := this.EscapeXml(triggerText)
+        
+        triggerBlock := ""
+        if (triggerTextEsc != "") {
+            triggerBlock := '<TextBlock Text="↳ caused by ' . triggerTextEsc . '" Foreground="#6A9955" FontSize="10.5" FontStyle="Italic" Margin="0,3,0,0"/>'
+        }
+        
+        xaml := '<ListBoxItem xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Tag="' . logIndex . '">'
+        xaml .= '<Border Background="Transparent" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="0,0,0,1" Padding="8,6" HorizontalAlignment="Stretch">'
+        xaml .= '<Grid>'
+        xaml .= '<Grid.ColumnDefinitions>'
+        xaml .= '<ColumnDefinition Width="85"/>'
+        xaml .= '<ColumnDefinition Width="25"/>'
+        xaml .= '<ColumnDefinition Width="75"/>'
+        xaml .= '<ColumnDefinition Width="*"/>'
+        xaml .= '</Grid.ColumnDefinitions>'
+        xaml .= '<TextBlock Grid.Column="0" Text="' . tsEsc . '" Foreground="#888888" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center" HorizontalAlignment="Center"/>'
+        xaml .= '<TextBlock Grid.Column="1" Text="' . arrowIcon . '" Foreground="' . arrowColor . '" FontSize="14" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Center"/>'
+        xaml .= '<Border Grid.Column="2" Background="' . badgeBg . '" BorderBrush="' . badgeBorder . '" BorderThickness="1" CornerRadius="4" Padding="4,2" HorizontalAlignment="Center" VerticalAlignment="Center">'
+        xaml .= '<TextBlock Text="' . badgeText . '" Foreground="' . badgeFg . '" FontSize="9.5" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" FontFamily="Segoe UI"/>'
+        xaml .= '</Border>'
+        xaml .= '<StackPanel Grid.Column="3" Margin="8,0,0,0" VerticalAlignment="Center">'
+        xaml .= '<TextBlock Text="' . summaryTextEsc . '" Foreground="{DynamicResource TextMain}" FontSize="11.5" FontFamily="Consolas" TextWrapping="Wrap"/>'
+        xaml .= triggerBlock
+        xaml .= '</StackPanel>'
+        xaml .= '</Grid>'
+        xaml .= '</Border>'
+        xaml .= '</ListBoxItem>'
+        
+        return xaml
+    }
+
     SummarizePayload(dir, payload) {
         lines := StrSplit(payload, "`n", "`r")
         firstLine := lines[1]
@@ -1169,24 +1461,22 @@ class XAML_DevTools {
     }
 
     OnPipelineSelected(state, ctrl, event) {
-        selectedText := state.Has("LogPipeline") ? state["LogPipeline"] : (state.Has("SelectionChanged") ? state["SelectionChanged"] : "")
-        if (selectedText == "")
+        val := state.Has(event) ? state[event] : (state.Has(ctrl) ? state[ctrl] : "")
+        if (val == "")
             return
 
-        pos := InStr(selectedText, " ")
-        if (!pos)
-            return
-        ts := SubStr(selectedText, 1, pos - 1)
-
-        rawMsg := ""
-        for item in this.pipelineLogs {
-            if (SubStr(item, 1, pos - 1) == ts) {
-                rawMsg := item
-                break
-            }
+        ; Extract from "System.Windows.Controls.ListBoxItem: 14" if needed
+        pos := InStr(val, " ")
+        if (pos) {
+            val := SubStr(val, pos + 1)
         }
 
-        if (rawMsg != "") {
+        if (!IsInteger(val))
+            return
+
+        idx := Integer(val)
+        if (idx > 0 && idx <= this.pipelineLogs.Length) {
+            rawMsg := this.pipelineLogs[idx]
             this.RenderPipelineDetails(rawMsg)
         }
     }
@@ -1206,53 +1496,17 @@ class XAML_DevTools {
         if (!posDir)
             return
         dirIcon := SubStr(rest, 1, posDir - 1)
+        dir := (dirIcon == "<-") ? "IN" : "OUT"
 
         payload := SubStr(rest, posDir + 1)
 
-        lines := StrSplit(payload, "`n", "`r")
-        firstLine := lines[1]
-
-        isEvent := false
-
-        if (SubStr(firstLine, 1, 6) == "EVENT|") {
-            isEvent := true
-            parts := StrSplit(firstLine, "|", , 5)
-            type := parts[1]
-            winId := parts.Length >= 2 ? parts[2] : ""
-            ctrlName := parts.Length >= 3 ? parts[3] : ""
-            eventName := parts.Length >= 4 ? parts[4] : ""
-            pLoad := parts.Length >= 5 ? parts[5] : ""
-        } else {
-            parts := StrSplit(firstLine, "|", , 3)
-            type := (dirIcon == "->") ? "Command (Update)" : "Query"
-            ctrlName := parts.Length >= 1 ? parts[1] : ""
-            eventName := parts.Length >= 2 ? parts[2] : ""
-            pLoad := parts.Length >= 3 ? parts[3] : ""
-        }
-
-        pLoadDec := ""
-        if (pLoad != "") {
-            pLoadDec := (dirIcon == "->") ? pLoad : XAMLHost.DecodeValue(pLoad)
-            pLoadDec := StrReplace(pLoadDec, "&#x7C;", "|")
-            pLoadDec := StrReplace(pLoadDec, "&#x3D;", "=")
-            pLoadDec := StrReplace(pLoadDec, "&#x0A;", "`n")
-            pLoadDec := StrReplace(pLoadDec, "&#x0D;", "`r")
-        }
-
-        ; Parse stateMap for regular events
-        stateMap := Map()
-        loop lines.Length {
-            if (A_Index == 1 || lines[A_Index] == "")
-                continue
-            line := lines[A_Index]
-            posEq := InStr(line, "=")
-            if (posEq) {
-                k := SubStr(line, 1, posEq - 1)
-                valEnc := SubStr(line, posEq + 1)
-                valDec := XAMLHost.DecodeValue(valEnc)
-                stateMap[k] := valDec
-            }
-        }
+        msgParts := this.ParseIPCMessage(payload, dir)
+        type := msgParts.Type
+        ctrlName := msgParts.Ctrl
+        eventName := msgParts.Event
+        winId := msgParts.WinId
+        pLoadDec := msgParts.PayloadDec
+        stateMap := msgParts.StateMap
 
         ; --- A. RENDER HEADERS TAB ---
         headersXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
@@ -1265,7 +1519,7 @@ class XAML_DevTools {
             { Key: "Control Name", Val: ctrlName }, 
             { Key: "Event / Property", Val: eventName }
         ]
-        if (isEvent && winId != "") {
+        if (winId != "") {
             generalItems.Push({ Key: "Window ID", Val: winId })
         }
 
@@ -1300,12 +1554,14 @@ class XAML_DevTools {
         
         if (pText == "") {
             payloadXml .= '<TextBlock Text="No payload data." Foreground="{DynamicResource TextSub}" FontStyle="Italic" Margin="5,10,0,0" />'
+            payloadXml .= '</StackPanel>'
+            this.app.host.Update("PanelPipelinePayload", "AddXamlItem", payloadXml)
         } else {
             payloadXml .= '<TextBlock Text="Raw Payload" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
-            payloadXml .= '<TextBox Text="' this.EscapeXml(pText) '" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11" />'
+            payloadXml .= '<TextBox xml:space="preserve" Background="Transparent" Foreground="#CCCCCC" BorderThickness="0" Padding="5" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11">' . this.EscapeXml(pText) . '</TextBox>'
+            payloadXml .= '</StackPanel>'
+            this.app.host.Update("PanelPipelinePayload", "AddXamlItem", payloadXml)
         }
-        payloadXml .= '</StackPanel>'
-        this.app.host.Update("PanelPipelinePayload", "AddXamlItem", payloadXml)
 
         ; --- C. RENDER PREVIEW TAB ---
         previewXml := '<StackPanel xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">'
@@ -1379,11 +1635,11 @@ class XAML_DevTools {
             previewXml .= '<Grid>'
             previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>'
 
-            previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/><ColumnDefinition Width="30"/><ColumnDefinition Width="30"/></Grid.ColumnDefinitions>'
+            previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="35"/><ColumnDefinition Width="35"/></Grid.ColumnDefinitions>'
             previewXml .= '<TextBlock Text="Property" FontWeight="Bold" Margin="4" Grid.Column="0" Foreground="#CCCCCC"/>'
             previewXml .= '<TextBlock Text="Value" FontWeight="Bold" Margin="4" Grid.Column="1" Foreground="#CCCCCC"/>'
-            previewXml .= '<TextBlock Text="Loc" FontWeight="Bold" Margin="4" Grid.Column="2" Foreground="#CCCCCC"/>'
-            previewXml .= '<TextBlock Text="RO" FontWeight="Bold" Margin="4" Grid.Column="3" Foreground="#CCCCCC"/>'
+            previewXml .= '<TextBlock Text="Loc" FontWeight="Bold" Margin="4" Grid.Column="2" Foreground="#CCCCCC" HorizontalAlignment="Center"/>'
+            previewXml .= '<TextBlock Text="RO" FontWeight="Bold" Margin="4" Grid.Column="3" Foreground="#CCCCCC" HorizontalAlignment="Center"/>'
             previewXml .= '</Grid>'
 
             previewXml .= '<StackPanel Grid.Row="1">'
@@ -1423,10 +1679,10 @@ class XAML_DevTools {
                 ( LTrim
                     <Grid Background="{5}">
                     <Grid.ColumnDefinitions>
-                    <Grid.ColumnDefinition Width="100"/>
-                    <Grid.ColumnDefinition Width="*"/>
-                    <Grid.ColumnDefinition Width="30"/>
-                    <Grid.ColumnDefinition Width="30"/>
+                    <ColumnDefinition Width="150"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="35"/>
+                    <ColumnDefinition Width="35"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="{1}" Margin="4" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" />
                     <TextBlock Grid.Column="1" Text="{2}" Margin="4" FontSize="11" Foreground="#CE9178" TextTrimming="CharacterEllipsis" />
@@ -1461,8 +1717,8 @@ class XAML_DevTools {
                 ( LTrim
                     <Grid Background="{3}">
                     <Grid.ColumnDefinitions>
-                    <Grid.ColumnDefinition Width="150"/>
-                    <Grid.ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="150"/>
+                    <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="{1}" Margin="6" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" FontWeight="SemiBold" />
                     <TextBlock Grid.Column="1" Text="{2}" Margin="6" FontSize="11" Foreground="#CE9178" TextWrapping="Wrap" />
@@ -1505,7 +1761,7 @@ class XAML_DevTools {
             formattedJson := StrReplace(formattedJson, '"}', '"`n}')
             
             previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}" Padding="8">'
-            previewXml .= '<TextBox Text="' this.EscapeXml(formattedJson) '" Background="Transparent" Foreground="#A6E3A1" BorderThickness="0" FontFamily="Consolas" FontSize="11" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" />'
+            previewXml .= '<TextBox xml:space="preserve" Background="Transparent" Foreground="#A6E3A1" BorderThickness="0" FontFamily="Consolas" FontSize="11" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap">' . this.EscapeXml(formattedJson) . '</TextBox>'
             previewXml .= '</Border>'
         }
         else if (eventName == "CaretChanged" && pLoadDec != "") {

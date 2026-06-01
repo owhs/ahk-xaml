@@ -145,6 +145,7 @@ ShowColorPickerModal(state, ctrl, event) {
     })
 
     if (res.Status == "OK") {
+        ui.Update("Resource", "SelectedColorBrush", res.Color)
         ui.Update("BtnColorPreview", "Background", res.Color)
         app.ShowSnackbar("Color updated to " res.Color)
     }

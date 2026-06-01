@@ -351,6 +351,11 @@ class XAMLElement {
 
     ; Generate XAML string recursively
     ToString(indent := "") {
+        if (this._Tag == "Slider" && !this.HasOwnProp("_CustomStyleApplied") && (this._Props.Has("ThumbShape") || this._Props.Has("ThumbWidth") || this._Props.Has("ThumbHeight") || this._Props.Has("ThumbColor") || this._Props.Has("ThumbBg") || this._Props.Has("ThumbBackground") || this._Props.Has("TrackHeight") || this._Props.Has("TrackColor") || this._Props.Has("TrackBg") || this._Props.Has("TrackBackground"))) {
+            this._CustomStyleApplied := true
+            this._ApplyCustomSliderStyle()
+        }
+
         attrStr := ""
         for k, v in this._Props {
             val := StrReplace(String(v), "&", "&amp;")
@@ -390,6 +395,110 @@ class XAMLElement {
         }
         out .= "</" this._Tag ">`n"
         return out
+    }
+
+    _ApplyCustomSliderStyle() {
+        shape := this._Props.Has("ThumbShape") ? this._Props["ThumbShape"] : "Circle"
+        width := this._Props.Has("ThumbWidth") ? this._Props["ThumbWidth"] : "18"
+        height := this._Props.Has("ThumbHeight") ? this._Props["ThumbHeight"] : "18"
+        
+        bg := "{DynamicResource Accent}"
+        if this._Props.Has("ThumbColor")
+            bg := this._Props["ThumbColor"]
+        else if this._Props.Has("ThumbBg")
+            bg := this._Props["ThumbBg"]
+        else if this._Props.Has("ThumbBackground")
+            bg := this._Props["ThumbBackground"]
+
+        borderColor := "Transparent"
+        if this._Props.Has("ThumbBorderColor")
+            borderColor := this._Props["ThumbBorderColor"]
+        else if this._Props.Has("ThumbBorderBrush")
+            borderColor := this._Props["ThumbBorderBrush"]
+
+        borderThickness := this._Props.Has("ThumbBorderThickness") ? this._Props["ThumbBorderThickness"] : "0"
+        cornerRadius := this._Props.Has("ThumbCornerRadius") ? this._Props["ThumbCornerRadius"] : "1.5"
+        shadow := this._Props.Has("ThumbShadow") ? (this._Props["ThumbShadow"] == "True" || this._Props["ThumbShadow"] == true) : false
+
+        trackHeight := this._Props.Has("TrackHeight") ? this._Props["TrackHeight"] : "6"
+        trackColor := this._Props.Has("TrackColor") ? this._Props["TrackColor"] : "{DynamicResource Accent}"
+        
+        trackBg := "{DynamicResource ControlBorder}"
+        if this._Props.Has("TrackBg")
+            trackBg := this._Props["TrackBg"]
+        else if this._Props.Has("TrackBackground")
+            trackBg := this._Props["TrackBackground"]
+
+        ; Clean up custom properties
+        customKeys := ["ThumbShape", "ThumbWidth", "ThumbHeight", "ThumbColor", "ThumbBg", "ThumbBackground", "ThumbBorderColor", "ThumbBorderBrush", "ThumbBorderThickness", "ThumbCornerRadius", "ThumbShadow", "TrackHeight", "TrackColor", "TrackBg", "TrackBackground"]
+        for k in customKeys {
+            if this._Props.Has(k)
+                this._Props.Delete(k)
+        }
+
+        if !this._Props.Has("IsMoveToPointEnabled")
+            this._Props["IsMoveToPointEnabled"] := "True"
+
+        thumbVisual := ""
+        if (shape == "Line" || shape == "Rectangle") {
+            thumbVisual := '<Border Background="' bg '" BorderBrush="' borderColor '" BorderThickness="' borderThickness '" CornerRadius="' cornerRadius '" SnapsToDevicePixels="True"'
+            if (shadow) {
+                thumbVisual .= '><Border.Effect><DropShadowEffect BlurRadius="4" ShadowDepth="1" Opacity="0.5"/></Border.Effect></Border>'
+            } else {
+                thumbVisual .= ' />'
+            }
+        } else {
+            thumbVisual := '<Ellipse Fill="' bg '" Stroke="' borderColor '" StrokeThickness="' borderThickness '"'
+            if (shadow) {
+                thumbVisual .= '><Ellipse.Effect><DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.5"/></Ellipse.Effect></Ellipse>'
+            } else {
+                thumbVisual .= ' />'
+            }
+        }
+
+        style := '<Style TargetType="Slider">'
+        style .= '<Setter Property="FocusVisualStyle" Value="{x:Null}"/>'
+        style .= '<Setter Property="Template">'
+        style .= '<Setter.Value>'
+        style .= '<ControlTemplate TargetType="Slider">'
+        style .= '<Grid VerticalAlignment="Center" Background="Transparent">'
+        style .= '<Border Height="' trackHeight '" Background="Transparent"/>'
+        style .= '<Track x:Name="PART_Track">'
+        style .= '<Track.DecreaseRepeatButton>'
+        style .= '<RepeatButton Command="{x:Static Slider.DecreaseLarge}" Height="' trackHeight '">'
+        style .= '<RepeatButton.Template>'
+        style .= '<ControlTemplate TargetType="RepeatButton">'
+        style .= '<Border Background="' trackColor '" CornerRadius="3"/>'
+        style .= '</ControlTemplate>'
+        style .= '</RepeatButton.Template>'
+        style .= '</RepeatButton>'
+        style .= '</Track.DecreaseRepeatButton>'
+        style .= '<Track.IncreaseRepeatButton>'
+        style .= '<RepeatButton Command="{x:Static Slider.IncreaseLarge}" Height="' trackHeight '">'
+        style .= '<RepeatButton.Template>'
+        style .= '<ControlTemplate TargetType="RepeatButton">'
+        style .= '<Border Background="' trackBg '" CornerRadius="3"/>'
+        style .= '</ControlTemplate>'
+        style .= '</RepeatButton.Template>'
+        style .= '</RepeatButton>'
+        style .= '</Track.IncreaseRepeatButton>'
+        style .= '<Track.Thumb>'
+        style .= '<Thumb Width="' width '" Height="' height '" Cursor="Hand">'
+        style .= '<Thumb.Template>'
+        style .= '<ControlTemplate TargetType="Thumb">'
+        style .= thumbVisual
+        style .= '</ControlTemplate>'
+        style .= '</Thumb.Template>'
+        style .= '</Thumb>'
+        style .= '</Track.Thumb>'
+        style .= '</Track>'
+        style .= '</Grid>'
+        style .= '</ControlTemplate>'
+        style .= '</Setter.Value>'
+        style .= '</Setter>'
+        style .= '</Style>'
+
+        this.InjectResources(style)
     }
 }
 

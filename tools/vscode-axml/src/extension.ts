@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { ELEMENTS, PROPERTIES, EVENTS, RESOURCES, ICONS } from './db';
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('AHK-XAML extension masterclass mode is active!');
+    console.log('AHK-XAML extension is active!');
 
     const config = vscode.workspace.getConfiguration('axml');
     const customProps: string[] = config.get('customProperties') || [];
@@ -14,7 +14,7 @@ export function activate(context: vscode.ExtensionContext) {
         return match ? match[0].length : 0;
     }
 
-    // 1. Masterclass Autocomplete Provider
+    // 1. Autocomplete Provider
     const completionProvider = vscode.languages.registerCompletionItemProvider(
         'axml',
         {
@@ -105,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (text.trim().length === 0 || text.trim().startsWith('#')) continue;
 
                 const indent = getIndentLength(text);
-                
+
                 // Match Elements: Grid:, StackPanel (MyPanel):
                 const elMatch = text.match(/^\\s*([a-zA-Z0-9_\\.]+)(?:\\s*\\(([^)]+)\\))?\\s*:/);
                 if (elMatch) {
@@ -151,7 +151,7 @@ export function activate(context: vscode.ExtensionContext) {
             for (let i = 0; i < document.lineCount; i++) {
                 const line = document.lineAt(i).text;
                 if (line.trim().length === 0) continue;
-                
+
                 const indent = getIndentLength(line);
 
                 while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
@@ -183,7 +183,7 @@ export function activate(context: vscode.ExtensionContext) {
     const colorProvider = vscode.languages.registerColorProvider('axml', {
         provideDocumentColors(document: vscode.TextDocument, token: vscode.CancellationToken) {
             const colors: vscode.ColorInformation[] = [];
-            
+
             // Hex Regex
             const hexRegex = /#([0-9a-fA-F]{6,8})/g;
             for (let i = 0; i < document.lineCount; i++) {
@@ -200,7 +200,7 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                     colors.push(new vscode.ColorInformation(range, new vscode.Color(r, g, b, a)));
                 }
-                
+
                 // DynamicResource Regex
                 const drRegex = /\{DynamicResource\s+([a-zA-Z0-9_]+)\}/g;
                 let drMatch;
@@ -240,11 +240,11 @@ export function activate(context: vscode.ExtensionContext) {
                 const funcName = match[1];
                 const startIdx = line.text.lastIndexOf(funcName);
                 if (position.character >= startIdx && position.character <= startIdx + funcName.length) {
-                    
+
                     const files = await vscode.workspace.findFiles('**/*.ahk', '**/node_modules/**', 100);
                     const locations: vscode.Location[] = [];
                     const funcRegex = new RegExp(`^\\s*${funcName}\\s*\\(`, 'i');
-                    
+
                     for (const file of files) {
                         try {
                             const doc = await vscode.workspace.openTextDocument(file);
@@ -253,20 +253,20 @@ export function activate(context: vscode.ExtensionContext) {
                                     locations.push(new vscode.Location(file, new vscode.Position(i, 0)));
                                 }
                             }
-                        } catch(e) {}
+                        } catch (e) { }
                     }
-                    
+
                     if (locations.length > 0) {
                         return locations;
                     }
-                    
+
                     vscode.commands.executeCommand('workbench.action.findInFiles', {
                         query: funcName,
                         isCaseSensitive: false,
                         matchWholeWord: true,
                         filesToInclude: "*.ahk"
                     });
-                    
+
                     return null;
                 }
             }
@@ -278,10 +278,10 @@ export function activate(context: vscode.ExtensionContext) {
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('axml');
     function updateDiagnostics(document: vscode.TextDocument) {
         if (document.languageId !== 'axml') return;
-        
+
         const diagnostics: vscode.Diagnostic[] = [];
         const lines = document.getText().split('\\n');
-        
+
         for (let i = 0; i < lines.length; i++) {
             const line = lines[i];
             const match = line.match(/^\\s*([a-zA-Z0-9_\\.]+)\\s*:/);
@@ -291,7 +291,7 @@ export function activate(context: vscode.ExtensionContext) {
                     const correctProp = commonFixes[propName];
                     const startIdx = line.indexOf(propName);
                     const range = new vscode.Range(i, startIdx, i, startIdx + propName.length);
-                    
+
                     const diagnostic = new vscode.Diagnostic(
                         range,
                         `'${propName}' is not a standard property. Did you mean '${correctProp}'?`,
@@ -337,9 +337,9 @@ export function activate(context: vscode.ExtensionContext) {
         provideHover(document: vscode.TextDocument, position: vscode.Position) {
             const range = document.getWordRangeAtPosition(position, /[a-zA-Z0-9_\\.]+/);
             if (!range) return null;
-            
+
             const word = document.getText(range);
-            
+
             const el = ELEMENTS.find(e => e.name === word);
             if (el) return new vscode.Hover(new vscode.MarkdownString(`**${el.name}**\n\n${el.description}`));
 
@@ -347,23 +347,23 @@ export function activate(context: vscode.ExtensionContext) {
             if (prop) {
                 const md = new vscode.MarkdownString(`**${prop.name}**\n\n${prop.description}`);
                 md.isTrusted = true;
-                
+
                 if (['Margin', 'Padding', 'BorderThickness', 'CornerRadius'].includes(prop.name)) {
                     const uri = `command:axml.generateMargin?${encodeURIComponent(JSON.stringify([document.uri.toString(), position.line]))}`;
                     md.appendMarkdown(`\n\n---\n[🪄 Generate Value](${uri})`);
                 }
-                
+
                 if (['Background', 'Foreground', 'BorderBrush'].includes(prop.name)) {
                     const uri = `command:axml.chooseThemeColor?${encodeURIComponent(JSON.stringify([document.uri.toString(), position.line]))}`;
                     md.appendMarkdown(`\n\n---\n[🎨 Choose Theme Color](${uri})`);
                 }
-                
+
                 return new vscode.Hover(md);
             }
 
             const evt = EVENTS.find(e => e.name === word);
             if (evt) return new vscode.Hover(new vscode.MarkdownString(`**${evt.name}**\n\n${evt.description}`));
-            
+
             const res = RESOURCES.find(e => e.name === word);
             if (res) return new vscode.Hover(new vscode.MarkdownString(`**${res.name}**\n\n${res.description}\n*(DynamicResource)*`));
 
@@ -376,13 +376,13 @@ export function activate(context: vscode.ExtensionContext) {
         if (!args || args.length < 2) return;
         const uri = vscode.Uri.parse(args[0]);
         const line = args[1];
-        
+
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.uri.toString() !== uri.toString()) return;
-        
+
         const uniform = await vscode.window.showInputBox({ prompt: "Enter Uniform Value (or press Enter to specify individual sides)" });
         let result = "";
-        
+
         if (uniform) {
             result = uniform;
         } else {
@@ -392,7 +392,7 @@ export function activate(context: vscode.ExtensionContext) {
             const bottom = await vscode.window.showInputBox({ prompt: "Bottom" }) || "0";
             result = `${left},${top},${right},${bottom}`;
         }
-        
+
         const lineText = editor.document.lineAt(line).text;
         const match = lineText.match(/^(\s*[a-zA-Z0-9_\.]+\s*:\s*).*$/);
         if (match) {
@@ -407,13 +407,13 @@ export function activate(context: vscode.ExtensionContext) {
         if (!args || args.length < 2) return;
         const uri = vscode.Uri.parse(args[0]);
         const line = args[1];
-        
+
         const editor = vscode.window.activeTextEditor;
         if (!editor || editor.document.uri.toString() !== uri.toString()) return;
-        
+
         const items = RESOURCES.map(r => ({ label: r.name, description: r.hex || "Theme Color" }));
         const picked = await vscode.window.showQuickPick(items, { placeHolder: "Select a Theme Color..." });
-        
+
         if (picked) {
             const lineText = editor.document.lineAt(line).text;
             const match = lineText.match(/^(\s*[a-zA-Z0-9_\.]+\s*:\s*).*$/);
@@ -440,4 +440,4 @@ export function activate(context: vscode.ExtensionContext) {
     );
 }
 
-export function deactivate() {}
+export function deactivate() { }

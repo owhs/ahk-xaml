@@ -8,11 +8,12 @@ XAMLHost.Prewarm()
 #Include "..\..\lib\XAML_Dialog.ahk"
 #Include "..\..\lib\XAML_PanelManager.ahk"
 
-; --- Docking Manager Example ---
-; Demonstrates how to create a multi-window IDE-like environment
-; with floating "tear-off" panels that remember their size, position, and visibility across sessions.
+; --- Pinned Docking Manager Example ---
+; Demonstrates a premium multi-window workspace where floating panels
+; can be snapped (pinned) to each other and follow in perfect real-time lockstep
+; during drags, powered by high-performance Win32 WinEventHooks.
 
-global INI_FILE := A_ScriptDir "\docking_layout.ini"
+global INI_FILE := A_ScriptDir "\pinned_docking_layout.ini"
 global isAppReady := false
 global isInitializing := true
 
@@ -21,10 +22,10 @@ Trace(msg) {
 }
 
 try FileDelete(A_Temp "\AhkWpf\AhkTrace.log")
-Trace("1. Global Script Start")
+Trace("1. Pinned Docking Script Start")
 
-; Initialize Shared PanelManager in Traditional Snapping mode
-PanelManager.FollowMode := false
+; Enable High-Performance Snapped Window Follow Dragging
+PanelManager.FollowMode := true
 PanelManager.IniFile := INI_FILE
 
 ; Register Panels
@@ -32,10 +33,8 @@ PanelManager.RegisterPanel("Terminal", "Terminal Output", 100, 100, 600, 300)
 PanelManager.RegisterPanel("Properties", "Object Properties", 750, 100, 300, 500)
 PanelManager.RegisterPanel("Toolbox", "Component Toolbox", 100, 450, 250, 400)
 
-
-
-; --- Main Application ---
-app := XAML_GUI("IDE Docking Manager Example", { Sidebar: true, BurgerMenu: true, TitleBarHeight: 28, AppIcon: true })
+; --- Main Application Setup ---
+app := XAML_GUI("Silky-Smooth Pinned Docking", { Sidebar: true, BurgerMenu: true, TitleBarHeight: 28, AppIcon: true, MaxButton: false })
 
 ; Load saved settings
 savedRadius := IniRead(INI_FILE, "Global", "PanelRadius", "0")
@@ -80,6 +79,7 @@ if (savedShowInAltTab == "1" && savedShowInTaskbar == "1") {
 } else {
     initVisIdx := 0
 }
+
 cbVisibility.SelectedIndex(initVisIdx)
 
 chkShadows.IsChecked(savedNoShadows == "0" ? "True" : "False")
@@ -104,8 +104,8 @@ for id, pInfo in PanelManager.Panels {
 
 contentPanel := app.main.Add("StackPanel").Grid_Row(1).Margin("40")
 
-contentPanel.Add("TextBlock").Text("IDE WORKBENCH").Foreground("{DynamicResource TextMain}").FontSize(24).FontWeight("Bold").Margin("0,0,0,5")
-contentPanel.Add("TextBlock").Text("Use the buttons below to tear off and spawn floating tool panels. Their state will be remembered.").Foreground("{DynamicResource TextSub}").Margin("0,0,0,30").TextWrapping("Wrap")
+contentPanel.Add("TextBlock").Text("SILKY-SMOOTH PINNED DOCKING").Foreground("{DynamicResource TextMain}").FontSize(24).FontWeight("Bold").Margin("0,0,0,5")
+contentPanel.Add("TextBlock").Text("Tear off any panels below. When you drag panels next to each other, they will SNAP and PIN together. Once pinned, dragging any window moves the entire cluster seamlessly in real-time!").Foreground("{DynamicResource TextSub}").Margin("0,0,0,30").TextWrapping("Wrap")
 
 btnSp := contentPanel.Add("StackPanel").Orientation("Horizontal").Margin("0,0,0,30")
 btnSp.Add("Button").Name("BtnOpenTerminal").Content("Toggle Terminal").Margin("0,0,10,0")
@@ -119,23 +119,21 @@ ui := app.Compile()
 for id, pInfo in PanelManager.Panels {
     ui.Track("ComboTheme_" id)
 }
-ui.xaml := StrReplace(ui.xaml, 'Name="BtnMaximize"', 'Name="BtnAppMaximize"')
 
 ; Restore Main Window Position
-mainX := IniRead("docking_layout.ini", "MainWindow", "X", "")
-mainY := IniRead("docking_layout.ini", "MainWindow", "Y", "")
-mainW := IniRead("docking_layout.ini", "MainWindow", "W", "940")
-mainH := IniRead("docking_layout.ini", "MainWindow", "H", "700")
+mainX := IniRead(INI_FILE, "MainWindow", "X", "")
+mainY := IniRead(INI_FILE, "MainWindow", "Y", "")
+mainW := IniRead(INI_FILE, "MainWindow", "W", "940")
+mainH := IniRead(INI_FILE, "MainWindow", "H", "700")
 
 if (mainX != "" && mainY != "") {
     ui.xaml := StrReplace(ui.xaml, 'Width="940" Height="700"', 'Width="' mainW '" Height="' mainH '" Left="' mainX '" Top="' mainY '"')
     ui.xaml := StrReplace(ui.xaml, 'WindowStartupLocation="CenterScreen"', 'WindowStartupLocation="Manual"')
 }
-if (IniRead("docking_layout.ini", "Global", "NoShadows", "0") == "1") {
+if (IniRead(INI_FILE, "Global", "NoShadows", "0") == "1") {
     ui.xaml := StrReplace(ui.xaml, 'GlassFrameThickness="-1"', 'GlassFrameThickness="0" ResizeBorderThickness="6"')
 }
 ui.OnEvent("Window", "LoadedHwnd", (state, ctrl, event) => OnMainLoaded())
-ui.OnEvent("BtnAppMaximize", "Click", (*) => PanelManager.AutoFillSpace("Main"))
 ui.OnEvent("ComboTheme", "SelectionChanged", (state, ctrl, event) => (
     OnThemeEngineChanged(state["ComboTheme"])
 ))
@@ -184,7 +182,14 @@ OnMainLoaded() {
 
     scaleIdx := savedScale == "Thin" ? 0 : (savedScale == "Balanced" ? 1 : 2)
 
-    PanelManager.Init(ui)
+    PanelManager.Init(ui, INI_FILE)
+
+    if (PanelManager.FollowMode) {
+        try {
+            WinWait("ahk_id " ui.wpfHwnd, , 2)
+            WinSetStyle("-0x10000", "ahk_id " ui.wpfHwnd)
+        }
+    }
 
     SetTimer(ApplyInitialSelections.Bind(radiusIdx, themeIdx, scaleIdx, savedRadius, savedTheme, savedScale), -50)
     SetTimer(CheckMainMoved, 1000)
@@ -230,8 +235,6 @@ ApplyInitialSelections(rIdx, tIdx, sIdx, savedRadius, savedTheme, savedScale) {
         }
     }
 
-    ; Force-sync all loaded settings to main window and panels at startup,
-    ; ensuring everything perfectly matches regardless of whether ComboBox SelectionChanged fired.
     Trace("ApplyInitialSelections: Force-syncing theme '" savedTheme "', scale '" savedScale "', radius '" savedRadius "' to all windows")
     try {
         app.ThemeChanged(Map("ComboTheme", savedTheme), "", "")
@@ -276,23 +279,22 @@ ApplyInitialSelections(rIdx, tIdx, sIdx, savedRadius, savedTheme, savedScale) {
         Trace("ApplyInitialSelections UpdateBackdropEffects failed: " eBackdrop.Message)
     }
 
-    ; Done initializing!
     isInitializing := false
 }
 
 CheckMainMoved() {
     if (ui.wpfHwnd && WinExist("ahk_id " ui.wpfHwnd)) {
         WinGetPos(&x, &y, &w, &h, "ahk_id " ui.wpfHwnd)
-        if (x < -10000 || y < -10000) ; Ignore minimized state
+        if (x < -10000 || y < -10000)
             return
 
         static lastX := "", lastY := "", lastW := "", lastH := ""
         if (x != lastX || y != lastY || w != lastW || h != lastH) {
             lastX := x, lastY := y, lastW := w, lastH := h
-            IniWrite(x, "docking_layout.ini", "MainWindow", "X")
-            IniWrite(y, "docking_layout.ini", "MainWindow", "Y")
-            IniWrite(w, "docking_layout.ini", "MainWindow", "W")
-            IniWrite(h, "docking_layout.ini", "MainWindow", "H")
+            IniWrite(x, INI_FILE, "MainWindow", "X")
+            IniWrite(y, INI_FILE, "MainWindow", "Y")
+            IniWrite(w, INI_FILE, "MainWindow", "W")
+            IniWrite(h, INI_FILE, "MainWindow", "H")
         }
     }
 }
@@ -312,9 +314,8 @@ OnThemeEngineChanged(themeName) {
         themeData := ""
     }
     
-    ; 1. Parse Window_DWM to update Transparency & Blur Effect
-    backdrop := "2" ; Default to Mica
-    darkMode := "1" ; Default to Dark Mode
+    backdrop := "2"
+    darkMode := "1"
     
     if (themeData != "") {
         Loop Parse, themeData, "`n", "`r" {
@@ -330,7 +331,6 @@ OnThemeEngineChanged(themeName) {
         }
     }
     
-    ; Determine Transparency and Backdrop based on theme's Window_DWM
     transVal := (backdrop != "0") ? "1" : "0"
     blurVal := "Mica"
     if (backdrop == "3")
@@ -338,12 +338,10 @@ OnThemeEngineChanged(themeName) {
     else if (backdrop == "1")
         blurVal := "Aero"
         
-    ; If NOT initializing, we update the saved settings and UI controls to match the theme defaults
     if (!isInitializing) {
         IniWrite(transVal, INI_FILE, "Global", "Transparency")
         IniWrite(blurVal, INI_FILE, "Global", "Backdrop")
         
-        ; Update Sidebar UI controls programmatically
         if (ui.wpfHwnd) {
             try ui.Update("ChkTransparency", "IsChecked", (transVal == "1" ? "True" : "False"))
             blurIdx := (blurVal == "Acrylic" ? 1 : (blurVal == "Aero" ? 2 : 0))
@@ -351,8 +349,7 @@ OnThemeEngineChanged(themeName) {
         }
     }
     
-    ; 2. Parse Resource_WindowRadius to update Border Radius
-    radius := "12" ; Default from themes.ini
+    radius := "12"
     if (themeData != "") {
         Loop Parse, themeData, "`n", "`r" {
             parts := StrSplit(A_LoopField, "=", " `t", 2)
@@ -369,7 +366,7 @@ OnThemeEngineChanged(themeName) {
     if (!isInitializing) {
         IniWrite(radius, INI_FILE, "Global", "PanelRadius")
         if (ui.wpfHwnd) {
-            radIdx := 2 ; Default to Smooth (8)
+            radIdx := 2
             switch radius {
                 case "0": radIdx := 0
                 case "4": radIdx := 1
@@ -381,7 +378,6 @@ OnThemeEngineChanged(themeName) {
         }
     }
     
-    ; Apply to main window radius and update panel radii
     try app.ThemeChanged(Map("ComboTheme", themeName), "", "")
     
     activeRadius := isInitializing ? IniRead(INI_FILE, "Global", "PanelRadius", "0") : radius
@@ -398,14 +394,10 @@ OnThemeEngineChanged(themeName) {
     try app.RadiusChanged(Map("ComboRadius", radStr), "", "")
     PanelManager.UpdateRadius(activeRadius)
 
-    ; Apply shadows from docking_layout.ini (dynamic persistence)
     noShadows := IniRead(INI_FILE, "Global", "NoShadows", "0")
     PanelManager.UpdateShadows(noShadows == "0")
     
-    ; Update theme on all panels
     PanelManager.UpdateTheme(themeName)
-    
-    ; Update backdrop effects (combines transparency, backdrop style, dark mode)
     UpdateBackdropEffects()
 }
 
@@ -419,10 +411,7 @@ OnRadiusChanged(state) {
     
     IniWrite(radius, INI_FILE, "Global", "PanelRadius")
     
-    ; Apply to main window
     try app.RadiusChanged(state, "", "")
-    
-    ; Apply to panels
     PanelManager.UpdateRadius(radius)
 }
 
@@ -433,7 +422,6 @@ OnPanelThemeChanged(id, state, ctrl, event) {
     chosenTheme := state["ComboTheme_" id]
     IniWrite(chosenTheme, INI_FILE, id, "Theme")
     
-    ; Apply theme to that specific panel
     if (PanelManager.Panels.Has(id)) {
         pInfo := PanelManager.Panels[id]
         PanelManager.ApplyThemeToPanel(pInfo, PanelManager.CurrentTheme)
@@ -457,7 +445,6 @@ OnVisibilityChanged(state) {
         showInAltTab := "1"
         showInTaskbar := "0"
     } else {
-        ; Hidden in taskbar & alt tab
         showInAltTab := "0"
         showInTaskbar := "0"
     }
@@ -467,6 +454,7 @@ OnVisibilityChanged(state) {
     
     PanelManager.ApplyVisibilityStyles()
 }
+
 OnTransparencyToggle(state) {
     global INI_FILE, isAppReady
     if (!isAppReady)
@@ -513,7 +501,6 @@ UpdateBackdropEffects() {
         }
     }
 }
-
 
 OnShadowsToggle(state) {
     global INI_FILE, isAppReady

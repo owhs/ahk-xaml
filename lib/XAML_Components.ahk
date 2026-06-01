@@ -135,7 +135,7 @@ class XColorPicker {
 
         sliders := sliderGrid.Add("StackPanel").Grid_Column(1).VerticalAlignment("Center").Margin("0,0,15,0")
 
-        hueBg := sliders.Add("Border").Height("10").CornerRadius("5").Margin("0,0,0,12").Add("Border.Background").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
+        hueBg := sliders.Add("Border").Height("10").CornerRadius("5").Margin("0,0,0,12").IsHitTestVisible("False").Add("Border.Background").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFF0000").Offset("0")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFFFF00").Offset("0.16")
         hueBg.Add("GradientStop").SetProp('Color', "#FF00FF00").Offset("0.33")
@@ -143,16 +143,21 @@ class XColorPicker {
         hueBg.Add("GradientStop").SetProp('Color', "#FF0000FF").Offset("0.66")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFF00FF").Offset("0.83")
         hueBg.Add("GradientStop").SetProp('Color', "#FFFF0000").Offset("1")
-        sliders.Add("Slider").Name("HueSlider").Minimum("0").Maximum("360").Value("0").Margin("0,-18,0,0")
+        sliders.Add("Slider").Name("HueSlider").Minimum("0").Maximum("360").Value("0").Margin("0,-22,0,0")
+            .ThumbShape("Line").ThumbWidth(8).ThumbHeight(20).ThumbColor("#FFFFFF").ThumbBorderColor("#FF222222").ThumbBorderThickness(1.5).ThumbCornerRadius(1.5).ThumbShadow(true)
+            .TrackHeight(32).TrackColor("Transparent").TrackBg("Transparent")
 
-        alphaBg := sliders.Add("Border").Height("10").CornerRadius("5").Background("Transparent").ClipToBounds("True")
+         alphaBg := sliders.Add("Border").Height("10").CornerRadius("5").Background("Transparent").ClipToBounds("True").IsHitTestVisible("False")
 
-        ; Dynamic Fill overlay masked by a transparent-to-white gradient
-        alphaFill := alphaBg.Add("Rectangle").Name("AlphaFillRect").Fill("White")
-        mask := alphaFill.Add("Rectangle.OpacityMask").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
-        mask.Add("GradientStop").SetProp('Color', "Transparent").Offset("0")
-        mask.Add("GradientStop").SetProp('Color', "White").Offset("1")
-        sliders.Add("Slider").Name("AlphaSlider").Minimum("0").Maximum("255").Value("255").Margin("0,-14,0,0")
+         ; Dynamic Fill overlay masked by a transparent-to-white gradient
+         alphaFill := alphaBg.Add("Rectangle").Name("AlphaFillRect").Fill("White")
+         mask := alphaFill.Add("Rectangle.OpacityMask").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
+         mask.Add("GradientStop").SetProp('Color', "Transparent").Offset("0")
+         mask.Add("GradientStop").SetProp('Color', "White").Offset("1")
+         
+         sliders.Add("Slider").Name("AlphaSlider").Minimum("0").Maximum("255").Value("255").Margin("0,-22,0,0")
+            .ThumbShape("Line").ThumbWidth(8).ThumbHeight(20).ThumbColor("#FFFFFF").ThumbBorderColor("#FF222222").ThumbBorderThickness(1.5).ThumbCornerRadius(1.5).ThumbShadow(true)
+            .TrackHeight(32).TrackColor("Transparent").TrackBg("Transparent")
 
         sliderGrid.Add("Border").Name("ColorPreview").Grid_Column(2).Width("36").Height("36").CornerRadius("18").Background(defaultColor).BorderBrush("{DynamicResource ControlBorder}").BorderThickness("1")
 
@@ -1295,6 +1300,42 @@ _BuildDataTableRow(parent, columns, rIndex, rowObj) {
 }
 
 
+_PopoverBorder_Add(this, tag, propsOrText := "") {
+    if (InStr(tag, ".")) {
+        return XAMLElement.Prototype.Add.Call(this, tag, propsOrText)
+    }
+
+    if (!this.HasOwnProp("_spHelper")) {
+        visualChildren := []
+        for child in this._Children {
+            if (!InStr(child._Tag, ".")) {
+                visualChildren.Push(child)
+            }
+        }
+
+        if (visualChildren.Length == 0) {
+            return XAMLElement.Prototype.Add.Call(this, tag, propsOrText)
+        } else {
+            sp := XAMLElement.Prototype.Add.Call(this, "StackPanel")
+            this._spHelper := sp
+
+            newChildren := []
+            for child in this._Children {
+                if (InStr(child._Tag, ".")) {
+                    newChildren.Push(child)
+                } else if (child != sp) {
+                    child._Parent := sp
+                    sp._Children.Push(child)
+                }
+            }
+            newChildren.Push(sp)
+            this._Children := newChildren
+        }
+    }
+
+    return this._spHelper.Add(tag, propsOrText)
+}
+
 XAMLElement.Prototype.DefineProp("AddRichPopover", { Call: _AddRichPopover })
 _AddRichPopover(this) {
     static popoverCounter := 0
@@ -1312,8 +1353,8 @@ _AddRichPopover(this) {
 
     bdr.Add("Border.Effect").Add("DropShadowEffect").BlurRadius(12).ShadowDepth(3).Opacity(0.25).SetProp('Color', "Black")
 
-    sp := bdr.Add("StackPanel")
-    return sp
+    bdr.DefineProp("Add", { Call: _PopoverBorder_Add })
+    return bdr
 }
 
 XAMLElement.Prototype.DefineProp("StatCard", { Call: _StatCard })

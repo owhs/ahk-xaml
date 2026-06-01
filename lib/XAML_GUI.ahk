@@ -21,10 +21,14 @@ class XAML_GUI {
         this.showSidebar := hasOpt("Sidebar") ? getOpt("Sidebar") : true
         this.showBurger := hasOpt("BurgerMenu") ? getOpt("BurgerMenu") : true
         this.showMinMax := hasOpt("MinMaxButtons") ? getOpt("MinMaxButtons") : true
+        this.resize := hasOpt("Resize") ? getOpt("Resize") : true
+        this.showMax := hasOpt("MaxButton") ? getOpt("MaxButton") : (this.resize ? true : false)
         this.showIcon := hasOpt("AppIcon") ? getOpt("AppIcon") : true
         this.titleBarHeight := hasOpt("TitleBarHeight") ? getOpt("TitleBarHeight") : 50
         this.windowState := hasOpt("WindowState") ? getOpt("WindowState") : "Normal"
         this.closeAction := hasOpt("CloseAction") ? getOpt("CloseAction") : "ExitApp"
+        this.width := hasOpt("Width") ? getOpt("Width") : 940
+        this.height := hasOpt("Height") ? getOpt("Height") : 700
 
         ; Expose the root generator for customization
         this.X := XAML_Generator("Grid").Name("AppGrid").Background("{DynamicResource BgColor}").Focusable("True")
@@ -155,9 +159,11 @@ class XAML_GUI {
             minBtn.InjectResources(ChromeBtnTemplate)
             minBtn.Add("TextBlock").Text(Chr(0xE921)).FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").FontSize(10).VerticalAlignment("Center").HorizontalAlignment("Center")
 
-            maxBtn := winBtns.Add("Button").Name("BtnMaximize").WindowChrome_IsHitTestVisibleInChrome("True").Width(45).Height(String(this.titleBarHeight)).Background("Transparent").Foreground("{DynamicResource TextMain}").BorderThickness(0).Cursor("Hand").ToolTip("Maximize")
-            maxBtn.InjectResources(ChromeBtnTemplate)
-            maxBtn.Add("TextBlock").Name("BtnMaximizeTxt").Text(Chr(0xE922)).FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").FontSize(10).VerticalAlignment("Center").HorizontalAlignment("Center")
+            if (this.showMax) {
+                maxBtn := winBtns.Add("Button").Name("BtnMaximize").WindowChrome_IsHitTestVisibleInChrome("True").Width(45).Height(String(this.titleBarHeight)).Background("Transparent").Foreground("{DynamicResource TextMain}").BorderThickness(0).Cursor("Hand").ToolTip("Maximize")
+                maxBtn.InjectResources(ChromeBtnTemplate)
+                maxBtn.Add("TextBlock").Name("BtnMaximizeTxt").Text(Chr(0xE922)).FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").FontSize(10).VerticalAlignment("Center").HorizontalAlignment("Center")
+            }
         }
 
         closeBtn := winBtns.Add("Button").Name("BtnClose").WindowChrome_IsHitTestVisibleInChrome("True").Width(45).Height(String(this.titleBarHeight)).Background("Transparent").Foreground("{DynamicResource TextMain}").BorderThickness(0).Cursor("Hand").ToolTip("Close Application")
@@ -181,6 +187,9 @@ class XAML_GUI {
             this.host := XAMLHost("", outFile, options*)
         } else {
             this.xamlString := StrReplace(XAML_TEMPLATE, "%CaptionHeight%", this.titleBarHeight)
+            this.xamlString := StrReplace(this.xamlString, "%Width%", this.width)
+            this.xamlString := StrReplace(this.xamlString, "%Height%", this.height)
+            this.xamlString := StrReplace(this.xamlString, "%ResizeMode%", this.resize ? "CanResize" : "NoResize")
             this.xamlString := StrReplace(this.xamlString, "%app%", this.X.Compile())
             this.xamlString := StrReplace(this.xamlString, "%resources%", "")
             this.host := XAMLHost(this.xamlString, outFile, options*)
@@ -625,9 +634,18 @@ class XAML_GUI {
         radText := state.Has("ComboRadius") ? state["ComboRadius"] : "Smooth (8)"
         RegExMatch(radText, "\((\d+)\)", &match)
         radius := match ? match[1] : "8"
+        
+        ; If host window is snapped to any panel, force radius to 0 (square hover borders)
+        try {
+            pmClass := %"PanelManager"%
+            if (HasProp(pmClass, "isMainSnappedState") && pmClass.isMainSnappedState) {
+                radius := "0"
+            }
+        }
 
         ; Apply to window resources
         this.host.Update("Resource", "WindowRadius", "CornerRadius:" radius)
+        this.host.Update("Resource", "CloseBtnRadius", "CornerRadius:0," radius ",0,0")
 
         ; Apply to DWM for Win11 styling
         if (this.host.wpfHwnd) {

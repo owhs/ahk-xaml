@@ -102,6 +102,14 @@ class XAMLHost {
         XAMLHost.instanceCounter++
         this.id := "WPF_" A_TickCount "_" XAMLHost.instanceCounter "_" Random(1000, 9999)
         XAMLHost._instances[this.id] := this
+        
+        if (InStr(xaml, "%Width%"))
+            xaml := StrReplace(xaml, "%Width%", "940")
+        if (InStr(xaml, "%Height%"))
+            xaml := StrReplace(xaml, "%Height%", "700")
+        if (InStr(xaml, "%ResizeMode%"))
+            xaml := StrReplace(xaml, "%ResizeMode%", "CanResize")
+
         this.xaml := xaml
         this.exePath := exePath
         this.ownerHwnd := ownerHwnd
@@ -141,7 +149,7 @@ class XAMLHost {
     }
 
     IsDevToolsWindow() {
-        if (!IsSet(XAML_DevTools_Instance) || XAML_DevTools_Instance == "")
+        if (!IsSet(XAML_DevTools_Instance) || !IsObject(XAML_DevTools_Instance))
             return false
         try {
             if (HasProp(XAML_DevTools_Instance, "app") && XAML_DevTools_Instance.app && HasProp(XAML_DevTools_Instance.app, "host") && XAML_DevTools_Instance.app.host)
@@ -156,8 +164,8 @@ class XAMLHost {
         val := StrReplace(valueStr, "`r", "&#x0D;")
         val := StrReplace(val, "`n", "&#x0A;")
         payload := controlName "|" propertyName "|" val
-        if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "" && !this.IsDevToolsWindow()) {
-            try XAML_DevTools_Instance.LogIPC("OUT", payload)
+        if (!this.IsDevToolsWindow()) {
+            XAMLHost.LogDevTools("OUT", payload)
         }
         buf := Buffer(StrPut(payload, "UTF-8"))
         StrPut(payload, buf, "UTF-8")
@@ -186,8 +194,8 @@ class XAMLHost {
         }
         
         if (payload != "") {
-            if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "" && !this.IsDevToolsWindow()) {
-                try XAML_DevTools_Instance.LogIPC("OUT", payload)
+            if (!this.IsDevToolsWindow()) {
+                XAMLHost.LogDevTools("OUT", payload)
             }
             buf := Buffer(StrPut(payload, "UTF-8"))
             StrPut(payload, buf, "UTF-8")
@@ -883,8 +891,8 @@ class XAMLHost {
     }
 
     _SendToEngine(payload) {
-        if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "" && !this.IsDevToolsWindow()) {
-            try XAML_DevTools_Instance.LogIPC("OUT", payload)
+        if (!this.IsDevToolsWindow()) {
+            XAMLHost.LogDevTools("OUT", payload)
         }
         buf := Buffer(StrPut(payload, "UTF-8"))
         StrPut(payload, buf, "UTF-8")
@@ -928,25 +936,36 @@ class XAMLHost {
         SetTimer(ObjBindMethod(this, "CheckForCrashes"), 50)
     }
 
+    static LogDevTools(dir, payload) {
+        try {
+            if (IsSet(XAML_DevTools_Instance) && IsObject(XAML_DevTools_Instance) && HasMethod(XAML_DevTools_Instance, "LogIPC")) {
+                SetTimer(LogIPCCallback, -1)
+            }
+        }
+        
+        LogIPCCallback() {
+            try {
+                if (IsSet(XAML_DevTools_Instance) && IsObject(XAML_DevTools_Instance) && HasMethod(XAML_DevTools_Instance, "LogIPC")) {
+                    XAML_DevTools_Instance.LogIPC(dir, payload)
+                }
+            }
+        }
+    }
+
     static OnCopyData(wParam, lParam, msg, hwnd) {
         if (msg != 0x004A)
             return 0
 
         lpData := NumGet(lParam, A_PtrSize * 2, "Ptr")
         payload := StrGet(lpData, "UTF-8")
-        if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "") {
-            ; Only log if the target window is not the DevTools window itself
-            parts := StrSplit(payload, "|")
-            if (parts.Length >= 3) {
-                isDevTools := false
-                try {
-                    if (HasProp(XAML_DevTools_Instance, "app") && XAML_DevTools_Instance.app && HasProp(XAML_DevTools_Instance.app, "host") && XAML_DevTools_Instance.app.host) {
-                        isDevTools := (parts[2] == XAML_DevTools_Instance.app.host.id)
-                    }
-                }
-                if (!isDevTools) {
-                    try XAML_DevTools_Instance.LogIPC("IN", payload)
-                }
+        parts := StrSplit(payload, "|")
+        if (parts.Length >= 3) {
+            isDevTools := false
+            if (IsSet(XAML_DevTools_Instance) && IsObject(XAML_DevTools_Instance) && HasProp(XAML_DevTools_Instance, "app") && XAML_DevTools_Instance.app && HasProp(XAML_DevTools_Instance.app, "host") && XAML_DevTools_Instance.app.host) {
+                isDevTools := (parts[2] == XAML_DevTools_Instance.app.host.id)
+            }
+            if (!isDevTools) {
+                XAMLHost.LogDevTools("IN", payload)
             }
         }
         if (!IsSet(XAML_ENABLE_LOGGING) || XAML_ENABLE_LOGGING)
@@ -1579,7 +1598,8 @@ XAML_TEMPLATE := '
             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
             xmlns:sys="clr-namespace:System;assembly=mscorlib"
             xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
-            Width="940" Height="700"
+            Width="%Width%" Height="%Height%"
+            ResizeMode="%ResizeMode%"
             WindowStyle="None" AllowsTransparency="False" Background="Transparent"
             WindowStartupLocation="CenterScreen"
             TextElement.Foreground="{DynamicResource TextMain}" FontFamily="Segoe UI Variable Display, Segoe UI, sans-serif">
