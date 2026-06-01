@@ -368,6 +368,11 @@ class XAMLElement {
         if (this.HasProp("_AhkLine") && this._AhkLine != "") {
             filePrefix := (this.HasProp("_AhkFile") && this._AhkFile != "") ? this._AhkFile ":" : ""
             tracker := "<!-- [ahk:" filePrefix this._AhkLine "] -->"
+            if (!this._Props.Has("Uid") && !this._Props.Has("x:Uid")) {
+                if (!InStr(this._Tag, ".") && !RegExMatch(this._Tag, "^(ColumnDefinition|RowDefinition|.*Transform|.*Brush|.*Effect|Style|Setter|.*Template|.*Trigger|Storyboard|.*Animation|Run|Bold|Italic|Span|LineBreak)$")) {
+                    attrStr .= ' Uid="ahk:' filePrefix this._AhkLine '"'
+                }
+            }
         }
         
         if (this._Children.Length == 0 && this._TextContent == "")

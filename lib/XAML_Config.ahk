@@ -50,6 +50,11 @@ global XAML_ENABLE_DOCUMENT := false
 ; This completely eliminates the ~300ms cold-start delay when the dialog is shown!
 global XAML_AUTO_PREWARM := false
 
+; --- Developer Tools ---
+; When true, enables the premium developer tools panel.
+; Pressing F12 in any active app window opens the floating DevTools suite.
+global XAML_ENABLE_DEVTOOLS := true
+
 ; --- Backward Compatibility ---
 ; XAML_DEBUG is derived from the new flags for any scripts that still reference it.
 global XAML_DEBUG := XAML_FORCE_DYNAMIC_COMPILE

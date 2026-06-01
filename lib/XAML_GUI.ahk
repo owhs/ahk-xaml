@@ -2,6 +2,7 @@
 #Include "XAML_Host.ahk"
 #Include "XAML_Config.ahk"
 #Include "XAML_Generator.ahk"
+#Include "*i XAML_DevTools.ahk"
 
 class XAML_GUI {
     __New(title := "Fluid UI", options := {}) {
@@ -765,6 +766,8 @@ class XAML_GUI {
         HotIf (*) => WinActive("ahk_id " this.host.wpfHwnd)
         if (this.showBurger)
             Hotkey "^b", (*) => this.host.Update("BtnToggleSidebar", "Invoke", "1"), "On"
+        if (IsSet(XAML_ENABLE_DEVTOOLS) && XAML_ENABLE_DEVTOOLS)
+            Hotkey "F12", (*) => XAML_DevTools.ShowFor(this), "On"
         HotIf
     }
 

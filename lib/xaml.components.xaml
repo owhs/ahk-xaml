@@ -230,12 +230,12 @@
                 <ControlTemplate TargetType="Expander">
                     <Border BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" CornerRadius="8" Background="{TemplateBinding Background}" Margin="0,0,0,20">
                         <StackPanel>
-                            <ToggleButton IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Cursor="Hand" Padding="15,12">
+                            <ToggleButton Content="{TemplateBinding Header}" IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" Cursor="Hand" Padding="15,12">
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
                                         <Border Background="Transparent">
                                             <Grid>
-                                                <ContentPresenter Content="{TemplateBinding Content}" ContentSource="Header" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                                <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
                                                 <TextBlock Text="▼" Foreground="{DynamicResource TextSub}" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Center" x:Name="arrow"/>
                                             </Grid>
                                         </Border>

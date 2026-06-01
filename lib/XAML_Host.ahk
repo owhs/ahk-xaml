@@ -140,12 +140,25 @@ class XAMLHost {
         this.tracked[controlName] := true
     }
 
+    IsDevToolsWindow() {
+        if (!IsSet(XAML_DevTools_Instance) || XAML_DevTools_Instance == "")
+            return false
+        try {
+            if (HasProp(XAML_DevTools_Instance, "app") && XAML_DevTools_Instance.app && HasProp(XAML_DevTools_Instance.app, "host") && XAML_DevTools_Instance.app.host)
+                return (this.id == XAML_DevTools_Instance.app.host.id)
+        }
+        return false
+    }
+
     Update(controlName, propertyName, valueStr) {
         if !this.wpfHwnd
             return
         val := StrReplace(valueStr, "`r", "&#x0D;")
         val := StrReplace(val, "`n", "&#x0A;")
         payload := controlName "|" propertyName "|" val
+        if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "" && !this.IsDevToolsWindow()) {
+            try XAML_DevTools_Instance.LogIPC("OUT", payload)
+        }
         buf := Buffer(StrPut(payload, "UTF-8"))
         StrPut(payload, buf, "UTF-8")
 
@@ -173,6 +186,9 @@ class XAMLHost {
         }
         
         if (payload != "") {
+            if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "" && !this.IsDevToolsWindow()) {
+                try XAML_DevTools_Instance.LogIPC("OUT", payload)
+            }
             buf := Buffer(StrPut(payload, "UTF-8"))
             StrPut(payload, buf, "UTF-8")
 
@@ -867,6 +883,9 @@ class XAMLHost {
     }
 
     _SendToEngine(payload) {
+        if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "" && !this.IsDevToolsWindow()) {
+            try XAML_DevTools_Instance.LogIPC("OUT", payload)
+        }
         buf := Buffer(StrPut(payload, "UTF-8"))
         StrPut(payload, buf, "UTF-8")
         cds := Buffer(A_PtrSize * 3)
@@ -915,6 +934,21 @@ class XAMLHost {
 
         lpData := NumGet(lParam, A_PtrSize * 2, "Ptr")
         payload := StrGet(lpData, "UTF-8")
+        if (IsSet(XAML_DevTools_Instance) && XAML_DevTools_Instance != "") {
+            ; Only log if the target window is not the DevTools window itself
+            parts := StrSplit(payload, "|")
+            if (parts.Length >= 3) {
+                isDevTools := false
+                try {
+                    if (HasProp(XAML_DevTools_Instance, "app") && XAML_DevTools_Instance.app && HasProp(XAML_DevTools_Instance.app, "host") && XAML_DevTools_Instance.app.host) {
+                        isDevTools := (parts[2] == XAML_DevTools_Instance.app.host.id)
+                    }
+                }
+                if (!isDevTools) {
+                    try XAML_DevTools_Instance.LogIPC("IN", payload)
+                }
+            }
+        }
         if (!IsSet(XAML_ENABLE_LOGGING) || XAML_ENABLE_LOGGING)
             try FileAppend("OnCopyData: " payload "`n", A_Temp "\AhkWpf\AhkTrace.log", "UTF-8")
         if (!InStr(payload, "EVENT|") && !InStr(payload, "DAEMON|") && !InStr(payload, "MRESPONSE|"))
@@ -1054,7 +1088,14 @@ class XAMLHost {
 
         eventData := ""
         if (parts.Length >= 5) {
-            eventData := XAMLHost.DecodeValue(parts[5])
+            prefix := "EVENT|" winId "|" ctrlName "|" eventName "|"
+            pos := InStr(payload, prefix)
+            if (pos) {
+                rawPayload := SubStr(payload, pos + StrLen(prefix))
+                eventData := XAMLHost.DecodeValue(rawPayload)
+            } else {
+                eventData := XAMLHost.DecodeValue(parts[5])
+            }
             if (eventData != "")
                 stateMap[eventName] := eventData
         }
@@ -1199,8 +1240,8 @@ class XAMLHost {
 
         ; Single query returns a plain string; multi returns Map
         if (names.Length == 1 && names[1] != "*")
-            return result.Has(names[1]) ? result[names[1]] : ""
-        return result
+            return (Type(result) == "Map" && result.Has(names[1])) ? result[names[1]] : ""
+        return Type(result) == "Map" ? result : Map()
     }
 
     ; =========================================================================
