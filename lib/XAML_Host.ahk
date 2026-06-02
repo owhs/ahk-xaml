@@ -113,7 +113,7 @@ class XAMLHost {
         XAMLHost.instanceCounter++
         this.id := "WPF_" A_TickCount "_" XAMLHost.instanceCounter "_" Random(1000, 9999)
         XAMLHost._instances[this.id] := this
-        
+
         if (InStr(xaml, "%Width%"))
             xaml := StrReplace(xaml, "%Width%", "940")
         if (InStr(xaml, "%Height%"))
@@ -147,10 +147,10 @@ class XAMLHost {
             this.events[controlName] := Map()
         if !this.events[controlName].Has(eventName)
             this.events[controlName][eventName] := []
-            
+
         evtObj := { Callback: callback, Priority: priority, LimitFPS: 0, QueueLimited: false }
         this.events[controlName][eventName].Push(evtObj)
-        
+
         ; Return a chainable config object for this event registration
         return { Limit: (thisObj, fps, queue := false) => (evtObj.LimitFPS := fps, evtObj.QueueLimited := queue, this) }
     }
@@ -205,13 +205,13 @@ class XAMLHost {
         for updateObj in updatesArray {
             if (!updateObj.HasProp("ControlName") || !updateObj.HasProp("PropertyName") || !updateObj.HasProp("Value"))
                 continue
-            
+
             val := String(updateObj.Value)
             val := StrReplace(val, "`r", "&#x0D;")
             val := StrReplace(val, "`n", "&#x0A;")
             payload .= updateObj.ControlName "|" updateObj.PropertyName "|" val "`n"
         }
-        
+
         if (payload != "") {
             if (!this.IsDevToolsWindow()) {
                 XAMLHost.LogDevTools("OUT", payload)
@@ -259,7 +259,7 @@ class XAMLHost {
         targetExe := (exePath != "") ? exePath : A_Temp "\AhkWpf\" baseDllName
 
         SplitPath(A_LineFile, , &libDir)
-        sharedExe := libDir "\" baseDllName
+        sharedExe := libDir "\dep\" baseDllName
 
         if (A_IsCompiled && FileExist(A_ScriptDir "\" baseDllName)) {
             targetExe := A_ScriptDir "\" baseDllName
@@ -280,7 +280,7 @@ class XAMLHost {
 
         } else {
             if !FileExist(targetExe)
-                FileInstall("ahk-xaml.dll", targetExe, 1)
+                FileInstall("dep\ahk-xaml.dll", targetExe, 1)
         }
 
         logArg := (IsSet(XAML_ENABLE_LOGGING) && !XAML_ENABLE_LOGGING) ? ' --no-log' : ''
@@ -317,7 +317,7 @@ class XAMLHost {
             }
 
             hasRetry := (IsSet(XAML_DIAGNOSTICS_ENABLED) && XAML_DIAGNOSTICS_ENABLED && lineNum > 0)
-            
+
             while (true) {
                 action := XAMLHost.ShowErrorDialog("Engine Crash", header, snippet, err, hasRetry)
                 if (action == "skip_property") {
@@ -566,7 +566,7 @@ class XAMLHost {
         baseDllName := XAMLHost.GetEngineDllName()
         targetExe := (this.exePath != "") ? this.exePath : A_Temp "\AhkWpf\" baseDllName
         SplitPath(A_LineFile, , &libDir)
-        sharedExe := libDir "\" baseDllName
+        sharedExe := libDir "\dep\" baseDllName
 
         if (A_IsCompiled && FileExist(A_ScriptDir "\" baseDllName)) {
             targetExe := A_ScriptDir "\" baseDllName
@@ -592,9 +592,9 @@ class XAMLHost {
     static CompileEngine(libDir, sharedExe, extraResources := []) {
         XAMLHost.RestoreWebView2Dlls()
         errLog := A_Temp "\AhkWpf\AhkWpfError.log"
-        sourceCs := libDir "\XAML_AHK_Bridge.cs"
+        sourceCs := libDir "\dep\XAML_AHK_Bridge.cs"
         if !FileExist(sourceCs) {
-            MsgBox("XAML_AHK_Bridge.cs not found in lib directory!`nCannot compile shared engine.", "AHK-XAML", "Iconx")
+            MsgBox("XAML_AHK_Bridge.cs not found in lib\dep directory!`nCannot compile shared engine.", "AHK-XAML", "Iconx")
             return false
         }
 
@@ -608,13 +608,13 @@ class XAMLHost {
         wvRefs := ""
         wvDef := ""
         if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) {
-            coreDll := libDir "\WebView2\Microsoft.Web.WebView2.Core.dll"
-            wpfDll := libDir "\WebView2\Microsoft.Web.WebView2.Wpf.dll"
+            coreDll := libDir "\dep\WebView2\Microsoft.Web.WebView2.Core.dll"
+            wpfDll := libDir "\dep\WebView2\Microsoft.Web.WebView2.Wpf.dll"
             if (FileExist(coreDll) && FileExist(wpfDll)) {
                 wvRefs := ' /reference:"' coreDll '" /reference:"' wpfDll '"'
                 wvDef := ' /define:ENABLE_WEBVIEW'
             } else {
-                ToolTip("WebView2 DLLs not found in lib\WebView2. Compiling without WebView2 support.")
+                ToolTip("WebView2 DLLs not found in lib\dep\WebView2. Compiling without WebView2 support.")
                 SetTimer(() => ToolTip(), -4000)
             }
         }
@@ -623,12 +623,12 @@ class XAMLHost {
         aeRefs := ""
         aeDef := ""
         if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
-            aeDll := libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll"
+            aeDll := libDir "\dep\AvalonEdit\ICSharpCode.AvalonEdit.dll"
             if (FileExist(aeDll)) {
                 aeRefs := ' /reference:"' aeDll '" /reference:System.Windows.Forms.dll /reference:WindowsFormsIntegration.dll'
                 aeDef := ' /define:ENABLE_AVALONEDIT'
             } else {
-                ToolTip("AvalonEdit DLL not found in lib\AvalonEdit. Compiling without IDE support.")
+                ToolTip("AvalonEdit DLL not found in lib\dep\AvalonEdit. Compiling without IDE support.")
                 SetTimer(() => ToolTip(), -4000)
             }
         }
@@ -637,15 +637,15 @@ class XAMLHost {
         docRefs := ""
         docDef := ""
         if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
-            oxDll := libDir "\OpenXml\DocumentFormat.OpenXml.dll"
+            oxDll := libDir "\dep\OpenXml\DocumentFormat.OpenXml.dll"
             if (FileExist(oxDll)) {
                 docRefs := ' /reference:"' oxDll '"'
                 ; Also add NPOI if available for .doc support
-                npoiDll := libDir "\OpenXml\NPOI.dll"
+                npoiDll := libDir "\dep\OpenXml\NPOI.dll"
                 if (FileExist(npoiDll)) {
                     docRefs .= ' /reference:"' npoiDll '"'
-                    npoiOoxmlDll := libDir "\OpenXml\NPOI.OOXML.dll"
-                    npoiOpenXml4NetDll := libDir "\OpenXml\NPOI.OpenXml4Net.dll"
+                    npoiOoxmlDll := libDir "\dep\OpenXml\NPOI.OOXML.dll"
+                    npoiOpenXml4NetDll := libDir "\dep\OpenXml\NPOI.OpenXml4Net.dll"
                     if (FileExist(npoiOoxmlDll))
                         docRefs .= ' /reference:"' npoiOoxmlDll '"'
                     if (FileExist(npoiOpenXml4NetDll))
@@ -653,15 +653,15 @@ class XAMLHost {
                 }
                 docDef := ' /define:ENABLE_DOCUMENT'
             } else {
-                ToolTip("OpenXml DLL not found in lib\OpenXml. Compiling without Document Editor support.")
+                ToolTip("OpenXml DLL not found in lib\dep\OpenXml. Compiling without Document Editor support.")
                 SetTimer(() => ToolTip(), -4000)
             }
         }
 
         ; Embed component resources directly into the DLL for zero-disk-IO loading
         embeddedRes := ""
-        bamlPath := libDir "\xaml.components.baml"
-        xamlPath := libDir "\xaml.components.xaml"
+        bamlPath := libDir "\dep\xaml.components.baml"
+        xamlPath := libDir "\dep\xaml.components.xaml"
         if FileExist(bamlPath) {
             embeddedRes .= ' /resource:"' bamlPath '"'
         } else if FileExist(xamlPath) {
@@ -680,13 +680,13 @@ class XAMLHost {
             errOut := FileExist(errLog) ? FileRead(errLog) : "Unknown compilation error."
             snippet := ""
             reason := ""
-            
+
             if RegExMatch(errOut, "m)^([a-zA-Z]:\\[^\(]+)\((\d+),(\d+)\):\s*error\s*(CS\d+:\s*[^\r\n]+)", &match) {
                 filePath := match[1]
                 lineNum := Integer(match[2])
                 colNum := Integer(match[3])
                 reason := match[4]
-                
+
                 if FileExist(filePath) {
                     try {
                         lines := StrSplit(FileRead(filePath), "`n", "`r")
@@ -696,10 +696,10 @@ class XAMLHost {
                             loop colNum - 1
                                 pointerLine .= " "
                             pointerLine .= "^"
-                            
+
                             startLine := Max(1, lineNum - 3)
                             endLine := Min(lines.Length, lineNum + 3)
-                            
+
                             for idx, lineStr in lines {
                                 if (idx >= startLine && idx <= endLine) {
                                     if (idx == lineNum) {
@@ -715,7 +715,7 @@ class XAMLHost {
                     }
                 }
             }
-            
+
             XAMLHost.ShowErrorDialog("Engine Compile Error", "Failed to compile background engine.", snippet, errOut, false, reason)
             return false
         }
@@ -723,26 +723,27 @@ class XAMLHost {
     }
 
     static CopyRequiredDlls(libDir, targetDir) {
+        depDir := libDir "\dep"
         if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) {
-            if FileExist(libDir "\WebView2\WebView2Loader.dll") {
-                try FileCopy(libDir "\WebView2\WebView2Loader.dll", targetDir "\WebView2Loader.dll", 1)
-                try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Core.dll", targetDir "\Microsoft.Web.WebView2.Core.dll", 1)
-                try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Wpf.dll", targetDir "\Microsoft.Web.WebView2.Wpf.dll", 1)
+            if FileExist(depDir "\WebView2\WebView2Loader.dll") {
+                try FileCopy(depDir "\WebView2\WebView2Loader.dll", targetDir "\WebView2Loader.dll", 1)
+                try FileCopy(depDir "\WebView2\Microsoft.Web.WebView2.Core.dll", targetDir "\Microsoft.Web.WebView2.Core.dll", 1)
+                try FileCopy(depDir "\WebView2\Microsoft.Web.WebView2.Wpf.dll", targetDir "\Microsoft.Web.WebView2.Wpf.dll", 1)
             }
         }
         if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
-            if FileExist(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll")
-                try FileCopy(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll", targetDir "\ICSharpCode.AvalonEdit.dll", 1)
+            if FileExist(depDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll")
+                try FileCopy(depDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll", targetDir "\ICSharpCode.AvalonEdit.dll", 1)
         }
         if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
-            if FileExist(libDir "\OpenXml\DocumentFormat.OpenXml.dll")
-                try FileCopy(libDir "\OpenXml\DocumentFormat.OpenXml.dll", targetDir "\DocumentFormat.OpenXml.dll", 1)
-            if FileExist(libDir "\OpenXml\NPOI.dll")
-                try FileCopy(libDir "\OpenXml\NPOI.dll", targetDir "\NPOI.dll", 1)
-            if FileExist(libDir "\OpenXml\NPOI.OOXML.dll")
-                try FileCopy(libDir "\OpenXml\NPOI.OOXML.dll", targetDir "\NPOI.OOXML.dll", 1)
-            if FileExist(libDir "\OpenXml\NPOI.OpenXml4Net.dll")
-                try FileCopy(libDir "\OpenXml\NPOI.OpenXml4Net.dll", targetDir "\NPOI.OpenXml4Net.dll", 1)
+            if FileExist(depDir "\OpenXml\DocumentFormat.OpenXml.dll")
+                try FileCopy(depDir "\OpenXml\DocumentFormat.OpenXml.dll", targetDir "\DocumentFormat.OpenXml.dll", 1)
+            if FileExist(depDir "\OpenXml\NPOI.dll")
+                try FileCopy(depDir "\OpenXml\NPOI.dll", targetDir "\NPOI.dll", 1)
+            if FileExist(depDir "\OpenXml\NPOI.OOXML.dll")
+                try FileCopy(depDir "\OpenXml\NPOI.OOXML.dll", targetDir "\NPOI.OOXML.dll", 1)
+            if FileExist(depDir "\OpenXml\NPOI.OpenXml4Net.dll")
+                try FileCopy(depDir "\OpenXml\NPOI.OpenXml4Net.dll", targetDir "\NPOI.OpenXml4Net.dll", 1)
         }
     }
 
@@ -750,28 +751,28 @@ class XAMLHost {
     BundleCustomEngine(targetExe) {
         cleanXaml := StrReplace(this.xaml, "%resources%", "")
         cleanXaml := StrReplace(cleanXaml, "%components%", "")
-        
+
         tempDir := A_Temp "\AhkWpf"
         if !DirExist(tempDir)
             DirCreate(tempDir)
-            
+
         tempXaml := tempDir "\app_payload.xaml"
         tempBaml := tempDir "\app_payload.baml"
         tempEvents := tempDir "\app_payload.events"
-        
+
         try FileDelete(tempXaml)
         try FileDelete(tempBaml)
         try FileDelete(tempEvents)
-        
+
         FileAppend(cleanXaml, tempXaml, "UTF-8")
-        
+
         SplitPath(A_LineFile, , &libDir)
         toolPath := libDir "\..\tools\compile_baml.ps1"
         if FileExist(toolPath) {
             cmd := 'powershell.exe -ExecutionPolicy Bypass -File "' toolPath '" -InputXaml "' tempXaml '" -OutputBaml "' tempBaml '"'
             RunWait(cmd, "", "Hide")
         }
-        
+
         eventsStr := ""
         for ctrlName, evtMap in this.events {
             for evtName, arr in evtMap {
@@ -783,11 +784,11 @@ class XAMLHost {
                         queue := evtObj.QueueLimited
                     }
                 }
-                
+
                 evtToken := ctrlName ":" evtName
                 if (limit > 0)
                     evtToken .= "@" limit (queue ? "Q" : "")
-                    
+
                 eventsStr .= evtToken ","
             }
         }
@@ -795,7 +796,7 @@ class XAMLHost {
         if (eventsStr != "") {
             FileAppend(eventsStr, tempEvents, "UTF-8")
         }
-        
+
         resList := []
         if FileExist(tempBaml) {
             resList.Push(tempBaml)
@@ -803,10 +804,10 @@ class XAMLHost {
             MsgBox("Failed to compile BAML during bundle export! Check the compiler log.", "AHK-XAML", "Iconx")
             return false
         }
-        
+
         if FileExist(tempEvents)
             resList.Push(tempEvents)
-            
+
         try {
             while ProcessExist(targetExe) {
                 ProcessClose(targetExe)
@@ -814,13 +815,13 @@ class XAMLHost {
             }
             FileDelete(targetExe)
         }
-            
+
         success := XAMLHost.CompileEngine(libDir, targetExe, resList)
-        
+
         try FileDelete(tempXaml)
         try FileDelete(tempBaml)
         try FileDelete(tempEvents)
-        
+
         return success
     }
 
@@ -838,12 +839,12 @@ class XAMLHost {
             FileDelete(this.errLog)
 
         SplitPath(A_LineFile, , &libDir)
-        sharedExe := libDir "\" baseDllName
+        sharedExe := libDir "\dep\" baseDllName
 
         if (A_IsCompiled && FileExist(A_ScriptDir "\" baseDllName)) {
             targetExe := A_ScriptDir "\" baseDllName
         } else if (!A_IsCompiled) {
-            sourceCs := libDir "\XAML_AHK_Bridge.cs"
+            sourceCs := libDir "\dep\XAML_AHK_Bridge.cs"
             if (FileExist(sourceCs) && FileExist(sharedExe) && FileGetTime(sourceCs) > FileGetTime(sharedExe)) {
                 try {
                     while ProcessExist(baseDllName) {
@@ -873,7 +874,7 @@ class XAMLHost {
             XAMLHost.CopyRequiredDlls(libDir, targetDir)
         } else {
             if !FileExist(targetExe)
-                FileInstall("ahk-xaml.dll", targetExe, 1)
+                FileInstall("dep\ahk-xaml.dll", targetExe, 1)
         }
 
         if FileExist(this.errLog)
@@ -963,7 +964,7 @@ class XAMLHost {
                 SetTimer(LogIPCCallback, -1)
             }
         }
-        
+
         LogIPCCallback() {
             try {
                 if (IsSet(XAML_DevTools_Instance) && IsObject(XAML_DevTools_Instance) && HasMethod(XAML_DevTools_Instance, "LogIPC")) {
@@ -993,10 +994,10 @@ class XAMLHost {
             try FileAppend("OnCopyData: " payload "`n", A_Temp "\AhkWpf\AhkTrace.log", "UTF-8")
         if (!InStr(payload, "EVENT|") && !InStr(payload, "DAEMON|") && !InStr(payload, "MRESPONSE|"))
             return 0
-            
+
         lines := StrSplit(payload, "`n", "`r")
         parts := StrSplit(lines[1], "|", , 5)
-        
+
         if (parts[1] == "DAEMON" && parts[2] == "Ready") {
             XAMLHost.daemonHwnd := Integer(parts[3])
             return 1
@@ -1046,7 +1047,7 @@ class XAMLHost {
             } else {
                 errorMsg := XAMLHost.DecodeValue(parts[5])
             }
-            
+
             ahkLine := "Unknown"
             snippet := ""
             reason := ""
@@ -1073,7 +1074,7 @@ class XAMLHost {
             }
 
             hasRetry := (IsSet(XAML_DIAGNOSTICS_ENABLED) && XAML_DIAGNOSTICS_ENABLED && lineNum > 0)
-            
+
             while (true) {
                 action := XAMLHost.ShowErrorDialog("Engine Crash", header, snippet, errorMsg, hasRetry, reason)
                 if (action == "skip_property") {
@@ -1179,8 +1180,8 @@ class XAMLHost {
                 str := ""
                 for k, v in stateMap
                     str .= k "=" v ", "
-            if (!IsSet(XAML_ENABLE_LOGGING) || XAML_ENABLE_LOGGING)
-                try FileAppend("OnCopyData SelectionBox: " str "`n", A_ScriptDir "\debug.log")
+                if (!IsSet(XAML_ENABLE_LOGGING) || XAML_ENABLE_LOGGING)
+                    try FileAppend("OnCopyData SelectionBox: " str "`n", A_ScriptDir "\debug.log")
             }
             evtList := instance.events[ctrlName][baseEventName]
             for evtObj in evtList {
@@ -1347,13 +1348,13 @@ class XAMLHost {
         }
         if (!tagStart)
             return ""
-        
+
         ; Extract tag name
         subXaml := SubStr(xaml, tagStart)
         if (!RegExMatch(subXaml, "^<([\w:]+)", &m))
             return ""
         tagName := m[1]
-        
+
         ; Check if it's self-closing before any nested tag of same name
         firstGt := InStr(xaml, ">", , tagStart)
         if (firstGt) {
@@ -1362,7 +1363,7 @@ class XAMLHost {
                 return { start: tagStart, end: firstGt, tag: tagName }
             }
         }
-        
+
         ; Not self-closing, scan for matching </tagName>
         depth := 1
         pos := tagStart + 1
@@ -1419,28 +1420,28 @@ class XAMLHost {
             MsgBox("Could not locate the exact error position to skip the property.", "Skip Failed", "Iconx")
             return false
         }
-        
+
         charIndex := this.GetCharIndex(this.xaml, lineNum, colNum)
         if (charIndex <= 0) {
             MsgBox("Error position out of bounds.", "Skip Failed", "Iconx")
             return false
         }
-        
+
         elem := this.FindElementBoundaries(this.xaml, charIndex)
         if (!elem) {
             MsgBox("Could not find the element at the error line.", "Skip Failed", "Iconx")
             return false
         }
-        
+
         openingTagEnd := InStr(this.xaml, ">", , elem.start)
         if (!openingTagEnd || openingTagEnd > elem.end) {
             MsgBox("Malformed element opening tag.", "Skip Failed", "Iconx")
             return false
         }
         openingTag := SubStr(this.xaml, elem.start, openingTagEnd - elem.start + 1)
-        
+
         candidates := this.GetPropertyCandidates(errorMsg)
-        
+
         removed := false
         candidateName := ""
         for candidate in candidates {
@@ -1453,17 +1454,17 @@ class XAMLHost {
                 break
             }
         }
-        
+
         if (!removed) {
             MsgBox("Could not automatically identify the property to skip from error: " errorMsg, "Skip Failed", "Iconx")
             return false
         }
-        
+
         this.xaml := SubStr(this.xaml, 1, elem.start - 1) . openingTag . SubStr(this.xaml, openingTagEnd + 1)
-        
+
         ToolTip("Skipped property: " candidateName)
         SetTimer(() => ToolTip(), -3000)
-        
+
         SetTimer(() => this.Show(), -10)
         return true
     }
@@ -1473,24 +1474,24 @@ class XAMLHost {
             MsgBox("Could not locate the exact error position to skip the element.", "Skip Failed", "Iconx")
             return false
         }
-        
+
         charIndex := this.GetCharIndex(this.xaml, lineNum, colNum)
         if (charIndex <= 0) {
             MsgBox("Error position out of bounds.", "Skip Failed", "Iconx")
             return false
         }
-        
+
         elem := this.FindElementBoundaries(this.xaml, charIndex)
         if (!elem) {
             MsgBox("Could not find the element to skip at the error line.", "Skip Failed", "Iconx")
             return false
         }
-        
+
         this.xaml := SubStr(this.xaml, 1, elem.start - 1) . SubStr(this.xaml, elem.end + 1)
-        
+
         ToolTip("Skipped element: <" elem.tag ">")
         SetTimer(() => ToolTip(), -3000)
-        
+
         SetTimer(() => this.Show(), -10)
         return true
     }
@@ -1500,72 +1501,72 @@ class XAMLHost {
             return false
         libDir := ""
         SplitPath(A_LineFile, , &libDir)
-        wvDir := libDir "\WebView2"
-        
-        if (FileExist(wvDir "\Microsoft.Web.WebView2.Core.dll") && 
-            FileExist(wvDir "\Microsoft.Web.WebView2.Wpf.dll") && 
+        wvDir := libDir "\dep\WebView2"
+
+        if (FileExist(wvDir "\Microsoft.Web.WebView2.Core.dll") &&
+            FileExist(wvDir "\Microsoft.Web.WebView2.Wpf.dll") &&
             FileExist(wvDir "\WebView2Loader.dll")) {
             return false
         }
-        
+
         loaderArch := (A_PtrSize == 8) ? "x64" : "x86"
         targetDlls := [
             wvDir "\Microsoft.Web.WebView2.Core.dll",
             wvDir "\Microsoft.Web.WebView2.Wpf.dll",
             wvDir "\WebView2Loader.dll"
         ]
-        
+
         tmpDir := A_Temp "\AhkWpf\nuget_Microsoft_Web_WebView2"
         extractCmds := "Copy-Item '" tmpDir "\lib\net45\Microsoft.Web.WebView2.Core.dll' '" wvDir "\Microsoft.Web.WebView2.Core.dll' -Force; "
-                     . "Copy-Item '" tmpDir "\lib\net45\Microsoft.Web.WebView2.Wpf.dll' '" wvDir "\Microsoft.Web.WebView2.Wpf.dll' -Force; "
-                     . "Copy-Item '" tmpDir "\build\native\" loaderArch "\WebView2Loader.dll' '" wvDir "\WebView2Loader.dll' -Force"
-                     
+            . "Copy-Item '" tmpDir "\lib\net45\Microsoft.Web.WebView2.Wpf.dll' '" wvDir "\Microsoft.Web.WebView2.Wpf.dll' -Force; "
+            . "Copy-Item '" tmpDir "\build\native\" loaderArch "\WebView2Loader.dll' '" wvDir "\WebView2Loader.dll' -Force"
+
         if XAMLHost.Downloader("Microsoft.Web.WebView2", "1.0.1722.45", "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.1722.45", wvDir, targetDlls, extractCmds) {
-            try FileDelete(libDir "\ahk-xaml-webview.dll")
+            try FileDelete(libDir "\dep\ahk-xaml-webview.dll")
             try FileDelete(A_Temp "\AhkWpf\ahk-xaml-webview.dll")
             return true
         }
         return false
     }
 
-    ; Auto-download AvalonEdit from NuGet if not present in lib/AvalonEdit/
+    ; Auto-download AvalonEdit from NuGet if not present in lib/dep/AvalonEdit/
     static RestoreAvalonEditDlls() {
         if (!IsSet(XAML_ENABLE_AVALONEDIT) || !XAML_ENABLE_AVALONEDIT)
             return false
         libDir := ""
         SplitPath(A_LineFile, , &libDir)
-        aeDir := libDir "\AvalonEdit"
+        aeDir := libDir "\dep\AvalonEdit"
         aeDll := aeDir "\ICSharpCode.AvalonEdit.dll"
         if FileExist(aeDll)
             return false
 
         tmpDir := A_Temp "\AhkWpf\nuget_AvalonEdit"
         extractCmds := "Copy-Item '" tmpDir "\lib\net462\ICSharpCode.AvalonEdit.dll' '" aeDll "' -Force"
-        
+
         if XAMLHost.Downloader("AvalonEdit", "6.3.0.90", "https://www.nuget.org/api/v2/package/AvalonEdit/6.3.0.90", aeDir, [aeDll], extractCmds) {
-            try FileDelete(libDir "\ahk-xaml*.dll")
+            try FileDelete(libDir "\dep\ahk-xaml*.dll")
             try FileDelete(A_Temp "\AhkWpf\ahk-xaml*.dll")
             return true
         }
         return false
     }
 
-    ; Auto-download DocumentFormat.OpenXml from NuGet if not present in lib/OpenXml/
+    ; Auto-download DocumentFormat.OpenXml from NuGet if not present in lib/dep/OpenXml/
     static RestoreDocumentDlls() {
         if (!IsSet(XAML_ENABLE_DOCUMENT) || !XAML_ENABLE_DOCUMENT)
             return false
         libDir := ""
         SplitPath(A_LineFile, , &libDir)
-        oxDir := libDir "\OpenXml"
+        oxDir := libDir "\dep\OpenXml"
         oxDll := oxDir "\DocumentFormat.OpenXml.dll"
         if FileExist(oxDll)
             return false
 
         tmpDir := A_Temp "\AhkWpf\nuget_DocumentFormat_OpenXml"
         extractCmds := "Copy-Item '" tmpDir "\lib\net46\DocumentFormat.OpenXml.dll' '" oxDll "' -Force"
-        
+
         if XAMLHost.Downloader("DocumentFormat.OpenXml", "2.20.0", "https://www.nuget.org/api/v2/package/DocumentFormat.OpenXml/2.20.0", oxDir, [oxDll], extractCmds) {
-            try FileDelete(libDir "\ahk-xaml*.dll")
+            try FileDelete(libDir "\dep\ahk-xaml*.dll")
             try FileDelete(A_Temp "\AhkWpf\ahk-xaml*.dll")
             return true
         }
@@ -1578,19 +1579,19 @@ class XAMLHost {
         pg := Gui("+AlwaysOnTop -MinimizeBox -SysMenu +ToolWindow", "AHK-XAML — Bootstrap Downloader")
         pg.SetFont("s10 bold", "Segoe UI")
         pg.BackColor := "0x11111b"
-        
+
         pg.Add("Text", "x15 y12 w270 c89B4FA", "📦 Restoring Dependency")
         pg.SetFont("s9 norm", "Segoe UI")
         statusText := pg.Add("Text", "x15 y35 w270 h18 cCDD6F4", "Downloading " packageName " " version "...")
         progressBar := pg.Add("Progress", "x15 y58 w270 h6 c89B4FA Background313244 -Smooth +0x8", 50)
         pg.Show("w300 h78 NoActivate")
-        
+
         ; Enable continuous marquee style (PBM_SETMARQUEE)
         SendMessage(0x040A, 1, 30, progressBar.Hwnd)
-        
+
         tmpDir := A_Temp "\AhkWpf\nuget_" StrReplace(packageName, ".", "_")
         nupkg := tmpDir "\package.nupkg.zip"
-        
+
         try {
             if !DirExist(A_Temp "\AhkWpf")
                 DirCreate(A_Temp "\AhkWpf")
@@ -1598,7 +1599,7 @@ class XAMLHost {
                 DirDelete(tmpDir, true)
             DirCreate(tmpDir)
         }
-        
+
         ; Generate PowerShell command
         q := Chr(34)
         psCmd := "powershell.exe -NoProfile -Command " q
@@ -1610,12 +1611,12 @@ class XAMLHost {
             . extractCommands "; "
             . "} catch { $_.Exception.Message | Out-File '" tmpDir "\err.txt' }"
             . q
-            
+
         success := false
         try {
             ; Run background process
             Run(psCmd, "", "Hide", &pid)
-            
+
             ; Wait and animate
             dots := ""
             loopCount := 0
@@ -1629,19 +1630,19 @@ class XAMLHost {
                 }
                 Sleep(50)
             }
-            
+
             ; Inspect completion results
             if FileExist(tmpDir "\err.txt") {
                 errContent := FileRead(tmpDir "\err.txt")
                 throw Error(errContent)
             }
-            
+
             ; Check that all target DLLs now exist
             for dll in targetDlls {
                 if !FileExist(dll)
                     throw Error("Failed to extract: " dll)
             }
-            
+
             success := true
             statusText.Value := "✓ Installed successfully!"
             progressBar.Opt("cA6E3A1") ; premium success green
@@ -1652,11 +1653,11 @@ class XAMLHost {
             statusText.Value := "✗ Failed!"
             progressBar.Opt("cF38BA8") ; premium error red
             progressBar.Value := 100
-            
+
             ; Show standard error dialog or tooltip
             MsgBox("Failed to restore " packageName " " version ":`n`n" e.Message, "Bootstrap Restore Error", "Iconx AlwaysOnTop")
         }
-        
+
         pg.Destroy()
         try DirDelete(tmpDir, true)
         return success

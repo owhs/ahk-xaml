@@ -4,7 +4,7 @@
 
 ; --- Engine Compilation ---
 ; When true, the C# engine (.dll) is recompiled from XAML_AHK_Bridge.cs on every run.
-; When false, uses the pre-compiled ahk-xaml.dll from the lib directory.
+; When false, uses the pre-compiled ahk-xaml.dll from the lib/dep directory.
 global XAML_FORCE_DYNAMIC_COMPILE := true
 
 ; --- Developer Diagnostics ---
@@ -36,13 +36,13 @@ global XAML_WEBVIEW_USER_DATA_DIR := ""
 ; --- AvalonEdit IDE Component ---
 ; When true, compiles with ICSharpCode.AvalonEdit for a robust code editor
 ; with syntax highlighting, code folding, line numbers, autocomplete, and LSP hooks.
-; Requires AvalonEdit DLLs in lib/AvalonEdit/ (auto-downloaded from NuGet if missing).
+; Requires AvalonEdit DLLs in lib/dep/AvalonEdit/ (auto-downloaded from NuGet if missing).
 global XAML_ENABLE_AVALONEDIT := false
 
 ; --- Document Editor ---
 ; When true, compiles with OpenXml SDK + NPOI for rich document viewing/editing
 ; with DOCX/DOC import/export, formatting toolbar, tables, images, and more.
-; Requires DLLs in lib/OpenXml/ (auto-downloaded from NuGet if missing).
+; Requires DLLs in lib/dep/OpenXml/ (auto-downloaded from NuGet if missing).
 global XAML_ENABLE_DOCUMENT := false
 
 ; --- Auto-Prewarm Engine ---

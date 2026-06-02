@@ -357,8 +357,16 @@ For DataGridEx, NodeEditor, and other rich components that build their own sub-e
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `app.lightweightEvents` | `false` | Events only send the triggering control's value (use `ui.Query()` for others) |
-| `XAML_AUTO_GENERATE_EVENTS` | `false` | Auto-create skeleton event handlers for missing string function names |
-| `XAML_ENABLE_LOGGING` | `true` | Log IPC payloads to `%TEMP%\AhkWpf\AhkTrace.log` |
-| `XAML_ENABLE_TRACING` | `false` | Track AHK source file/line in XAML comments for error diagnostics |
-| `XAML_FORCE_DYNAMIC_COMPILE` | N/A | User-defined flag to switch between `Compile()` and `Load()` paths |
+| `app.lightweightEvents` | `false` | Property on app/GUI. When true, events only send the triggering control's value (use `ui.Query()` for others). |
+| `XAML_FORCE_DYNAMIC_COMPILE` | `true` | When true, the C# engine (.dll) is recompiled from `XAML_AHK_Bridge.cs` on every run. When false, uses the pre-compiled DLL from `lib/dep/`. |
+| `XAML_DIAGNOSTICS_ENABLED` | `true` | When true, crash dialogs show interactive "Skip Property" / "Skip Element" buttons for rapid iteration. |
+| `XAML_AXML_DEBUG_MODE` | `true` | When true, dumps the AXML Abstract Syntax Tree to a local file when parsing AXML files. |
+| `XAML_ENABLE_LOGGING` | `true` | When true, the framework writes trace and error logs to disk (e.g., `AhkTrace.log`, `AhkWpfError.log`). |
+| `XAML_ENABLE_TRACING` | `true` | When true, enables XAML line-number and file tracing comments (`<!-- [ahk:File.ahk:LineNumber] -->`) during generation. |
+| `XAML_AUTO_PREWARM` | `false` | When true, automatically spins up the background WPF engine as soon as the script launches to eliminate cold-start delay. |
+| `XAML_ENABLE_DEVTOOLS` | `true` | When true, enables the premium developer tools panel (opens with F12 in any active app window). |
+| `XAML_AUTO_GENERATE_EVENTS` | `false` | When true, auto-creates skeleton event handlers in `<ScriptName>.events.ahk` for missing string function names. |
+| `XAML_ENABLE_WEBVIEW` | `false` | When true, compiles the engine with Microsoft WebView2 browser support. |
+| `XAML_WEBVIEW_USER_DATA_DIR` | `""` | The directory where WebView2 stores its cache and user data. Defaults to `A_Temp "\AhkWpf\WebView2Data"`. |
+| `XAML_ENABLE_AVALONEDIT` | `false` | When true, compiles with AvalonEdit for a robust code editor with syntax highlighting, line numbers, folding, and autocomplete. |
+| `XAML_ENABLE_DOCUMENT` | `false` | When true, compiles with OpenXml SDK + NPOI for rich document viewing/editing (DOCX import/export, tables, etc.). |
