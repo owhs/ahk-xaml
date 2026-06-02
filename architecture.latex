@@ -1,7 +1,7 @@
-\documentclass[11pt, a3paper, landscape]{article}
+\documentclass[11pt, a2paper, landscape]{article}
 
 % --- UNIVERSAL PREAMBLE BLOCK ---
-\usepackage[a3paper, landscape, top=1.5cm, bottom=1.5cm, left=1cm, right=1cm]{geometry}
+\usepackage[a2paper, landscape, top=1.5cm, bottom=1.5cm, left=1cm, right=1cm]{geometry}
 \usepackage{fontspec}
 
 \usepackage[english, bidi=basic, provide=*]{babel}
@@ -38,37 +38,62 @@
 
     % --- Nodes: AHK Side (Controller) [x = 0] ---
     \node[process] (app) at (0, 0) {\textbf{XAML\_GUI.ahk}\\App Shell \& User Logic};
-    \node[process, draw=green!60!black, fill=green!5] (axml) at (-13.5, -1.75) {\textbf{.axml File}\\AHK-XAML Markup};
-    \node[process] (gen) at (0, -3.5) {\textbf{XAML\_Generator}\\AST $\rightarrow$ XAML Compiler};
-    \node[process] (ahkhost) at (0, -7.5) {\textbf{XAML\_Host.ahk}\\AHK IPC Bridge \& Event Loop};
+    \node[process, draw=green!60!black, fill=green!5] (axml) at (-11.0, -2.5) {\textbf{.axml File}\\AHK-XAML Markup};
+    \node[process] (gen) at (0, -5.0) {\textbf{XAML\_Generator}\\AST $\rightarrow$ XAML Compiler};
+    \node[process] (ahkhost) at (0, -11.0) {\textbf{XAML\_Host.ahk}\\AHK IPC Bridge \& Event Loop};
 
-    % --- Nodes: WPF Side (View) [x = 13.5] ---
-    \node[ui] (wpf) at (13.5, 0) {\textbf{WPF UI Process}\\Live Visual Tree \& Native Window};
-    \node[bridge] (csbridge) at (13.5, -7.5) {\textbf{XAML\_AHK\_Bridge.cs}\\Rendering Engine \& Event Hooker};
+    % --- Nodes: WPF Side (View) [x = 16.0] ---
+    \node[ui] (wpf) at (16.0, 0) {\textbf{WPF UI Process}\\Live Visual Tree \& Native Window};
+    \node[bridge] (csbridge) at (16.0, -11.0) {\textbf{XAML\_AHK\_Bridge.cs}\\Rendering Engine \& Event Hooker};
 
-    % --- New Node: WebView2 ---
-    \node[ui, draw=teal!50, dashed, minimum width=3.5cm] (webview) at (19.5, 0) {\textbf{WebView2 (Optional)}\\Chromium Edge Core};
+    % --- Optional Component Nodes ---
+    \node[ui, draw=teal!50, dashed, minimum width=3.5cm, align=center] (webview) at (24.0, 0.5) {%
+        \textbf{WebView2 (Optional)}\\Chromium Edge Core\\[1ex]%
+        \textcolor{teal!80!black}{\sffamily\tiny\textbf{Events:}}\\%
+        \sffamily\tiny WebMessageReceived\\%
+        \sffamily\tiny NavigationCompleted%
+    };
+    \node[ui, draw=teal!50, dashed, minimum width=3.5cm, align=center] (avalon) at (24.0, -2.0) {%
+        \textbf{AvalonEdit (Optional)}\\IDE Code Editor\\[1ex]%
+        \textcolor{teal!80!black}{\sffamily\tiny\textbf{Events:}}\\%
+        \sffamily\tiny TextChanged\\%
+        \sffamily\tiny CaretChanged%
+    };
+    \node[ui, draw=teal!50, dashed, minimum width=3.5cm, align=center] (openxml) at (24.0, -4.3) {%
+        \textbf{OpenXml (Optional)}\\Document Editor\\[1ex]%
+        \textcolor{teal!80!black}{\sffamily\tiny\textbf{Events:}}\\%
+        \sffamily\tiny SelectionFormat%
+    };
+
+    % --- DevTools Node ---
+    \node[process, draw=orange!60, fill=orange!5] (devtools) at (32.0, -5.0) {\textbf{XAML\_DevTools.ahk}\\Floating Inspect GUI};
 
     % --- Background Process Containers ---
     \begin{pgfonlayer}{background}
         % AHK Process Box
-        \coordinate (ahk_tl) at (-10.0, 2.5);
-        \coordinate (ahk_br) at (3.5, -9.5);
+        \coordinate (ahk_tl) at (-6.0, 4.5);
+        \coordinate (ahk_br) at (4.5, -12.5);
         \draw[draw=blue!20, thick, rounded corners=8mm, fill=blue!4, fill opacity=0.5] (ahk_tl) rectangle (ahk_br);
-        \node[title, text=blue!80!black, anchor=north] at (-3.25, 2.2) {AutoHotkey Process (Controller)};
+        \node[title, text=blue!80!black, anchor=north] at (-0.75, 4.2) {AutoHotkey Process (Controller)};
 
         % WPF Process Box
-        \coordinate (wpf_tl) at (9.5, 2.5);
-        \coordinate (wpf_br) at (22.5, -9.5);
+        \coordinate (wpf_tl) at (11.5, 4.5);
+        \coordinate (wpf_br) at (28.0, -12.5);
         \draw[draw=purple!20, thick, rounded corners=8mm, fill=purple!4, fill opacity=0.5] (wpf_tl) rectangle (wpf_br);
-        \node[title, text=purple!80!black, anchor=north] at (16.0, 2.2) {.NET WPF Process (ahk-xaml.dll / gui.dll)};
+        \node[title, text=purple!80!black, anchor=north] at (19.75, 4.2) {.NET WPF Process (ahk-xaml.dll / dep/)};
+
+        % DevTools Process Box
+        \coordinate (dt_tl) at (29.0, 4.5);
+        \coordinate (dt_br) at (35.0, -12.5);
+        \draw[draw=orange!20, thick, rounded corners=8mm, fill=orange!4, fill opacity=0.5] (dt_tl) rectangle (dt_br);
+        \node[title, text=orange!80!black, anchor=north] at (32.0, 4.2) {DevTools Process};
     \end{pgfonlayer}
 
     % --- Phase 1: Creation & Initialization (Gray) ---
     \draw[arrow] (app) -- node[label_style, right] {1. Define UI \& Bind Hooks\\(\texttt{ui.Add}, \texttt{ui.OnEvent})} (gen);
     
-    \draw[arrow] (axml) |- node[label_style, near start, right, pos=0.5, left=-30mm] {Parse to AST} (gen.170);
-    \draw[arrow] (app) -| node[label_style, above, near end, pos=.5, left=-30mm] {Load} (axml);
+    \draw[arrow] (axml) |- node[label_style, pos=0.6, above] {Parse to AST} (gen.170);
+    \draw[arrow] (app) -| node[label_style, pos=0.5, above] {Load} (axml);
     
     \draw[arrow] (gen) -- node[label_style, right] {2. Serialize to XAML\\(Or Compile to BAML DLL)} (ahkhost);
     
@@ -77,9 +102,21 @@
     % Vertically staggered and horizontally spaced paths
     \draw[arrow] ([xshift=-2.2cm]csbridge.north) -- node[label_style, pos=0.25, left=-20mm] {4. \texttt{XamlReader.Load()} / BAML Load\\Render Visual Tree} ([xshift=-2.2cm]wpf.south);
 
-    % --- WebView2 Connections ---
-    \draw[arrow, dashed] (wpf.east) -- node[label_style, above] {Hosts} (webview.west);
-    \draw[arrow_event, dashed, rounded corners=4mm] (webview.south) |- node[label_style, near end, above, pos=0.6] {JS WebMessageReceived} (csbridge.350);
+    % --- Optional Component Connections ---
+    \draw[arrow, dashed, rounded corners=2mm] (wpf.east) -- node[label_style, above, pos=0.5] {Hosts} (20.5, 0) |- (webview.west);
+    \draw[arrow, dashed, rounded corners=2mm] (wpf.east) -- (20.5, 0) |- (avalon.west);
+    \draw[arrow, dashed, rounded corners=2mm] (wpf.east) -- (20.5, 0) |- (openxml.west);
+
+    % Feeds from optional components into single Event Callback line
+    \draw[dashed, thick, draw=red!50] (webview.east) -- (26.5, 0.5);
+    \draw[dashed, thick, draw=red!50] (avalon.east) -- (26.5, -2.0);
+    \draw[dashed, thick, draw=red!50] (openxml.east) -- (26.5, -4.3);
+
+    \draw[arrow_event, dashed, rounded corners=4mm] (26.5, 0.5) |- node[label_style, near end, above, pos=0.8] {Event Callback} (csbridge.350);
+
+    % --- DevTools Connections ---
+    \draw[arrow, dashed, rounded corners=4mm] (ahkhost.south) -- (0, -14.3) -| node[label_style, near start, above, pos=0.25] {Monitor IPC} (devtools.south);
+    \draw[arrow, dashed, rounded corners=4mm] (devtools.north) |- node[label_style, pos=0.35, below] {Inspect Live Tree} (16.0, 2.2) -- (wpf.north);
 
     % --- Phase 2: Native Event Dispatch (Red) ---
     \draw[arrow_event] (wpf.south) -- node[label_style, pos=0.5] {5. Native UI Interaction\\(e.g., Click, KeyDown)} (csbridge.north);
@@ -88,12 +125,12 @@
 
     % Orthogonal routing for Event Callback (Left side, inner loop)
     \draw[arrow_event, rounded corners=4mm] (ahkhost.170) -- ++(-2.3, 0) |- (app.190);
-    \node[label_style] at (-4.8, -3.5) {7. Trigger AHK Callback\\(\texttt{state, ctrl, event})};
+    \node[label_style] at (-4.8, -5.5) {7. Trigger AHK Callback\\(\texttt{state, ctrl, event})};
 
     % --- Phase 3: Dynamic Mutation (Blue) ---
     % Orthogonal routing for Update Command (Left side, outer loop)
     \draw[arrow_update, rounded corners=4mm] (app.170) -- ++(-4.0, 0) |- (ahkhost.190);
-    \node[label_style] at (-8.3, -3.5) {8. Script Updates GUI\\(\texttt{ui.Update()})};
+    \node[label_style] at (-8.3, -5.5) {8. Script Updates GUI\\(\texttt{ui.Update()})};
 
     \draw[arrow_update] (ahkhost.345) -- node[label_style, below=1mm] {9. \texttt{WM\_COPYDATA} (0x004A)\\Command string to engine} (csbridge.195);
 
@@ -101,12 +138,13 @@
     \draw[arrow_update] ([xshift=2.2cm]csbridge.north) -- node[label_style, pos=0.75, right=-20mm] {10. Engine Mutates UI\\(WPF Dispatcher Thread)} ([xshift=2.2cm]wpf.south);
 
     % --- Legend ---
-    \begin{scope}[shift={(7.5, -11.0)}]
-        \node[box, minimum height=1cm, minimum width=8cm, align=left, anchor=north] (legend) {
+    \begin{scope}[shift={(5.0, -15.0)}]
+        \node[box, minimum height=1.5cm, minimum width=9.5cm, align=left, anchor=north] (legend) {
             \textbf{Data Flow Legend:}\\[1.5ex]
             \tikz[baseline=-0.5ex]\draw[arrow, shorten >=0pt, shorten <=0pt] (0,0) -- (1.5,0); Initialization \& Setup Pipeline\\[1ex]
             \tikz[baseline=-0.5ex]\draw[arrow_event, shorten >=0pt, shorten <=0pt] (0,0) -- (1.5,0); Event \& State Dispatch (WPF $\rightarrow$ AHK)\\[1ex]
-            \tikz[baseline=-0.5ex]\draw[arrow_update, shorten >=0pt, shorten <=0pt] (0,0) -- (1.5,0); UI Update Commands (AHK $\rightarrow$ WPF)
+            \tikz[baseline=-0.5ex]\draw[arrow_update, shorten >=0pt, shorten <=0pt] (0,0) -- (1.5,0); UI Update Commands (AHK $\rightarrow$ WPF)\\[1ex]
+            \tikz[baseline=-0.5ex]\draw[arrow, dashed, shorten >=0pt, shorten <=0pt] (0,0) -- (1.5,0); DevTools Inspection \& IPC Monitoring
         };
     \end{scope}
 

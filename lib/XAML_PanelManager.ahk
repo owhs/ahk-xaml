@@ -1331,11 +1331,12 @@ class PanelManager {
             }
 
             try {
-                fn := Func("UpdateBackdropEffects")
-                if (fn)
-                    fn()
+                fn := %"UpdateBackdropEffects"%
+                fn()
             } catch as errBackdrop {
-                this.Trace("Apply backdrop effects failed: " errBackdrop.Message)
+                if !(errBackdrop is TargetError) {
+                    this.Trace("Apply backdrop effects failed: " errBackdrop.Message)
+                }
             }
 
             SetTimer(ObjBindMethod(this, "CheckPanelMoved", id), 1000)
