@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #Include "..\..\lib\XAML_Config.ahk"
 global XAML_ENABLE_AVALONEDIT := true
+
 #Include "..\..\lib\XAML_Host.ahk"
 #Include "..\..\lib\XAML_Dialog.ahk"
 #Include "..\..\lib\XAML_Components.ahk"
@@ -247,7 +248,7 @@ langCb.SelectedIndex(0)
 ; Theme selector
 editorToolbar.Add("TextBlock").Text("Theme:").Foreground("{DynamicResource TextSub}").VerticalAlignment("Center").Margin("0,0,8,0")
 themeCb := editorToolbar.Add("ComboBox").Name("AEThemeCombo").Width(130).Height(28).VerticalAlignment("Center").Margin("0,0,15,0")
-for t in ["dark", "light", "monokai", "one-dark", "dracula", "solarized-dark"]
+for t in ["match", "dark", "light", "monokai", "one-dark", "dracula", "solarized-dark"]
     themeCb.Add("ComboBoxItem").Content(t)
 themeCb.SelectedIndex(0)
 
@@ -349,20 +350,69 @@ ui := app.Compile()
 ; --- AvalonEdit post-compile bindings ---
 myEditor.Bind(ui)
 
-sampleCode := "using System;`n`n"
-sampleCode .= "namespace HelloWorld`n{`n"
-sampleCode .= "    class Program`n    {`n"
-sampleCode .= "        static void Main(string[] args)`n        {`n"
-sampleCode .= "            // Welcome message`n"
-sampleCode .= "            Console.WriteLine(" Chr(34) "Hello, World!" Chr(34) ");`n`n"
-sampleCode .= "            string[] items = { " Chr(34) "Alpha" Chr(34) ", " Chr(34) "Beta" Chr(34) ", " Chr(34) "Gamma" Chr(34) " };`n"
-sampleCode .= "            foreach (var item in items)`n            {`n"
-sampleCode .= "                Console.WriteLine(item);`n"
-sampleCode .= "            }`n`n"
-sampleCode .= "            Console.ReadKey();`n"
-sampleCode .= "        }`n    }`n}"
-myEditor.SetText(sampleCode)
+; Load snippets dynamically from text database
+SplitPath(A_LineFile, , &showcaseDir)
+global snippetsMap := LoadSnippets(showcaseDir "\snippets.txt")
+
+LoadSnippets(filePath) {
+    sMap := Map()
+    if !FileExist(filePath)
+        return sMap
+    content := FileRead(filePath)
+    currentLang := ""
+    currentCode := ""
+    Loop parse, content, "`n", "`r" {
+        line := A_LoopField
+        if RegExMatch(line, "^===\s*([a-zA-Z0-9#\+\-]+)\s*===$", &m) {
+            if (currentLang != "") {
+                sMap[currentLang] := RTrim(currentCode, "`n`r")
+            }
+            currentLang := m[1]
+            currentCode := ""
+        } else {
+            if (currentLang != "") {
+                currentCode .= line "`n"
+            }
+        }
+    }
+    if (currentLang != "") {
+        sMap[currentLang] := RTrim(currentCode, "`n`r")
+    }
+    return sMap
+}
+
+GetThemeColorString(themeName) {
+    static iniPath := ""
+    if (iniPath == "") {
+        iniPath := FileExist("themes.ini") ? "themes.ini" : (FileExist("../themes.ini") ? "../themes.ini" : (FileExist("..\..\examples\themes.ini") ? "..\..\examples\themes.ini" : ""))
+    }
+    if (iniPath == "")
+        return "dark"
+
+    try {
+        bg := IniRead(iniPath, themeName, "Resource_DropdownBg", "#1E1E1E")
+        fg := IniRead(iniPath, themeName, "Resource_TextMain", "#FFFFFF")
+        ln := IniRead(iniPath, themeName, "Resource_TextSub", "#888888")
+        accent := IniRead(iniPath, themeName, "Resource_Accent", "#0A84FF")
+
+        accentHex := RegExReplace(accent, "^#")
+        sel := "#40" accentHex
+        cur := "#15" accentHex
+
+        return "bg:" bg ",fg:" fg ",ln:" ln ",sel:" sel ",cur:" cur
+    } catch {
+        return "dark"
+    }
+}
+
+; Set C# as the default starting text
+if snippetsMap.Has("cs") {
+    myEditor.SetText(snippetsMap["cs"])
+}
 myEditor.UpdateFolding()
+; Apply initial matched theme on startup
+targetTheme := (app.HasProp("currentThemeName") && app.currentThemeName != "") ? app.currentThemeName : "Dark Mica (Win 11)"
+myEditor.SetTheme(GetThemeColorString(targetTheme))
 
 ; Language selector
 ui.Track("AELangCombo")
@@ -372,17 +422,40 @@ _AELangChanged(state, ctrl, event) {
         return
     langMap := Map("C#", "cs", "JavaScript", "js", "Python", "python", "XML", "xml", "HTML", "html", "CSS", "css", "C++", "cpp", "Java", "java", "SQL", "sql", "PowerShell", "powershell", "Markdown", "markdown")
     sel := state["AELangCombo"]
-    if langMap.Has(sel)
-        myEditor.SetLanguage(langMap[sel])
+    if langMap.Has(sel) {
+        langCode := langMap[sel]
+        myEditor.SetLanguage(langCode)
+        if snippetsMap.Has(langCode) {
+            myEditor.SetText(snippetsMap[langCode])
+            myEditor.UpdateFolding()
+        }
+    }
 }
 
 ; Theme selector
+global activeAETheme := "match"
 ui.Track("AEThemeCombo")
 ui.OnEvent("AEThemeCombo", "SelectionChanged", _AEThemeChanged)
 _AEThemeChanged(state, ctrl, event) {
     if (!state.Has("AEThemeCombo"))
         return
-    myEditor.SetTheme(state["AEThemeCombo"])
+    global activeAETheme := state["AEThemeCombo"]
+    if (activeAETheme == "match") {
+        targetTheme := (app.HasProp("currentThemeName") && app.currentThemeName != "") ? app.currentThemeName : "Dark Mica (Win 11)"
+        myEditor.SetTheme(GetThemeColorString(targetTheme))
+    } else {
+        myEditor.SetTheme(activeAETheme)
+    }
+}
+
+; Sync with parent UI theme changes
+ui.OnEvent("ComboTheme", "SelectionChanged", _ParentThemeChanged)
+_ParentThemeChanged(state, ctrl, event) {
+    app.ThemeChanged(state, ctrl, event)
+    if (activeAETheme == "match") {
+        targetTheme := (app.HasProp("currentThemeName") && app.currentThemeName != "") ? app.currentThemeName : "Dark Mica (Win 11)"
+        myEditor.SetTheme(GetThemeColorString(targetTheme))
+    }
 }
 
 ; Fold/Unfold buttons
@@ -406,24 +479,14 @@ ui.OnEvent("AEShowComplete", "Click", (*) => myEditor.ShowCompletion([
 ; Caret position tracking
 myEditor.OnCaretChanged := (editor, state, event) => ui.Update("AEStatus", "Text", "Ln " StrSplit(event, ",")[1] ", Col " StrSplit(event, ",")[2])
 
-SetTimer(LoadPreviewIcons, 1000)
+SetTimer(LoadPreviewIcons, -100)
 LoadPreviewIcons() {
-    static attempts := 0
-    attempts++
-    if (attempts > 30)
-        SetTimer(LoadPreviewIcons, 0)
-
     for idx, ic in exampleIcons {
         try {
-            ; Try variant A: pure HICON
-            h1 := LoadPicture(ic.Dll, "Icon" ic.Idx, &t1)
-            if (h1)
-                ui.Update("IconPreviewImg_" idx, "Source", (t1 == 0 ? "HBITMAP:" : "HICON:") h1)
-
-            ; Try variant B: resized HBITMAP
-            h2 := LoadPicture(ic.Dll, "Icon" ic.Idx " w32 h32", &t2)
-            if (h2)
-                ui.Update("IconPreviewImg_" idx, "Source", (t2 == 0 ? "HBITMAP:" : "HICON:") h2)
+            h := LoadPicture(ic.Dll, "Icon" ic.Idx " w32 h32", &t)
+            if (h) {
+                ui.Update("IconPreviewImg_" idx, "Source", (t == 0 ? "HBITMAP:" : "HICON:") h)
+            }
         }
     }
 }

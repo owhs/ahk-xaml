@@ -1,0 +1,239 @@
+=== cs ===
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HelloWorld
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // Welcome message
+            Console.WriteLine("Hello, World!");
+
+            var items = new List<string> { "Alpha", "Beta", "Gamma" };
+            foreach (var item in items)
+            {
+                Console.WriteLine($"Item: {item}");
+            }
+
+            Console.ReadKey();
+        }
+    }
+}
+
+=== js ===
+// Modern ES6 JavaScript Showcase
+import { EventEmitter } from 'events';
+
+class Greeter extends EventEmitter {
+    constructor(greeting = 'Hello') {
+        super();
+        this.greeting = greeting;
+    }
+
+    greet(name) {
+        const message = `${this.greeting}, ${name}!`;
+        this.emit('greet', message);
+        return message;
+    }
+}
+
+const greeter = new Greeter('Welcome');
+greeter.on('greet', (msg) => {
+    console.log(`[EVENT] ${msg}`);
+});
+
+greeter.greet('World');
+
+=== python ===
+# Modern Python 3 Showcase
+import math
+from typing import List
+
+class Vector:
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+
+    def magnitude(self) -> float:
+        return math.sqrt(self.x ** 2 + self.y ** 2)
+
+    def scale(self, factor: float) -> 'Vector':
+        return Vector(self.x * factor, self.y * factor)
+
+    def __repr__(self) -> str:
+        return f"Vector({self.x}, {self.y})"
+
+# Calculate hypotenuse magnitude
+v = Vector(3.0, 4.0)
+print(f"Vector: {v}")
+print(f"Magnitude: {v.magnitude()}")
+
+=== xml ===
+<?xml version="1.0" encoding="utf-8"?>
+<Configuration version="1.0">
+    <Database connectionString="Server=myServerAddress;Database=myDataBase;Uid=myUsername;Pwd=myPassword;">
+        <Pool minSize="5" maxSize="100" timeout="30" />
+        <Caching enabled="true" duration="3600" />
+    </Database>
+    <Logging level="Debug" file="app.log">
+        <Target type="File" />
+        <Target type="Console" />
+    </Logging>
+</Configuration>
+
+=== html ===
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Web App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <h1>Dashboard Panel</h1>
+        <nav class="nav-links">
+            <a href="#dashboard" class="active">Overview</a>
+            <a href="#settings">Settings</a>
+        </nav>
+    </header>
+    <main class="content-container">
+        <section class="card">
+            <h2>Welcome Back!</h2>
+            <p>Your systems are running optimal.</p>
+        </section>
+    </main>
+</body>
+</html>
+
+=== css ===
+/* Premium Custom Style System */
+:root {
+    --bg-main: #11111b;
+    --fg-main: #cdd6f4;
+    --accent: #89b4fa;
+    --card-bg: #1e1e2e;
+    --radius: 8px;
+    --transition: all 0.3s ease;
+}
+
+body {
+    background-color: var(--bg-main);
+    color: var(--fg-main);
+    font-family: 'Outfit', sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+.card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
+    transition: var(--transition);
+}
+
+.card:hover {
+    transform: translateY(-4px);
+    border-color: var(--accent);
+}
+
+=== cpp ===
+#include <iostream>
+#include <vector>
+#include <string>
+#include <memory>
+
+class Shape {
+public:
+    virtual ~Shape() = default;
+    virtual void draw() const = 0;
+};
+
+class Circle : public Shape {
+private:
+    double radius;
+public:
+    Circle(double r) : radius(r) {}
+    void draw() const override {
+        std::cout << "Drawing a circle with radius " << radius << std::endl;
+    }
+};
+
+int main() {
+    auto circle = std::make_unique<Circle>(5.0);
+    circle->draw();
+    return 0;
+}
+
+=== java ===
+package com.showcase;
+
+import java.util.List;
+import java.util.ArrayList;
+
+public class Main {
+    public static void main(String[] args) {
+        List<String> items = new ArrayList<>();
+        items.add("Apple");
+        items.add("Banana");
+        items.add("Cherry");
+
+        items.forEach(item -> {
+            System.out.println("Processing: " + item);
+        });
+    }
+}
+
+=== sql ===
+-- Retrieve active system errors grouped by server
+SELECT 
+    server_id,
+    COUNT(error_id) AS total_errors,
+    AVG(latency_ms) AS avg_latency
+FROM 
+    system_logs
+WHERE 
+    status = 'Error'
+    AND timestamp >= DATEADD(hh, -24, GETDATE())
+GROUP BY 
+    server_id
+HAVING 
+    COUNT(error_id) > 10
+ORDER BY 
+    total_errors DESC;
+
+=== powershell ===
+# Dynamic System Diagnostic Script
+$processName = "AutoHotkey"
+$processes = Get-Process -Name $processName -ErrorAction SilentlyContinue
+
+if ($processes) {
+    Write-Host "Found $($processes.Count) active instances of $processName" -ForegroundColor Green
+    $processes | Format-Table Id, CPU, WorkingSet -AutoSize
+} else {
+    Write-Warning "No active instances of $processName found."
+}
+
+=== markdown ===
+# Beautiful Markdown Showcase
+
+Welcome to the premium developer layout. You can easily view, write, and render clean typography.
+
+## Key Features
+
+- **Responsive Design**: Adapts dynamically to any layout.
+- **Glassmorphic Accents**: Beautiful hover states.
+- **Dynamic Previews**: Live updates.
+
+### System Specifications
+
+| Feature | Support | Performance |
+| :--- | :---: | ---: |
+| High-DPI | Yes | Ultra |
+| Animations | CSS3 | Fluid |
+| Code Editor | WPF | Native |

@@ -2,6 +2,7 @@
 #Include "XAML_Host.ahk"
 #Include "XAML_Dialog.ahk"
 #Include "XAML_Generator.ahk"
+#Include "XAML_Components.ahk"
 
 ; ==============================================================================
 ; COMMAND BAR
@@ -1635,6 +1636,7 @@ class XClock {
         this.id := name != "" ? name : "Clock_" XClock.Count()
 
         this.isEditMode := false
+        this.isVisible := false ; Default to false on startup (starts on page 1)
         this.timerFn := ObjBindMethod(this, "Tick")
 
         ; Main glassmorphic container
@@ -1692,28 +1694,100 @@ class XClock {
         ui.Track(this.id "_MinEdit")
         ui.Track(this.id "_SecEdit")
         ui.Track(this.id "_AmPmEdit")
+        ui.OnEvent(this.id "_Grid", "IsVisibleChanged", ObjBindMethod(this, "OnVisibilityChanged"))
+        ui.OnEvent("Window", "Activated", ObjBindMethod(this, "OnWindowActivated"))
+        ui.OnEvent("Window", "Deactivated", ObjBindMethod(this, "OnWindowDeactivated"))
+        ui.OnEvent("Window", "StateChanged", ObjBindMethod(this, "OnWindowStateChanged"))
+    }
+
+    OnVisibilityChanged(state, ctrl, event) {
+        if (state.Has("IsVisibleChanged")) {
+            this.isVisible := (state["IsVisibleChanged"] == "True")
+        } else {
+            try {
+                val := this.ui.Query(this.id "_Grid>IsVisible")
+                this.isVisible := (val == "True")
+            } catch {
+                return
+            }
+        }
+        
+        if (this.isVisible && !this.IsWindowMinimized() && WinActive("ahk_id " this.ui.wpfHwnd)) {
+            this.Start()
+        } else {
+            this.Stop()
+        }
+    }
+
+    IsWindowMinimized() {
+        if (!this.ui || !this.ui.wpfHwnd)
+            return false
+        try {
+            return WinGetMinMax("ahk_id " this.ui.wpfHwnd) == -1
+        }
+        return false
+    }
+
+    OnWindowActivated(state, ctrl, event) {
+        if (this.isVisible && !this.IsWindowMinimized()) {
+            this.Start()
+        }
+    }
+
+    OnWindowDeactivated(state, ctrl, event) {
+        this.Stop()
+    }
+
+    OnWindowStateChanged(state, ctrl, event) {
+        ws := state.Has("StateChanged") ? state["StateChanged"] : ""
+        if (ws == "Minimized") {
+            this.Stop()
+        } else if (this.isVisible && WinActive("ahk_id " this.ui.wpfHwnd)) {
+            this.Start()
+        }
     }
 
     Start() {
+        if (!this.isVisible)
+            return
+        if (this.lastTickTime != "")
+            return
         SetTimer(this.timerFn, 1000)
+        this.lastTickTime := A_TickCount
         this.Tick()
     }
 
     Stop() {
         SetTimer(this.timerFn, 0)
+        this.lastTickTime := ""
     }
 
     Tick() {
         if (this.isEditMode)
             return
 
+        ; 1. Suspend updates if host window is minimized or not active (e.g. clicked to another window)
+        if (!WinExist("ahk_id " this.ui.wpfHwnd) || !WinActive("ahk_id " this.ui.wpfHwnd))
+            return
+
+        ; 2. Double-check visibility local flag to prevent illegal ticks
+        if (!this.isVisible)
+            return
+
         timeStr := ""
         if (this.HasProp("baseTime") && this.baseTime != "") {
-            this.baseTime := DateAdd(this.baseTime, 1, "Seconds")
+            elapsed := 1
+            if (this.HasProp("lastTickTime") && this.lastTickTime != "") {
+                elapsed := Round((A_TickCount - this.lastTickTime) / 1000)
+                if (elapsed <= 0)
+                    elapsed := 1
+            }
+            this.baseTime := DateAdd(this.baseTime, elapsed, "Seconds")
             timeStr := FormatTime(this.baseTime, "h:mm:ss:tt")
         } else {
             timeStr := FormatTime(, "h:mm:ss:tt")
         }
+        this.lastTickTime := A_TickCount
 
         parts := StrSplit(timeStr, ":")
 
@@ -3623,13 +3697,18 @@ class XAvalonEditor {
 
     ; --- Event Handlers ---
     _OnTextChangedEvent(state, ctrl, event) {
-        if (this._onTextChanged)
-            this._onTextChanged(this, state, event)
+        if (this._onTextChanged) {
+            fn := this._onTextChanged
+            fn(this, state, event)
+        }
     }
 
     _OnCaretChangedEvent(state, ctrl, event) {
-        if (this._onCaretChanged)
-            this._onCaretChanged(this, state, event)
+        if (this._onCaretChanged) {
+            fn := this._onCaretChanged
+            val := state.Has(event) ? state[event] : ""
+            fn(this, state, val)
+        }
     }
 
     ; --- Utilities ---
@@ -4268,6 +4347,42 @@ class XDocumentEditor {
         if (!this.ui)
             return
         this.ui.Update(this.id, "Doc_ReplaceAll", find "|||" replace)
+    }
+
+    QueryDOM(selector) {
+        if (!this.ui)
+            return
+        this.ui.Update(this.id, "Doc_QueryDOM", selector)
+    }
+
+    HighlightStyle(styleId, colorName := "Yellow") {
+        if (!this.ui)
+            return
+        this.ui.Update(this.id, "Doc_HighlightStyle", styleId "|" colorName)
+    }
+
+    AuditLinks() {
+        if (!this.ui)
+            return
+        this.ui.Update(this.id, "Doc_AuditLinks", "")
+    }
+
+    RewriteLinks(mapping) {
+        if (!this.ui)
+            return
+        this.ui.Update(this.id, "Doc_RewriteLinks", mapping)
+    }
+
+    CompileTemplate(payload) {
+        if (!this.ui)
+            return
+        this.ui.Update(this.id, "Doc_CompileTemplate", payload)
+    }
+
+    StandardizeFont(fromFont, toFont) {
+        if (!this.ui)
+            return
+        this.ui.Update(this.id, "Doc_StandardizeFont", fromFont "|" toFont)
     }
 
     GetWordCount() {

@@ -7,11 +7,6 @@
 ; When false, uses the pre-compiled ahk-xaml.dll from the lib directory.
 global XAML_FORCE_DYNAMIC_COMPILE := true
 
-; --- Component Style Loading ---
-; "BAML"  → Load pre-compiled binary styles from the embedded BAML resource (fastest).
-; "XAML"  → Parse the plain-text xaml.components.xaml at runtime (allows live style editing).
-global XAML_COMPONENTS_LOAD_MODE := "BAML"
-
 ; --- Developer Diagnostics ---
 ; When true, crash dialogs show interactive "Skip Property" / "Skip Element" buttons
 ; for rapid iteration. Disable in production for a cleaner user experience.
@@ -32,6 +27,11 @@ global XAML_ENABLE_TRACING := true
 
 ; --- WebView2 ---
 global XAML_ENABLE_WEBVIEW := false
+
+; --- WebView2 User Data Directory ---
+; The directory where WebView2 stores its browser cache, cookies, and user data.
+; If not specified, defaults to A_Temp "\AhkWpf\WebView2Data".
+global XAML_WEBVIEW_USER_DATA_DIR := ""
 
 ; --- AvalonEdit IDE Component ---
 ; When true, compiles with ICSharpCode.AvalonEdit for a robust code editor
@@ -54,7 +54,3 @@ global XAML_AUTO_PREWARM := false
 ; When true, enables the premium developer tools panel.
 ; Pressing F12 in any active app window opens the floating DevTools suite.
 global XAML_ENABLE_DEVTOOLS := true
-
-; --- Backward Compatibility ---
-; XAML_DEBUG is derived from the new flags for any scripts that still reference it.
-global XAML_DEBUG := XAML_FORCE_DYNAMIC_COMPILE

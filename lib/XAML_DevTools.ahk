@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #Include "XAML_GUI.ahk"
 #Include "XAML_Config.ahk"
+#Include "XAML_Components.ahk"
 
 global XAML_DevTools_Instance := ""
 
@@ -1818,6 +1819,226 @@ class XAML_DevTools {
                 previewXml .= '</StackPanel>'
                 
                 previewXml .= '</Grid></Border>'
+            }
+        }
+        else if (eventName == "AddXamlItem" && InStr(pLoadDec, "<Grid")) {
+            hasPreview := true
+            
+            ; Parse the outer Grid attributes
+            gridAttrs := Map()
+            if (RegExMatch(pLoadDec, "^<Grid\s+([^>]+)>", &mGrid)) {
+                attrList := mGrid[1]
+                posAttr := 1
+                while (posAttr := RegExMatch(attrList, '(\S+)="([^"]*)"', &mAttr, posAttr)) {
+                    k := mAttr[1]
+                    v := mAttr[2]
+                    if (k != "xmlns" && k != "Uid" && k != "x:Uid") {
+                        gridAttrs[k] := v
+                    }
+                    posAttr += mAttr.Len
+                }
+            }
+
+            previewXml .= '<TextBlock Text="Parsed Grid Row Cells" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+            
+            ; Parse the TextBlocks inside the XAML grid
+            cells := []
+            pos := 1
+            while (pos := RegExMatch(pLoadDec, "<(\w+)[^>]*>", &match, pos)) {
+                el := match[0]
+                tag := match[1]
+                
+                ; Skip definition tags
+                if (InStr(tag, "Definition") || InStr(tag, "Column") || InStr(tag, "Row")) {
+                    pos += match.Len
+                    continue
+                }
+                
+                text := ""
+                col := -1
+                
+                if (RegExMatch(el, 'i)Text="([^"]*)"', &mText))
+                    text := mText[1]
+                else if (RegExMatch(el, 'i)Content="([^"]*)"', &mContent))
+                    text := mContent[1]
+                
+                if (RegExMatch(el, 'i)Grid\.Column="([^"]*)"', &mCol))
+                    col := Integer(mCol[1])
+                
+                if (col >= 0 || text != "") {
+                    cells.Push({ Col: (col >= 0 ? col : 0), Text: text, Tag: tag })
+                }
+                pos += match.Len
+            }
+
+            ; Sort cells by column index
+            if (cells.Length > 1) {
+                Loop cells.Length - 1 {
+                    i := A_Index
+                    Loop cells.Length - i {
+                        j := A_Index + i
+                        if (cells[i].Col > cells[j].Col) {
+                            temp := cells[i]
+                            cells[i] := cells[j]
+                            cells[j] := temp
+                        }
+                    }
+                }
+            }
+
+            if (cells.Length > 0) {
+                previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}" Margin="0,0,0,15" Padding="10">'
+                previewXml .= '<Grid>'
+                previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>'
+                
+                colsDef := ""
+                headerRow := ""
+                valRow := ""
+                
+                tIdx := 0
+                for cell in cells {
+                    tIdx++
+                    colsDef .= '<ColumnDefinition Width="*"/>'
+                    headerRow .= Format('<Border Grid.Row="0" Grid.Column="{1}" Background="{DynamicResource SidebarBg}" Padding="6,4" BorderThickness="0,0,1,1" BorderBrush="{DynamicResource ControlBorder}"><TextBlock Text="Col {2} ({3})" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource TextSub}" HorizontalAlignment="Center"/></Border>', tIdx - 1, cell.Col, cell.Tag)
+                    valRow .= Format('<Border Grid.Row="1" Grid.Column="{1}" Padding="8,6" BorderThickness="0,0,1,0" BorderBrush="{DynamicResource ControlBorder}"><TextBlock Text="{2}" FontSize="12" Foreground="{DynamicResource TextMain}" HorizontalAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/></Border>', tIdx - 1, this.EscapeXml(cell.Text))
+                }
+                
+                previewXml .= '<Grid.ColumnDefinitions>' colsDef '</Grid.ColumnDefinitions>'
+                previewXml .= headerRow
+                previewXml .= valRow
+                previewXml .= '</Grid></Border>'
+            }
+
+            if (gridAttrs.Count > 0) {
+                previewXml .= '<TextBlock Text="Parsed Grid Container Properties" Foreground="#E5C07B" FontWeight="Bold" FontSize="11.5" Margin="0,0,0,6" />'
+                previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}">'
+                previewXml .= '<Grid>'
+                previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>'
+                
+                previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>'
+                previewXml .= '<TextBlock Text="Attribute" FontWeight="Bold" Margin="6" Grid.Column="0" Foreground="#CCCCCC"/>'
+                previewXml .= '<TextBlock Text="Value" FontWeight="Bold" Margin="6" Grid.Column="1" Foreground="#CCCCCC"/>'
+                previewXml .= '</Grid>'
+                
+                previewXml .= '<StackPanel Grid.Row="1">'
+                tIdx := 0
+                for k, v in gridAttrs {
+                    tIdx++
+                    bgColor := (Mod(tIdx, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                    previewXml .= Format('
+                    ( LTrim
+                        <Grid Background="{3}">
+                        <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150"/>
+                        <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="{1}" Margin="6" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Text="{2}" Margin="6" FontSize="11" Foreground="#CE9178" TextWrapping="Wrap" />
+                        </Grid>
+                    )', this.EscapeXml(k), this.EscapeXml(v), bgColor)
+                }
+                previewXml .= '</StackPanel></Grid></Border>'
+            }
+        }
+
+        if (!hasPreview) {
+            if (pLoadDec != "" && InStr(pLoadDec, "|")) {
+                ; Parse as batched updates
+                updates := []
+                lines := StrSplit(pLoadDec, "`n", "`r")
+                firstVal := lines.Length >= 1 ? lines[1] : ""
+                if (ctrlName != "" || eventName != "") {
+                    updates.Push({ Control: ctrlName, Property: eventName, Value: firstVal })
+                }
+                
+                loop lines.Length {
+                    if (A_Index == 1)
+                        continue
+                    line := lines[A_Index]
+                    if (line == "")
+                        continue
+                    
+                    parts := StrSplit(line, "|", , 3)
+                    if (parts.Length >= 2) {
+                        cName := parts[1]
+                        pName := parts[2]
+                        val := parts.Length >= 3 ? parts[3] : ""
+                        updates.Push({ Control: cName, Property: pName, Value: val })
+                    } else {
+                        updates.Push({ Control: "", Property: "", Value: line })
+                    }
+                }
+                
+                if (updates.Length > 0) {
+                    hasPreview := true
+                    previewXml .= '<TextBlock Text="Parsed Batched Updates" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+                    previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}">'
+                    previewXml .= '<Grid>'
+                    previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>'
+                    
+                    previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="110"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>'
+                    previewXml .= '<TextBlock Text="Control" FontWeight="Bold" Margin="4" Grid.Column="0" Foreground="#CCCCCC"/>'
+                    previewXml .= '<TextBlock Text="Property" FontWeight="Bold" Margin="4" Grid.Column="1" Foreground="#CCCCCC"/>'
+                    previewXml .= '<TextBlock Text="Value" FontWeight="Bold" Margin="4" Grid.Column="2" Foreground="#CCCCCC"/>'
+                    previewXml .= '</Grid>'
+                    
+                    previewXml .= '<StackPanel Grid.Row="1">'
+                    
+                    tIdx := 0
+                    for idx, upd in updates {
+                        tIdx++
+                        if (tIdx > 100) {
+                            previewXml .= '<TextBlock Text="... and ' (updates.Length - 100) ' more updates" FontStyle="Italic" Foreground="{DynamicResource TextSub}" Margin="5,4" />'
+                            break
+                        }
+                        
+                        bgColor := (Mod(tIdx, 2) == 0) ? "#0AFFFFFF" : "Transparent"
+                        previewXml .= Format('
+                        ( LTrim
+                            <Grid Background="{4}">
+                            <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="180"/>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{1}" Margin="4" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="1" Text="{2}" Margin="4" FontSize="11" Foreground="#A6E3A1" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Grid.Column="2" Text="{3}" Margin="4" FontSize="11" Foreground="#CE9178" TextWrapping="Wrap" />
+                            </Grid>
+                        )', this.EscapeXml(upd.Control), this.EscapeXml(upd.Property), this.EscapeXml(upd.Value), bgColor)
+                    }
+                    
+                    previewXml .= '</StackPanel></Grid></Border>'
+                }
+            } else if (ctrlName != "" || eventName != "") {
+                ; Parse as a single property update / event
+                hasPreview := true
+                previewXml .= '<TextBlock Text="Parsed Update / Event" Foreground="#E5C07B" FontWeight="Bold" FontSize="12.5" Margin="0,0,0,8" />'
+                previewXml .= '<Border BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="4" Background="{DynamicResource ControlBg}">'
+                previewXml .= '<Grid>'
+                previewXml .= '<Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>'
+                
+                previewXml .= '<Grid Background="{DynamicResource SidebarBg}"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>'
+                previewXml .= '<TextBlock Text="Control" FontWeight="Bold" Margin="4" Grid.Column="0" Foreground="#CCCCCC"/>'
+                previewXml .= '<TextBlock Text="Property / Event" FontWeight="Bold" Margin="4" Grid.Column="1" Foreground="#CCCCCC"/>'
+                previewXml .= '<TextBlock Text="Value" FontWeight="Bold" Margin="4" Grid.Column="2" Foreground="#CCCCCC"/>'
+                previewXml .= '</Grid>'
+                
+                previewXml .= '<StackPanel Grid.Row="1">'
+                previewXml .= Format('
+                ( LTrim
+                    <Grid Background="Transparent">
+                    <Grid.ColumnDefinitions>
+                    <Grid.ColumnDefinition Width="150"/>
+                    <Grid.ColumnDefinition Width="120"/>
+                    <Grid.ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{1}" Margin="4" FontSize="11" Foreground="#9CDCFE" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="{2}" Margin="4" FontSize="11" Foreground="#A6E3A1" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="{3}" Margin="4" FontSize="11" Foreground="#CE9178" TextWrapping="Wrap" />
+                    </Grid>
+                )', this.EscapeXml(ctrlName), this.EscapeXml(eventName), this.EscapeXml(pLoadDec))
+                previewXml .= '</StackPanel></Grid></Border>'
             }
         }
 

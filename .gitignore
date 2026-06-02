@@ -27,3 +27,4 @@ package-lock.json
 !axml_error_test.axml
 work_docs/
 *.py
+!examples/showcase/snippets.txt

@@ -424,7 +424,7 @@ public class AhkWpfEngine
                 {
                     if (EnableLogging)
                     {
-                        try { System.IO.File.AppendAllText(@"C:\projects\ahk\ahk-xaml\daemon_log.txt", "Daemon started with args: " + string.Join(" ", args) + "\n"); } catch { }
+                        //try { System.IO.File.AppendAllText(@"C:\projects\ahk\ahk-xaml\daemon_log.txt", "Daemon started with args: " + string.Join(" ", args) + "\n"); } catch { }
                     }
                     int ahkPid = int.Parse(args[1]);
                     IntPtr ahkHwnd = (IntPtr)long.Parse(args[2]);
@@ -563,6 +563,11 @@ public class AhkWpfEngine
 #if ENABLE_WEBVIEW
                     try {
                         var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+                        string customDir = Environment.GetEnvironmentVariable("AHK_XAML_WEBVIEW_DIR");
+                        string wvDataDir = !string.IsNullOrEmpty(customDir) ? customDir : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "WebView2Data");
+                        wv.CreationProperties = new Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties {
+                            UserDataFolder = wvDataDir
+                        };
                     } catch { }
 #endif
 
@@ -582,6 +587,11 @@ public class AhkWpfEngine
 #if ENABLE_WEBVIEW
                     try {
                         var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+                        string customDir = Environment.GetEnvironmentVariable("AHK_XAML_WEBVIEW_DIR");
+                        string wvDataDir = !string.IsNullOrEmpty(customDir) ? customDir : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "WebView2Data");
+                        wv.CreationProperties = new Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties {
+                            UserDataFolder = wvDataDir
+                        };
                     } catch { }
 #endif
                     System.Threading.Thread t = new System.Threading.Thread(() =>
@@ -674,6 +684,9 @@ public class AhkWpfEngine
         }
         tracked = trackedCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
 
+#if ENABLE_WEBVIEW
+        PreprocessXamlAndExtractWebViewSources(ref xamlContent);
+#endif
         byte[] xamlBytes = Encoding.UTF8.GetBytes(xamlContent);
         if (Application.Current == null) new Application();
         try
@@ -725,7 +738,19 @@ public class AhkWpfEngine
         win.Resources["BaseWindowRadius"] = new CornerRadius(12);
         if (Application.Current != null) Application.Current.Resources["BaseWindowRadius"] = win.Resources["BaseWindowRadius"];
 
-        win.StateChanged += (s, e) => UpdateSnapState(win);
+        win.StateChanged += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|StateChanged|" + win.WindowState.ToString() + "\n");
+            UpdateSnapState(win);
+        };
+        win.Activated += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|Activated\n");
+        };
+        win.Deactivated += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|Deactivated\n");
+        };
         win.LocationChanged += (s, e) => UpdateSnapState(win);
         win.SizeChanged += (s, e) => UpdateSnapState(win);
 
@@ -737,6 +762,9 @@ public class AhkWpfEngine
             UpdateSnapState(win);
             InheritWindowIconAndTitle(win, ownerHwndStr);
             DumpState("Window", "Loaded");
+#if ENABLE_WEBVIEW
+            InitializeWebView2IfPresent(win);
+#endif
         };
         win.Closing += (s, e) =>
         {
@@ -748,9 +776,9 @@ public class AhkWpfEngine
             }
             SendToAhk("EVENT|" + winId + "|Window|Closing\n");
         };
-        win.Closed += (s, e) => 
-        { 
-            SendToAhk("EVENT|" + winId + "|Window|Closed\n"); 
+        win.Closed += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|Closed\n");
             lock (_activeEngines)
             {
                 _activeEngines.Remove(winId);
@@ -784,6 +812,9 @@ public class AhkWpfEngine
         }
 
         InheritWindowIconAndTitle(win, ownerHwndStr);
+#if ENABLE_WEBVIEW
+        ConfigureWebView2CreationProperties(win);
+#endif
         if (isDaemon)
         {
             win.Show();
@@ -1064,6 +1095,9 @@ public class AhkWpfEngine
                 if (System.IO.File.Exists(fallbackXaml))
                 {
                     xamlContent = System.IO.File.ReadAllText(fallbackXaml, Encoding.UTF8);
+#if ENABLE_WEBVIEW
+                    PreprocessXamlAndExtractWebViewSources(ref xamlContent);
+#endif
                     byte[] fb = Encoding.UTF8.GetBytes(xamlContent);
                     using (var stream = new System.IO.MemoryStream(fb))
                     {
@@ -1086,6 +1120,9 @@ public class AhkWpfEngine
             }
             else
             {
+#if ENABLE_WEBVIEW
+                PreprocessXamlAndExtractWebViewSources(ref xamlContent);
+#endif
                 xamlBytes = Encoding.UTF8.GetBytes(xamlContent);
             }
             if (Application.Current == null) new Application();
@@ -1209,11 +1246,23 @@ public class AhkWpfEngine
         win.Resources["BaseWindowRadius"] = new CornerRadius(12);
         if (Application.Current != null) Application.Current.Resources["BaseWindowRadius"] = win.Resources["BaseWindowRadius"];
 
-        win.StateChanged += (s, e) => UpdateSnapState(win);
+        win.StateChanged += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|StateChanged|" + win.WindowState.ToString() + "\n");
+            UpdateSnapState(win);
+        };
+        win.Activated += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|Activated\n");
+        };
+        win.Deactivated += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|Deactivated\n");
+        };
         win.LocationChanged += (s, e) => UpdateSnapState(win);
         win.SizeChanged += (s, e) => UpdateSnapState(win);
 
-        win.Loaded += async (s, e) =>
+        win.Loaded += (s, e) =>
         {
             IntPtr hwnd = new WindowInteropHelper(win).Handle;
             HwndSource.FromHwnd(hwnd).AddHook(WndProc);
@@ -1221,31 +1270,8 @@ public class AhkWpfEngine
             UpdateSnapState(win);
             InheritWindowIconAndTitle(win, ownerHwndStr);
             DumpState("Window", "Loaded");
-
 #if ENABLE_WEBVIEW
-            var webViews = new System.Collections.Generic.List<WebView2>();
-            WalkVisualTree(win, (obj) => {
-                if (obj is WebView2) {
-                    var wv = (WebView2)obj;
-                    webViews.Add(wv);
-                }
-            });
-            foreach (var wv in webViews) {
-                try {
-                    wv.WebMessageReceived += (ws, we) => {
-                        string debugMsg = we.WebMessageAsJson;
-                        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWebViewDebug.log"), "C# WebMessageReceived: " + debugMsg + "\n"); } catch {}
-                        SendToAhk("EVENT|" + winId + "|" + wv.Name + "|WebMessageReceived|" + LengthPrefix(debugMsg) + "\n");
-                    };
-                    wv.NavigationCompleted += (ws, we) => {
-                        SendToAhk("EVENT|" + winId + "|" + wv.Name + "|NavigationCompleted|" + LengthPrefix(wv.Source != null ? wv.Source.ToString() : "") + "\n");
-                    };
-                    var env = await CoreWebView2Environment.CreateAsync(null, System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWebView2Data"));
-                    await wv.EnsureCoreWebView2Async(env);
-                } catch (Exception ex) {
-                    System.Windows.MessageBox.Show("WebView Init Error:\n" + ex.ToString(), "AHK-XAML WebView Error");
-                }
-            }
+            InitializeWebView2IfPresent(win);
 #endif
 
             // Aggressively flush the working set from RAM (WPF caches huge amounts of unused startup structures)
@@ -1274,9 +1300,9 @@ public class AhkWpfEngine
             }
             SendToAhk("EVENT|" + winId + "|Window|Closing\n");
         };
-        win.Closed += (s, e) => 
-        { 
-            SendToAhk("EVENT|" + winId + "|Window|Closed\n"); 
+        win.Closed += (s, e) =>
+        {
+            SendToAhk("EVENT|" + winId + "|Window|Closed\n");
             lock (_activeEngines)
             {
                 _activeEngines.Remove(winId);
@@ -1345,6 +1371,9 @@ public class AhkWpfEngine
         eventsContent = null;
 
         InheritWindowIconAndTitle(win, ownerHwndStr);
+#if ENABLE_WEBVIEW
+        ConfigureWebView2CreationProperties(win);
+#endif
         if (isDaemon)
         {
             win.Show();
@@ -1516,6 +1545,130 @@ public class AhkWpfEngine
         catch { }
     }
 
+#if ENABLE_WEBVIEW
+    private System.Collections.Generic.Dictionary<string, string> _initialWebViewSources = new System.Collections.Generic.Dictionary<string, string>();
+
+    private void PreprocessXamlAndExtractWebViewSources(ref string xaml)
+    {
+        if (string.IsNullOrEmpty(xaml)) return;
+        try
+        {
+            var logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWebViewDebug.log");
+            System.IO.File.AppendAllText(logPath, "PreprocessXamlAndExtractWebViewSources called. XAML Length: " + xaml.Length + "\n");
+            
+            var regex = new System.Text.RegularExpressions.Regex(@"<wv2:WebView2\b[^>]*>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            xaml = regex.Replace(xaml, (System.Text.RegularExpressions.Match match) =>
+            {
+                string tag = match.Value;
+                System.IO.File.AppendAllText(logPath, "Found tag: " + tag + "\n");
+                
+                var nameMatch = System.Text.RegularExpressions.Regex.Match(tag, @"\b(?:x:)?Name\s*=\s*""([^""]*)""", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                var sourceMatch = System.Text.RegularExpressions.Regex.Match(tag, @"\bSource\s*=\s*""([^""]*)""", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                
+                if (nameMatch.Success && sourceMatch.Success)
+                {
+                    string name = nameMatch.Groups[1].Value;
+                    string source = sourceMatch.Groups[1].Value;
+                    
+                    _initialWebViewSources[name] = source;
+                    System.IO.File.AppendAllText(logPath, "Successfully extracted Name='" + name + "', Source='" + source + "'\n");
+                    
+                    tag = System.Text.RegularExpressions.Regex.Replace(tag, @"\bSource\s*=\s*""[^""]*""\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                }
+                else
+                {
+                    System.IO.File.AppendAllText(logPath, "Tag mismatch: NameMatch=" + nameMatch.Success + ", SourceMatch=" + sourceMatch.Success + "\n");
+                }
+                return tag;
+            });
+        }
+        catch (Exception ex)
+        {
+            try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWebViewDebug.log"), "Regex Error: " + ex.ToString() + "\n"); } catch {}
+        }
+    }
+
+    private void ConfigureWebView2CreationProperties(Window win)
+    {
+        try
+        {
+            string customDir = Environment.GetEnvironmentVariable("AHK_XAML_WEBVIEW_DIR");
+            string wvDataDir = !string.IsNullOrEmpty(customDir) ? customDir : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "WebView2Data");
+            
+            WalkLogicalOrVisualTree(win, (DependencyObject d) =>
+            {
+                if (d is Microsoft.Web.WebView2.Wpf.WebView2)
+                {
+                    var wv = (Microsoft.Web.WebView2.Wpf.WebView2)d;
+                    if (wv.CreationProperties == null)
+                    {
+                        wv.CreationProperties = new Microsoft.Web.WebView2.Wpf.CoreWebView2CreationProperties
+                        {
+                            UserDataFolder = wvDataDir
+                        };
+                    }
+                }
+            });
+        }
+        catch { }
+    }
+
+    private async void InitializeWebView2IfPresent(Window win)
+    {
+        try
+        {
+            var webViews = new System.Collections.Generic.List<WebView2>();
+            WalkVisualTree(win, (obj) => {
+                if (obj is WebView2) {
+                    webViews.Add((WebView2)obj);
+                }
+            });
+            if (webViews.Count == 0) return;
+
+            string customDir = Environment.GetEnvironmentVariable("AHK_XAML_WEBVIEW_DIR");
+            string wvDataDir = !string.IsNullOrEmpty(customDir) ? customDir : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "WebView2Data");
+            var logPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWebViewDebug.log");
+            
+            System.IO.File.AppendAllText(logPath, "InitializeWebView2IfPresent called. Found " + webViews.Count + " WebViews. wvDataDir: " + wvDataDir + "\n");
+            
+            foreach (var wv in webViews) {
+                try {
+                    System.IO.File.AppendAllText(logPath, "Initializing WebView with Name: '" + wv.Name + "'\n");
+                    wv.WebMessageReceived += (ws, we) => {
+                        string debugMsg = we.WebMessageAsJson;
+                        try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWebViewDebug.log"), "C# WebMessageReceived: " + debugMsg + "\n"); } catch {}
+                        SendToAhk("EVENT|" + winId + "|" + wv.Name + "|WebMessageReceived|" + LengthPrefix(debugMsg) + "\n");
+                    };
+                    wv.NavigationCompleted += (ws, we) => {
+                        SendToAhk("EVENT|" + winId + "|" + wv.Name + "|NavigationCompleted|" + LengthPrefix(wv.Source != null ? wv.Source.ToString() : "") + "\n");
+                    };
+                    
+                    var env = await CoreWebView2Environment.CreateAsync(null, wvDataDir);
+                    await wv.EnsureCoreWebView2Async(env);
+                    System.IO.File.AppendAllText(logPath, "EnsureCoreWebView2Async completed successfully.\n");
+
+                    if (!string.IsNullOrEmpty(wv.Name) && _initialWebViewSources.ContainsKey(wv.Name))
+                    {
+                        System.IO.File.AppendAllText(logPath, "Navigating to extracted Source URL: " + _initialWebViewSources[wv.Name] + "\n");
+                        wv.Source = new Uri(_initialWebViewSources[wv.Name]);
+                    }
+                    else
+                    {
+                        System.IO.File.AppendAllText(logPath, "No extracted source URL found in _initialWebViewSources (Name='" + wv.Name + "', keyExists=" + _initialWebViewSources.ContainsKey(wv.Name ?? "") + ")\n");
+                    }
+                } catch (Exception ex) {
+                    System.IO.File.AppendAllText(logPath, "WebView Init Exception: " + ex.ToString() + "\n");
+                    System.Windows.MessageBox.Show("WebView Init Error:\n" + ex.ToString(), "AHK-XAML WebView Error");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWebViewDebug.log"), "InitializeWebView2IfPresent outer Exception: " + ex.ToString() + "\n"); } catch {}
+        }
+    }
+#endif
+
     private void UpdateSnapState(Window win)
     {
         CornerRadius baseRad = new CornerRadius(0);
@@ -1591,6 +1744,20 @@ public class AhkWpfEngine
         {
             object ctrl = ctrlName == "Window" ? (object)win : win.FindName(ctrlName);
             if (ctrl == null) return;
+
+            if (eventName == "IsVisibleChanged")
+            {
+                if (ctrl is UIElement)
+                {
+                    ((UIElement)ctrl).IsVisibleChanged += (s, e) =>
+                    {
+                        string val = LengthPrefix(e.NewValue.ToString());
+                        SendToAhk("EVENT|" + winId + "|" + ctrlName + "|IsVisibleChanged|" + val + "\n");
+                    };
+                }
+                return;
+            }
+
             var evt = ctrl.GetType().GetEvent(eventName);
             if (evt == null) return;
 
@@ -2440,7 +2607,7 @@ public class AhkWpfEngine
         {
             if (IsIncludedInDevTools(fe) && !IsPickerSkippable(fe))
             {
-                try 
+                try
                 {
                     var transform = fe.TransformToAncestor(win);
                     System.Windows.Rect bounds = new System.Windows.Rect(0, 0, fe.ActualWidth, fe.ActualHeight);
@@ -2957,13 +3124,16 @@ public class AhkWpfEngine
                                 var fe = (FrameworkElement)d;
                                 if (!string.IsNullOrEmpty(fe.Name))
                                 {
+                                    try { win.UnregisterName(fe.Name); } catch { }
                                     try { win.RegisterName(fe.Name, fe); } catch { }
                                 }
                             }
-                            int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(d);
-                            for (int i = 0; i < count; i++)
+                            foreach (object child in System.Windows.LogicalTreeHelper.GetChildren(d))
                             {
-                                registerNames(System.Windows.Media.VisualTreeHelper.GetChild(d, i));
+                                if (child is DependencyObject)
+                                {
+                                    registerNames((DependencyObject)child);
+                                }
                             }
                         });
                         registerNames((DependencyObject)element);
@@ -3163,8 +3333,9 @@ public class AhkWpfEngine
                 else if (parts[1] == "BindEvent")
                 {
                     BindEvent(parts[0], parts[2]);
+                }
 #if ENABLE_WEBVIEW
-                } else if (parts[1] == "Navigate" && ctrl is Microsoft.Web.WebView2.Wpf.WebView2) {
+                else if (parts[1] == "Navigate" && ctrl is Microsoft.Web.WebView2.Wpf.WebView2) {
                     try {
                         ((Microsoft.Web.WebView2.Wpf.WebView2)ctrl).CoreWebView2.Navigate(parts[2]);
                     } catch { }
@@ -3184,9 +3355,10 @@ public class AhkWpfEngine
                     try { ((Microsoft.Web.WebView2.Wpf.WebView2)ctrl).Reload(); } catch { }
                 } else if (parts[1] == "OpenDevTools" && ctrl is Microsoft.Web.WebView2.Wpf.WebView2) {
                     try { ((Microsoft.Web.WebView2.Wpf.WebView2)ctrl).CoreWebView2.OpenDevToolsWindow(); } catch { }
+                }
 #endif
 #if ENABLE_AVALONEDIT
-                } else if (ctrl is ContentControl && parts[1].StartsWith("AE_")) {
+                else if (ctrl is ContentControl && parts[1].StartsWith("AE_")) {
                     // AvalonEdit commands — the ContentControl hosts the TextEditor
                     var host = ctrl as ContentControl;
                     var editor = host != null ? host.Content as TextEditor : null;
@@ -3394,9 +3566,23 @@ public class AhkWpfEngine
                                 if (foldMgr == null) {
                                     foldMgr = FoldingManager.Install(editor.TextArea);
                                     editor.Tag = foldMgr;
+                                    
+                                    // Replace standard boxy FoldingMargin with SexyFoldingMargin
+                                    for (int i = 0; i < editor.TextArea.LeftMargins.Count; i++) {
+                                        var margin = editor.TextArea.LeftMargins[i];
+                                        if (margin.GetType().Name == "FoldingMargin") {
+                                            editor.TextArea.LeftMargins[i] = new SexyFoldingMargin() { FoldingManager = foldMgr };
+                                            break;
+                                        }
+                                    }
                                 }
                                 var strategy = new BraceFoldingStrategy();
                                 strategy.UpdateFoldings(foldMgr, editor.Document);
+                                
+                                // Re-apply theme styling to the folding margin if current theme is stored
+                                if (editor.Resources.Contains("CurrentTheme")) {
+                                    ApplyAvalonEditTheme(editor, (string)editor.Resources["CurrentTheme"]);
+                                }
                                 break;
                             }
                             case "ShowCompletion": {
@@ -3405,6 +3591,57 @@ public class AhkWpfEngine
                                     string decoded = Encoding.UTF8.GetString(Convert.FromBase64String(aeVal));
                                     string[] items = decoded.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
                                     var completionWindow = new CompletionWindow(editor.TextArea);
+                                    
+                                    // Custom visual styling matching the host/editor theme
+                                    try {
+                                        completionWindow.Background = editor.Background;
+                                        completionWindow.BorderBrush = editor.LineNumbersForeground ?? System.Windows.Media.Brushes.Gray;
+                                        completionWindow.BorderThickness = new System.Windows.Thickness(1);
+                                        completionWindow.Foreground = editor.Foreground;
+                                        completionWindow.FontFamily = editor.FontFamily;
+                                        completionWindow.FontSize = editor.FontSize;
+                                        completionWindow.MinWidth = 240;
+                                        completionWindow.WindowStyle = System.Windows.WindowStyle.None;
+                                        completionWindow.ResizeMode = System.Windows.ResizeMode.NoResize;
+                                        
+                                        var listBox = completionWindow.CompletionList.ListBox;
+                                        if (listBox != null) {
+                                            listBox.Background = System.Windows.Media.Brushes.Transparent;
+                                            listBox.BorderThickness = new System.Windows.Thickness(0);
+                                            listBox.Foreground = editor.Foreground;
+                                            listBox.FontFamily = editor.FontFamily;
+                                            listBox.FontSize = editor.FontSize;
+                                            listBox.Padding = new System.Windows.Thickness(4);
+                                            
+                                            // Styled ListBoxItem container for hover/selection visual parity
+                                            var itemStyle = new System.Windows.Style(typeof(System.Windows.Controls.ListBoxItem));
+                                            itemStyle.Setters.Add(new System.Windows.Setter(System.Windows.Controls.ListBoxItem.BackgroundProperty, System.Windows.Media.Brushes.Transparent));
+                                            itemStyle.Setters.Add(new System.Windows.Setter(System.Windows.Controls.ListBoxItem.ForegroundProperty, editor.Foreground));
+                                            itemStyle.Setters.Add(new System.Windows.Setter(System.Windows.Controls.ListBoxItem.PaddingProperty, new System.Windows.Thickness(10, 5, 10, 5)));
+                                            itemStyle.Setters.Add(new System.Windows.Setter(System.Windows.Controls.ListBoxItem.MarginProperty, new System.Windows.Thickness(0, 1, 0, 1)));
+                                            
+                                            // Selection Highlight
+                                            var triggerSelected = new System.Windows.Trigger { Property = System.Windows.Controls.ListBoxItem.IsSelectedProperty, Value = true };
+                                            triggerSelected.Setters.Add(new System.Windows.Setter(System.Windows.Controls.ListBoxItem.BackgroundProperty, editor.TextArea.SelectionBrush ?? System.Windows.Media.Brushes.DodgerBlue));
+                                            triggerSelected.Setters.Add(new System.Windows.Setter(System.Windows.Controls.ListBoxItem.ForegroundProperty, editor.Foreground));
+                                            
+                                            // Hover Highlight
+                                            var triggerHover = new System.Windows.Trigger { Property = System.Windows.Controls.ListBoxItem.IsMouseOverProperty, Value = true };
+                                            System.Windows.Media.Brush hoverBrush = null;
+                                            var selBrush = editor.TextArea.SelectionBrush as System.Windows.Media.SolidColorBrush;
+                                            if (selBrush != null) {
+                                                hoverBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(40, selBrush.Color.R, selBrush.Color.G, selBrush.Color.B));
+                                            } else {
+                                                hoverBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(20, 128, 128, 128));
+                                            }
+                                            triggerHover.Setters.Add(new System.Windows.Setter(System.Windows.Controls.ListBoxItem.BackgroundProperty, hoverBrush));
+                                            
+                                            itemStyle.Triggers.Add(triggerSelected);
+                                            itemStyle.Triggers.Add(triggerHover);
+                                            listBox.ItemContainerStyle = itemStyle;
+                                        }
+                                    } catch { }
+                                    
                                     foreach (string item in items) {
                                         string[] itemParts = item.Split(new[] { '|' }, 2);
                                         string completionText = itemParts[0].Trim();
@@ -3441,9 +3678,10 @@ public class AhkWpfEngine
                                 break;
                         }
                     }
+                }
 #endif
 #if ENABLE_DOCUMENT
-                } else if (parts[1].StartsWith("Doc_") && ctrl is RichTextBox) {
+                else if (parts[1].StartsWith("Doc_") && ctrl is RichTextBox) {
                     var rtb = (RichTextBox)ctrl;
                     if (rtb.Tag == null || rtb.Tag.ToString() != "wired") {
                         rtb.SelectionChanged += (s, e) => {
@@ -3692,27 +3930,76 @@ public class AhkWpfEngine
                             break;
                         }
                         case "GoToBlock": {
-                            int targetIdx;
-                            if (int.TryParse(docVal, out targetIdx) && targetIdx >= 0) {
-                                int pIdx = 0;
-                                System.Windows.Documents.TextPointer ptr = rtb.Document.ContentStart;
-                                while (ptr != null && ptr.CompareTo(rtb.Document.ContentEnd) < 0) {
-                                    if (ptr.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.ElementStart) {
-                                        System.Windows.Documents.TextElement element = ptr.GetAdjacentElement(LogicalDirection.Forward) as System.Windows.Documents.TextElement;
-                                        System.Windows.Documents.Paragraph p = element as System.Windows.Documents.Paragraph;
-                                        if (p != null) {
-                                            if (pIdx == targetIdx) {
-                                                rtb.CaretPosition = p.ContentStart;
-                                                rtb.Focus();
-                                                p.BringIntoView();
-                                                break;
-                                            }
-                                            pIdx++;
-                                        }
-                                    }
-                                    ptr = ptr.GetNextContextPosition(LogicalDirection.Forward);
+                            try {
+                                string type = "paragraph";
+                                int targetIdx = 0;
+                                if (docVal.Contains(":")) {
+                                    string[] pts = docVal.Split(':');
+                                    type = pts[0].ToLower();
+                                    int.TryParse(pts[1], out targetIdx);
+                                } else {
+                                    int.TryParse(docVal, out targetIdx);
                                 }
-                            }
+                                
+                                int currentIdx = 0;
+                                System.Windows.Documents.TextElement foundElement = null;
+
+                                if (type == "paragraph") {
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (foundElement != null) return;
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            if (currentIdx == targetIdx) {
+                                                foundElement = (System.Windows.Documents.Paragraph)block;
+                                            }
+                                            currentIdx++;
+                                        }
+                                    });
+                                } else if (type == "table") {
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (foundElement != null) return;
+                                        if (block is System.Windows.Documents.Table) {
+                                            if (currentIdx == targetIdx) {
+                                                foundElement = (System.Windows.Documents.Table)block;
+                                            }
+                                            currentIdx++;
+                                        }
+                                    });
+                                } else if (type == "hyperlink") {
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (foundElement != null) return;
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            TraverseInlines(p.Inlines, (inline) => {
+                                                if (foundElement != null) return;
+                                                if (inline is System.Windows.Documents.Hyperlink) {
+                                                    if (currentIdx == targetIdx) {
+                                                        foundElement = (System.Windows.Documents.Hyperlink)inline;
+                                                    }
+                                                    currentIdx++;
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+
+                                if (foundElement != null) {
+                                    rtb.CaretPosition = foundElement.ContentStart;
+                                    rtb.Selection.Select(foundElement.ContentStart, foundElement.ContentEnd);
+                                    rtb.Focus();
+                                    try {
+                                        var rect = rtb.CaretPosition.GetCharacterRect(System.Windows.Documents.LogicalDirection.Forward);
+                                        if (rect.Top != 0 || rect.Bottom != 0) {
+                                            double targetOffset = rtb.VerticalOffset + rect.Top - 30;
+                                            if (targetOffset < 0) targetOffset = 0;
+                                            rtb.ScrollToVerticalOffset(targetOffset);
+                                        } else {
+                                            foundElement.BringIntoView();
+                                        }
+                                    } catch {
+                                        try { foundElement.BringIntoView(); } catch {}
+                                    }
+                                }
+                            } catch {}
                             break;
                         }
                         case "InsertImage": {
@@ -3991,214 +4278,592 @@ public class AhkWpfEngine
                             }
                             break;
                         }
+                        case "QueryDOM": {
+                            try {
+                                string selector = docVal.ToLower();
+                                StringBuilder sb = new StringBuilder();
+
+                                if (selector == "headings") {
+                                    int pIdx = 0;
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            string styleId = p.Tag as string ?? "";
+                                            
+                                            if (string.IsNullOrEmpty(styleId)) {
+                                                if (p.FontWeight == FontWeights.Bold && p.FontSize > 14) {
+                                                    styleId = "Heading1";
+                                                }
+                                            }
+                                            
+                                            string domText = new TextRange(p.ContentStart, p.ContentEnd).Text.Trim();
+                                            bool isHeading = styleId.StartsWith("Heading", StringComparison.OrdinalIgnoreCase) || 
+                                                             styleId.StartsWith("H", StringComparison.OrdinalIgnoreCase);
+                                            
+                                            if (!string.IsNullOrEmpty(domText) && isHeading) {
+                                                sb.Append(pIdx + "|" + styleId + "|" + domText + "\n");
+                                            }
+                                            pIdx++;
+                                        }
+                                    });
+                                } else if (selector == "hyperlinks") {
+                                    int hlCount = 0;
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            TraverseInlines(p.Inlines, (inline) => {
+                                                if (inline is System.Windows.Documents.Hyperlink) {
+                                                    var hl = (System.Windows.Documents.Hyperlink)inline;
+                                                    string url = hl.NavigateUri != null ? hl.NavigateUri.ToString() : "";
+                                                    string domText = new TextRange(hl.ContentStart, hl.ContentEnd).Text.Trim();
+                                                    if (string.IsNullOrEmpty(domText)) domText = url;
+                                                    
+                                                    string relId = "memHl_" + hlCount;
+                                                    if (!string.IsNullOrEmpty(url)) {
+                                                        sb.Append(domText + "|" + url + "|" + relId + "\n");
+                                                    }
+                                                    hlCount++;
+                                                }
+                                            });
+                                        }
+                                    });
+                                } else if (selector == "tables") {
+                                    int tIdx = 0;
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Table) {
+                                            var t = (System.Windows.Documents.Table)block;
+                                            int rows = 0;
+                                            foreach (var rg in t.RowGroups) rows += rg.Rows.Count;
+                                            
+                                            int cols = 0;
+                                            if (t.RowGroups.Count > 0 && t.RowGroups[0].Rows.Count > 0) {
+                                                cols = t.RowGroups[0].Rows[0].Cells.Count;
+                                            }
+                                            
+                                            string firstCellText = "";
+                                            if (t.RowGroups.Count > 0 && t.RowGroups[0].Rows.Count > 0 && t.RowGroups[0].Rows[0].Cells.Count > 0) {
+                                                var firstCell = t.RowGroups[0].Rows[0].Cells[0];
+                                                firstCellText = new TextRange(firstCell.ContentStart, firstCell.ContentEnd).Text.Trim();
+                                            }
+                                            if (firstCellText.Length > 30) firstCellText = firstCellText.Substring(0, 27) + "...";
+                                            
+                                            sb.Append(tIdx + "|" + rows + "|" + cols + "|" + firstCellText + "\n");
+                                            tIdx++;
+                                        }
+                                    });
+                                } else if (selector == "paragraphs") {
+                                    int pIdx = 0;
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            string domText = new TextRange(p.ContentStart, p.ContentEnd).Text.Trim();
+                                            string style = p.Tag as string ?? "Normal";
+                                            if (!string.IsNullOrEmpty(domText)) {
+                                                sb.Append(pIdx + "|" + style + "|" + domText + "\n");
+                                            }
+                                            pIdx++;
+                                        }
+                                    });
+                                } else if (selector == "fonts") {
+                                    var uniqueFonts = new System.Collections.Generic.HashSet<string>();
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            if (p.FontFamily != null) uniqueFonts.Add(p.FontFamily.Source);
+                                            TraverseInlines(p.Inlines, (inline) => {
+                                                if (inline is System.Windows.Documents.Run) {
+                                                    var run = (System.Windows.Documents.Run)inline;
+                                                    if (run.FontFamily != null) uniqueFonts.Add(run.FontFamily.Source);
+                                                } else if (inline is System.Windows.Documents.Hyperlink) {
+                                                    var hl = (System.Windows.Documents.Hyperlink)inline;
+                                                    if (hl.FontFamily != null) uniqueFonts.Add(hl.FontFamily.Source);
+                                                }
+                                            });
+                                        }
+                                    });
+                                    foreach (var fName in uniqueFonts) {
+                                        if (!string.IsNullOrEmpty(fName)) {
+                                            sb.Append(fName + "\n");
+                                        }
+                                    }
+                                }
+
+                                string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString()));
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerQueryDone|" + LengthPrefix(selector + "|" + b64) + "\n");
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerToolsError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
+                        case "HighlightStyle": {
+                            try {
+                                string[] hp = docVal.Split('|');
+                                if (hp.Length >= 2) {
+                                    string styleId = hp[0];
+                                    string colorName = hp[1];
+                                    
+                                    System.Windows.Media.Brush hlBrush = System.Windows.Media.Brushes.Yellow;
+                                    try {
+                                        hlBrush = (System.Windows.Media.Brush)new System.Windows.Media.BrushConverter().ConvertFromString(colorName);
+                                    } catch {}
+
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            string pStyle = p.Tag as string ?? "";
+                                            
+                                            if (string.IsNullOrEmpty(pStyle)) {
+                                                if (p.FontWeight == FontWeights.Bold && p.FontSize > 14) {
+                                                    pStyle = "Heading1";
+                                                }
+                                            }
+
+                                            if (string.Equals(pStyle, styleId, StringComparison.OrdinalIgnoreCase) || 
+                                                (styleId == "Heading" && pStyle.StartsWith("Heading", StringComparison.OrdinalIgnoreCase))) {
+                                                
+                                                TraverseInlines(p.Inlines, (inline) => {
+                                                    if (inline is System.Windows.Documents.Run) {
+                                                        var run = (System.Windows.Documents.Run)inline;
+                                                        run.Background = hlBrush;
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    });
+                                }
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerToolsError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
+                        case "AuditLinks": {
+                            try {
+                                StringBuilder sb = new StringBuilder();
+                                int hlCount = 0;
+                                
+                                TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                    if (block is System.Windows.Documents.Paragraph) {
+                                        var p = (System.Windows.Documents.Paragraph)block;
+                                        TraverseInlines(p.Inlines, (inline) => {
+                                            if (inline is System.Windows.Documents.Hyperlink) {
+                                                var hl = (System.Windows.Documents.Hyperlink)inline;
+                                                string url = hl.NavigateUri != null ? hl.NavigateUri.ToString() : "";
+                                                string domText = new TextRange(hl.ContentStart, hl.ContentEnd).Text.Trim();
+                                                if (string.IsNullOrEmpty(domText)) domText = url;
+                                                
+                                                string relId = "memHl_" + hlCount;
+                                                if (!string.IsNullOrEmpty(url)) {
+                                                    sb.Append(relId + "|" + url + "|" + domText + "\n");
+                                                }
+                                                hlCount++;
+                                            }
+                                        });
+                                    }
+                                });
+                                
+                                string b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString()));
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerAuditDone|" + LengthPrefix(b64) + "\n");
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerToolsError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
+                        case "RewriteLinks": {
+                            try {
+                                string[] lines = docVal.Split('\n');
+                                var replacements = new System.Collections.Generic.Dictionary<string, string>();
+                                foreach (var line in lines) {
+                                    if (string.IsNullOrEmpty(line)) continue;
+                                    string[] parts2 = line.Split('|');
+                                    if (parts2.Length >= 2) {
+                                        replacements[parts2[0].Trim()] = parts2[1].Trim();
+                                    }
+                                }
+
+                                if (replacements.Count > 0) {
+                                    int hlCount = 0;
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            TraverseInlines(p.Inlines, (inline) => {
+                                                if (inline is System.Windows.Documents.Hyperlink) {
+                                                    var hl = (System.Windows.Documents.Hyperlink)inline;
+                                                    string relId = "memHl_" + hlCount;
+                                                    if (replacements.ContainsKey(relId)) {
+                                                        string newUrl = replacements[relId];
+                                                        try {
+                                                            hl.NavigateUri = new Uri(newUrl, UriKind.RelativeOrAbsolute);
+                                                            hl.ToolTip = newUrl;
+                                                        } catch {}
+                                                    }
+                                                    hlCount++;
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerToolsError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
+                        case "StandardizeFont": {
+                            try {
+                                string[] hp = docVal.Split('|');
+                                if (hp.Length >= 2) {
+                                    string fromFont = hp[0].Trim();
+                                    string toFont = hp[1].Trim();
+                                    var targetFamily = new System.Windows.Media.FontFamily(toFont);
+
+                                    TraverseBlocks(rtb.Document.Blocks, (block) => {
+                                        if (block is System.Windows.Documents.Paragraph) {
+                                            var p = (System.Windows.Documents.Paragraph)block;
+                                            if (p.FontFamily != null && string.Equals(p.FontFamily.Source, fromFont, StringComparison.OrdinalIgnoreCase)) {
+                                                p.FontFamily = targetFamily;
+                                            }
+                                            TraverseInlines(p.Inlines, (inline) => {
+                                                if (inline is System.Windows.Documents.Run) {
+                                                    var run = (System.Windows.Documents.Run)inline;
+                                                    if (run.FontFamily != null && string.Equals(run.FontFamily.Source, fromFont, StringComparison.OrdinalIgnoreCase)) {
+                                                        run.FontFamily = targetFamily;
+                                                    }
+                                                } else if (inline is System.Windows.Documents.Hyperlink) {
+                                                    var hl = (System.Windows.Documents.Hyperlink)inline;
+                                                    if (hl.FontFamily != null && string.Equals(hl.FontFamily.Source, fromFont, StringComparison.OrdinalIgnoreCase)) {
+                                                        hl.FontFamily = targetFamily;
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerToolsError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
+                        case "CompileTemplate": {
+                            try {
+                                string[] lines = docVal.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                                if (lines.Length > 0) {
+                                    System.Windows.Documents.Paragraph placeholder = null;
+                                    System.Windows.Documents.BlockCollection parentCollection = null;
+                                    int placeholderIdx = -1;
+
+                                    Action<System.Windows.Documents.BlockCollection> searchCollection = null;
+                                    searchCollection = (coll) => {
+                                        if (placeholder != null) return;
+                                        for (int i = 0; i < coll.Count; i++) {
+                                            var b = coll.ElementAt(i);
+                                            if (b is System.Windows.Documents.Paragraph) {
+                                                var p = (System.Windows.Documents.Paragraph)b;
+                                                string pText = new TextRange(p.ContentStart, p.ContentEnd).Text;
+                                                if (pText.Contains("{{REPORT_TABLE}}")) {
+                                                    placeholder = p;
+                                                    parentCollection = coll;
+                                                    placeholderIdx = i;
+                                                    return;
+                                                }
+                                            } else if (b is System.Windows.Documents.Section) {
+                                                searchCollection(((System.Windows.Documents.Section)b).Blocks);
+                                            } else if (b is System.Windows.Documents.List) {
+                                                foreach (var li in ((System.Windows.Documents.List)b).ListItems) {
+                                                    searchCollection(li.Blocks);
+                                                }
+                                            } else if (b is System.Windows.Documents.Table) {
+                                                foreach (var rg in ((System.Windows.Documents.Table)b).RowGroups) {
+                                                    foreach (var row in rg.Rows) {
+                                                        foreach (var cell in row.Cells) {
+                                                            searchCollection(cell.Blocks);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    };
+
+                                    searchCollection(rtb.Document.Blocks);
+
+                                    if (placeholder != null && parentCollection != null) {
+                                        var table = new System.Windows.Documents.Table();
+                                        table.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                                        table.BorderThickness = new Thickness(1);
+                                        table.CellSpacing = 0;
+                                        table.Margin = new Thickness(0, 8, 0, 8);
+                                        
+                                        string[] headers = lines[0].Split(',');
+                                        int colCount = headers.Length;
+                                        
+                                        for (int i = 0; i < colCount; i++) {
+                                            table.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(1, GridUnitType.Star) });
+                                        }
+
+                                        var rg = new System.Windows.Documents.TableRowGroup();
+
+                                        var headerRow = new System.Windows.Documents.TableRow();
+                                        foreach (string colText in headers) {
+                                            var cell = new System.Windows.Documents.TableCell();
+                                            cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                                            cell.BorderThickness = new Thickness(0.5);
+                                            cell.Padding = new Thickness(8, 6, 8, 6);
+                                            cell.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(47, 85, 151));
+                                            
+                                            var p = new System.Windows.Documents.Paragraph();
+                                            p.TextAlignment = System.Windows.TextAlignment.Center;
+                                            var run = new System.Windows.Documents.Run(colText.Trim());
+                                            run.FontWeight = FontWeights.Bold;
+                                            run.Foreground = System.Windows.Media.Brushes.White;
+                                            run.FontSize = 12;
+                                            p.Inlines.Add(run);
+                                            cell.Blocks.Add(p);
+                                            headerRow.Cells.Add(cell);
+                                        }
+                                        rg.Rows.Add(headerRow);
+
+                                        for (int rIdx = 1; rIdx < lines.Length; rIdx++) {
+                                            string[] cells = lines[rIdx].Split(',');
+                                            var row = new System.Windows.Documents.TableRow();
+                                            System.Windows.Media.Color bgCol = (rIdx % 2 == 1) ? System.Windows.Media.Color.FromRgb(242, 245, 249) : System.Windows.Media.Color.FromRgb(255, 255, 255);
+                                            var bgBrush = new System.Windows.Media.SolidColorBrush(bgCol);
+
+                                            for (int cIdx = 0; cIdx < colCount; cIdx++) {
+                                                string cellVal = cIdx < cells.Length ? cells[cIdx].Trim() : "";
+                                                var cell = new System.Windows.Documents.TableCell();
+                                                cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                                                cell.BorderThickness = new Thickness(0.5);
+                                                cell.Padding = new Thickness(8, 6, 8, 6);
+                                                cell.Background = bgBrush;
+
+                                                var p = new System.Windows.Documents.Paragraph();
+                                                p.TextAlignment = System.Windows.TextAlignment.Left;
+                                                var run = new System.Windows.Documents.Run(cellVal);
+                                                run.FontSize = 11;
+                                                p.Inlines.Add(run);
+                                                cell.Blocks.Add(p);
+                                                row.Cells.Add(cell);
+                                            }
+                                            rg.Rows.Add(row);
+                                        }
+
+                                        table.RowGroups.Add(rg);
+
+                                        parentCollection.InsertAfter(placeholder, table);
+                                        parentCollection.Remove(placeholder);
+                                    }
+                                }
+                            } catch (Exception ex) {
+                                SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerToolsError|" + LengthPrefix(ex.Message) + "\n");
+                            }
+                            break;
+                        }
                     }
-#endif
                 }
+#endif
                 else if (parts[1] == "StartPositionTimer" && ctrl is MediaElement)
-                {
-                    // Handle all position tracking and seeking in C# to avoid IPC feedback loops
-                    var me = (MediaElement)ctrl;
-                    string sliderName = parts.Length > 2 ? parts[2] : "";
-                    if (!string.IsNullOrEmpty(sliderName))
                     {
-                        var slider = win.FindName(sliderName) as Slider;
-                        if (slider != null)
+                        // Handle all position tracking and seeking in C# to avoid IPC feedback loops
+                        var me = (MediaElement)ctrl;
+                        string sliderName = parts.Length > 2 ? parts[2] : "";
+                        if (!string.IsNullOrEmpty(sliderName))
                         {
-                            bool isSeeking = false;
-                            bool isUpdating = false;
+                            var slider = win.FindName(sliderName) as Slider;
+                            if (slider != null)
+                            {
+                                bool isSeeking = false;
+                                bool isUpdating = false;
 
-                            // Detect user drag start/end via Thumb routed events
-                            slider.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((ds, de) =>
-                            {
-                                isSeeking = true;
-                            }));
-                            slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((dc, dce) =>
-                            {
-                                me.Position = TimeSpan.FromSeconds(slider.Value);
-                                isSeeking = false;
-                            }));
-
-                            // Also handle click-on-track seeking
-                            slider.PreviewMouseLeftButtonUp += (mu, mue) =>
-                            {
-                                if (!isSeeking)
+                                // Detect user drag start/end via Thumb routed events
+                                slider.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((ds, de) =>
+                                {
+                                    isSeeking = true;
+                                }));
+                                slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((dc, dce) =>
                                 {
                                     me.Position = TimeSpan.FromSeconds(slider.Value);
-                                }
-                            };
+                                    isSeeking = false;
+                                }));
 
-                            // Timer syncs slider position (only when user isn't seeking)
-                            var posTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-                            posTimer.Tick += (s, e) =>
-                            {
-                                if (me.NaturalDuration.HasTimeSpan && !isSeeking)
+                                // Also handle click-on-track seeking
+                                slider.PreviewMouseLeftButtonUp += (mu, mue) =>
                                 {
-                                    isUpdating = true;
-                                    slider.Maximum = me.NaturalDuration.TimeSpan.TotalSeconds;
-                                    slider.Value = me.Position.TotalSeconds;
-                                    isUpdating = false;
-                                }
-                            };
-                            posTimer.Start();
+                                    if (!isSeeking)
+                                    {
+                                        me.Position = TimeSpan.FromSeconds(slider.Value);
+                                    }
+                                };
+
+                                // Timer syncs slider position (only when user isn't seeking)
+                                var posTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+                                posTimer.Tick += (s, e) =>
+                                {
+                                    if (me.NaturalDuration.HasTimeSpan && !isSeeking)
+                                    {
+                                        isUpdating = true;
+                                        slider.Maximum = me.NaturalDuration.TimeSpan.TotalSeconds;
+                                        slider.Value = me.Position.TotalSeconds;
+                                        isUpdating = false;
+                                    }
+                                };
+                                posTimer.Start();
+                            }
                         }
                     }
-                }
-                else if (parts[1] == "SetPosition" && ctrl is UIElement)
-                {
-                    var coords = parts[2].Split(',');
-                    if (coords.Length >= 2)
+                    else if (parts[1] == "SetPosition" && ctrl is UIElement)
                     {
-                        Canvas.SetLeft((UIElement)ctrl, double.Parse(coords[0]));
-                        Canvas.SetTop((UIElement)ctrl, double.Parse(coords[1]));
-                    }
-                }
-                else if (parts[1] == "SetCanvasMode" && ctrl is Canvas)
-                {
-                    canvasModes[parts[0]] = parts[2];
-                }
-                else if (parts[1] == "EnableZoomPan" && ctrl is Canvas)
-                {
-                    EnableCanvasZoomPan((Canvas)ctrl);
-                }
-                else if (parts[1] == "ZoomAll" && ctrl is Canvas)
-                {
-                    ZoomAllCanvas((Canvas)ctrl);
-                }
-                else if (parts[1] == "Zoom" && ctrl is Canvas)
-                {
-                    ZoomCanvas((Canvas)ctrl, double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture));
-                }
-                else if (parts[1] == "EnableDrag" && ctrl is FrameworkElement)
-                {
-                    EnableCanvasDrag((FrameworkElement)ctrl, parts[0], parts.Length > 2 ? parts[2] : "");
-                }
-                else if (parts[1] == "BeginStoryboard" && ctrl is FrameworkElement)
-                {
-                    var sb = ((FrameworkElement)ctrl).FindResource(parts[2]) as System.Windows.Media.Animation.Storyboard;
-                    if (sb != null) sb.Begin();
-                }
-                else if (parts[1] == "EnableListBoxDragDrop" && ctrl is ListBox)
-                {
-                    EnableListBoxDragDrop((ListBox)ctrl, parts[0]);
-                }
-                else if (parts[1] == "EnableDragSource" && ctrl is UIElement)
-                {
-                    string dragFormat = parts.Length > 2 ? parts[2] : "DragItem";
-                    EnableGenericDragSource((UIElement)ctrl, parts[0], dragFormat);
-                }
-                else if (parts[1] == "EnableDropTarget" && ctrl is UIElement)
-                {
-                    string dropFormat = parts.Length > 2 ? parts[2] : "DragItem";
-                    EnableGenericDropTarget((UIElement)ctrl, parts[0], dropFormat);
-                }
-                else if (parts[1] == "Close" && ctrl is Window)
-                {
-                    var ownerHwnd = new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner;
-                    if (ownerHwnd != IntPtr.Zero)
-                    {
-                        SetForegroundWindow(ownerHwnd);
-                    }
-                    win.Dispatcher.BeginInvoke(new Action(() => ((Window)ctrl).Close()));
-                }
-                else if (parts[1] == "AppendText" && ctrl is System.Windows.Controls.TextBox)
-                {
-                    var tb = (System.Windows.Controls.TextBox)ctrl;
-                    tb.AppendText(parts[2]);
-                    tb.ScrollToEnd();
-                }
-                else if (parts[1] == "InsertText" && ctrl is System.Windows.Controls.TextBox)
-                {
-                    var tb = (System.Windows.Controls.TextBox)ctrl;
-                    int idx = tb.CaretIndex;
-                    string pre = tb.Text.Substring(0, idx);
-                    string post = tb.Text.Substring(idx);
-                    tb.Text = pre + parts[2] + post;
-                    tb.CaretIndex = idx + parts[2].Length;
-                }
-                else if (parts[1] == "NativeOwner" && ctrl is Window)
-                {
-                    new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner = new IntPtr(long.Parse(parts[2]));
-                    InheritWindowIconAndTitle((Window)ctrl, parts[2]);
-                }
-                else if (parts[1] == "Focus" && ctrl is UIElement)
-                {
-                    if (parts[2].ToLower() == "true" || parts[2] == "1") ((UIElement)ctrl).Focus();
-                    else System.Windows.Input.Keyboard.ClearFocus();
-                }
-                else if (parts[1] == "BringIntoView" && ctrl is FrameworkElement)
-                {
-                    ((FrameworkElement)ctrl).BringIntoView();
-                }
-                else if (parts[1] == "Invoke" && ctrl is System.Windows.Controls.Primitives.ButtonBase)
-                {
-                    if (ctrl is System.Windows.Controls.Primitives.ToggleButton)
-                    {
-                        var tPeer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer((System.Windows.Controls.Primitives.ToggleButton)ctrl);
-                        var toggleProv = tPeer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle) as System.Windows.Automation.Provider.IToggleProvider;
-                        if (toggleProv != null) toggleProv.Toggle();
-                    }
-                    else if (ctrl is System.Windows.Controls.Button)
-                    {
-                        var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer((System.Windows.Controls.Button)ctrl);
-                        var invokeProv = peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke) as System.Windows.Automation.Provider.IInvokeProvider;
-                        if (invokeProv != null) invokeProv.Invoke();
-                    }
-                }
-                else if (parts[1] == "TrapScroll" && ctrl is ScrollViewer)
-                {
-                    var sv = (ScrollViewer)ctrl;
-                    System.Windows.Input.MouseWheelEventHandler handler = (s, e) =>
-                    {
-                        sv.ScrollToVerticalOffset(sv.VerticalOffset - e.Delta / 3.0);
-                        e.Handled = true;
-                    };
-                    sv.PreviewMouseWheel -= handler;
-                    sv.PreviewMouseWheel += handler;
-                    sv.MouseWheel -= handler;
-                    sv.MouseWheel += handler;
-                }
-                else
-                {
-                    var prop = ctrl.GetType().GetProperty(parts[1]);
-                    if (prop != null)
-                    {
-                        object val = null;
-                        string pt = prop.PropertyType.Name;
-                        if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
-                        else if (prop.PropertyType.IsEnum) val = Enum.Parse(prop.PropertyType, parts[2], true);
-                        else if (pt == "Double") val = double.Parse(parts[2]);
-                        else if (pt == "Boolean" || pt == "Nullable`1") val = Convert.ToBoolean(parts[2]);
-                        else if (pt == "Thickness") val = new System.Windows.ThicknessConverter().ConvertFromString(parts[2]);
-                        else if (pt == "CornerRadius") val = new System.Windows.CornerRadiusConverter().ConvertFromString(parts[2]);
-                        else if (pt == "ImageSource")
+                        var coords = parts[2].Split(',');
+                        if (coords.Length >= 2)
                         {
-                            if (parts[2].StartsWith("HICON:"))
-                            {
-                                IntPtr hIcon = new IntPtr(long.Parse(parts[2].Substring(6)));
-                                val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(hIcon, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-                            }
-                            else if (parts[2].StartsWith("HBITMAP:"))
-                            {
-                                IntPtr hBmp = new IntPtr(long.Parse(parts[2].Substring(8)));
-                                val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-                            }
-                            else
-                            {
-                                val = new System.Windows.Media.ImageSourceConverter().ConvertFromString(parts[2]);
-                            }
+                            Canvas.SetLeft((UIElement)ctrl, double.Parse(coords[0]));
+                            Canvas.SetTop((UIElement)ctrl, double.Parse(coords[1]));
                         }
-                        else if (pt == "GridLength") val = new System.Windows.GridLengthConverter().ConvertFromString(parts[2]);
-                        else if (pt == "Object" || pt == "String") val = parts[2];
-                        else if (pt == "Uri") val = new Uri(parts[2], UriKind.RelativeOrAbsolute);
-                        else if (pt == "Rect") val = System.Windows.Rect.Parse(parts[2]);
-                        else if (pt == "Geometry") val = System.Windows.Media.Geometry.Parse(parts[2]);
-                        else val = Convert.ChangeType(parts[2], prop.PropertyType);
-                        prop.SetValue(ctrl, val, null);
+                    }
+                    else if (parts[1] == "SetCanvasMode" && ctrl is Canvas)
+                    {
+                        canvasModes[parts[0]] = parts[2];
+                    }
+                    else if (parts[1] == "EnableZoomPan" && ctrl is Canvas)
+                    {
+                        EnableCanvasZoomPan((Canvas)ctrl);
+                    }
+                    else if (parts[1] == "ZoomAll" && ctrl is Canvas)
+                    {
+                        ZoomAllCanvas((Canvas)ctrl);
+                    }
+                    else if (parts[1] == "Zoom" && ctrl is Canvas)
+                    {
+                        ZoomCanvas((Canvas)ctrl, double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                    else if (parts[1] == "EnableDrag" && ctrl is FrameworkElement)
+                    {
+                        EnableCanvasDrag((FrameworkElement)ctrl, parts[0], parts.Length > 2 ? parts[2] : "");
+                    }
+                    else if (parts[1] == "BeginStoryboard" && ctrl is FrameworkElement)
+                    {
+                        var sb = ((FrameworkElement)ctrl).FindResource(parts[2]) as System.Windows.Media.Animation.Storyboard;
+                        if (sb != null) sb.Begin();
+                    }
+                    else if (parts[1] == "EnableListBoxDragDrop" && ctrl is ListBox)
+                    {
+                        EnableListBoxDragDrop((ListBox)ctrl, parts[0]);
+                    }
+                    else if (parts[1] == "EnableDragSource" && ctrl is UIElement)
+                    {
+                        string dragFormat = parts.Length > 2 ? parts[2] : "DragItem";
+                        EnableGenericDragSource((UIElement)ctrl, parts[0], dragFormat);
+                    }
+                    else if (parts[1] == "EnableDropTarget" && ctrl is UIElement)
+                    {
+                        string dropFormat = parts.Length > 2 ? parts[2] : "DragItem";
+                        EnableGenericDropTarget((UIElement)ctrl, parts[0], dropFormat);
+                    }
+                    else if (parts[1] == "Close" && ctrl is Window)
+                    {
+                        var ownerHwnd = new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner;
+                        if (ownerHwnd != IntPtr.Zero)
+                        {
+                            SetForegroundWindow(ownerHwnd);
+                        }
+                        win.Dispatcher.BeginInvoke(new Action(() => ((Window)ctrl).Close()));
+                    }
+                    else if (parts[1] == "AppendText" && ctrl is System.Windows.Controls.TextBox)
+                    {
+                        var tb = (System.Windows.Controls.TextBox)ctrl;
+                        tb.AppendText(parts[2]);
+                        tb.ScrollToEnd();
+                    }
+                    else if (parts[1] == "InsertText" && ctrl is System.Windows.Controls.TextBox)
+                    {
+                        var tb = (System.Windows.Controls.TextBox)ctrl;
+                        int idx = tb.CaretIndex;
+                        string pre = tb.Text.Substring(0, idx);
+                        string post = tb.Text.Substring(idx);
+                        tb.Text = pre + parts[2] + post;
+                        tb.CaretIndex = idx + parts[2].Length;
+                    }
+                    else if (parts[1] == "NativeOwner" && ctrl is Window)
+                    {
+                        new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner = new IntPtr(long.Parse(parts[2]));
+                        InheritWindowIconAndTitle((Window)ctrl, parts[2]);
+                    }
+                    else if (parts[1] == "Focus" && ctrl is UIElement)
+                    {
+                        if (parts[2].ToLower() == "true" || parts[2] == "1") ((UIElement)ctrl).Focus();
+                        else System.Windows.Input.Keyboard.ClearFocus();
+                    }
+                    else if (parts[1] == "BringIntoView" && ctrl is FrameworkElement)
+                    {
+                        ((FrameworkElement)ctrl).BringIntoView();
+                    }
+                    else if (parts[1] == "Invoke" && ctrl is System.Windows.Controls.Primitives.ButtonBase)
+                    {
+                        if (ctrl is System.Windows.Controls.Primitives.ToggleButton)
+                        {
+                            var tPeer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer((System.Windows.Controls.Primitives.ToggleButton)ctrl);
+                            var toggleProv = tPeer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle) as System.Windows.Automation.Provider.IToggleProvider;
+                            if (toggleProv != null) toggleProv.Toggle();
+                        }
+                        else if (ctrl is System.Windows.Controls.Button)
+                        {
+                            var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer((System.Windows.Controls.Button)ctrl);
+                            var invokeProv = peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke) as System.Windows.Automation.Provider.IInvokeProvider;
+                            if (invokeProv != null) invokeProv.Invoke();
+                        }
+                    }
+                    else if (parts[1] == "TrapScroll" && ctrl is ScrollViewer)
+                    {
+                        var sv = (ScrollViewer)ctrl;
+                        System.Windows.Input.MouseWheelEventHandler handler = (s, e) =>
+                        {
+                            sv.ScrollToVerticalOffset(sv.VerticalOffset - e.Delta / 3.0);
+                            e.Handled = true;
+                        };
+                        sv.PreviewMouseWheel -= handler;
+                        sv.PreviewMouseWheel += handler;
+                        sv.MouseWheel -= handler;
+                        sv.MouseWheel += handler;
+                    }
+                    else
+                    {
+                        var prop = ctrl.GetType().GetProperty(parts[1]);
+                        if (prop != null)
+                        {
+                            object val = null;
+                            string pt = prop.PropertyType.Name;
+                            if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
+                            else if (prop.PropertyType.IsEnum) val = Enum.Parse(prop.PropertyType, parts[2], true);
+                            else if (pt == "Double") val = double.Parse(parts[2]);
+                            else if (pt == "Boolean" || pt == "Nullable`1") val = Convert.ToBoolean(parts[2]);
+                            else if (pt == "Thickness") val = new System.Windows.ThicknessConverter().ConvertFromString(parts[2]);
+                            else if (pt == "CornerRadius") val = new System.Windows.CornerRadiusConverter().ConvertFromString(parts[2]);
+                            else if (pt == "ImageSource")
+                            {
+                                if (parts[2].StartsWith("HICON:"))
+                                {
+                                    IntPtr hIcon = new IntPtr(long.Parse(parts[2].Substring(6)));
+                                    val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(hIcon, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                                }
+                                else if (parts[2].StartsWith("HBITMAP:"))
+                                {
+                                    IntPtr hBmp = new IntPtr(long.Parse(parts[2].Substring(8)));
+                                    val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                                }
+                                else
+                                {
+                                    val = new System.Windows.Media.ImageSourceConverter().ConvertFromString(parts[2]);
+                                }
+                            }
+                            else if (pt == "GridLength") val = new System.Windows.GridLengthConverter().ConvertFromString(parts[2]);
+                            else if (pt == "Object" || pt == "String") val = parts[2];
+                            else if (pt == "Uri") val = new Uri(parts[2], UriKind.RelativeOrAbsolute);
+                            else if (pt == "Rect") val = System.Windows.Rect.Parse(parts[2]);
+                            else if (pt == "Geometry") val = System.Windows.Media.Geometry.Parse(parts[2]);
+                            else val = Convert.ChangeType(parts[2], prop.PropertyType);
+                            prop.SetValue(ctrl, val, null);
+                        }
                     }
                 }
             }
         }
-    }
 
     private DependencyObject FindLogicalNodeDeep(DependencyObject parent, string name)
     {
@@ -5161,7 +5826,30 @@ public class AhkWpfEngine
 
 #if ENABLE_AVALONEDIT
     // AvalonEdit theme application
+    private void CustomizeFoldingMargin(TextEditor editor, System.Windows.Media.Brush markerBrush, System.Windows.Media.Brush selectedMarkerBrush, System.Windows.Media.Brush markerBgBrush) {
+        foreach (var margin in editor.TextArea.LeftMargins) {
+            if (margin.GetType().Name == "FoldingMargin" || margin.GetType().FullName.Contains("FoldingMargin")) {
+                try {
+                    var fMargin = margin;
+                    var markerBrushProp = fMargin.GetType().GetProperty("FoldingMarkerBrush");
+                    if (markerBrushProp != null) markerBrushProp.SetValue(fMargin, markerBrush, null);
+                    
+                    var selMarkerBrushProp = fMargin.GetType().GetProperty("SelectedFoldingMarkerBrush");
+                    if (selMarkerBrushProp != null) selMarkerBrushProp.SetValue(fMargin, selectedMarkerBrush, null);
+                    
+                    var bgMarkerBrushProp = fMargin.GetType().GetProperty("FoldingMarkerBackgroundBrush");
+                    if (bgMarkerBrushProp != null) bgMarkerBrushProp.SetValue(fMargin, markerBgBrush, null);
+                } catch { }
+            }
+        }
+    }
+
     private void ApplyAvalonEditTheme(TextEditor editor, string theme) {
+        editor.Resources["CurrentTheme"] = theme;
+        System.Windows.Media.Brush markerBrush = System.Windows.Media.Brushes.Gray;
+        System.Windows.Media.Brush selectedMarkerBrush = System.Windows.Media.Brushes.Blue;
+        System.Windows.Media.Brush markerBgBrush = System.Windows.Media.Brushes.White;
+
         switch (theme.ToLower()) {
             case "dark":
                 editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30));
@@ -5171,6 +5859,10 @@ public class AhkWpfEngine
                 editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 100));
                 editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(100, 38, 79, 120));
                 editor.TextArea.SelectionForeground = null;
+                
+                markerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(90, 90, 90));
+                selectedMarkerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(137, 180, 250)); // #89b4fa
+                markerBgBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(37, 37, 38));
                 break;
             case "light":
                 editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 255, 255));
@@ -5180,6 +5872,10 @@ public class AhkWpfEngine
                 editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(150, 150, 150));
                 editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 0, 120, 215));
                 editor.TextArea.SelectionForeground = null;
+                
+                markerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(160, 160, 160));
+                selectedMarkerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 120, 215));
+                markerBgBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(240, 240, 240));
                 break;
             case "monokai":
                 editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 40, 34));
@@ -5188,6 +5884,10 @@ public class AhkWpfEngine
                 editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
                 editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 80));
                 editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 73, 72, 62));
+                
+                markerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(117, 113, 94));
+                selectedMarkerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(166, 226, 46));
+                markerBgBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(62, 61, 50));
                 break;
             case "one-dark": case "onedark":
                 editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 44, 52));
@@ -5196,6 +5896,10 @@ public class AhkWpfEngine
                 editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
                 editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(76, 82, 99));
                 editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 62, 68, 81));
+                
+                markerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(92, 99, 112));
+                selectedMarkerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(97, 175, 239));
+                markerBgBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(49, 53, 63));
                 break;
             case "dracula":
                 editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(40, 42, 54));
@@ -5204,6 +5908,10 @@ public class AhkWpfEngine
                 editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
                 editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(98, 114, 164));
                 editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(80, 68, 71, 90));
+                
+                markerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(98, 114, 164));
+                selectedMarkerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(189, 147, 249));
+                markerBgBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(52, 55, 70));
                 break;
             case "solarized-dark":
                 editor.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0, 43, 54));
@@ -5212,9 +5920,12 @@ public class AhkWpfEngine
                 editor.TextArea.TextView.CurrentLineBorder = new System.Windows.Media.Pen(System.Windows.Media.Brushes.Transparent, 0);
                 editor.LineNumbersForeground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(88, 110, 117));
                 editor.TextArea.SelectionBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(60, 7, 54, 66));
+                
+                markerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(88, 110, 117));
+                selectedMarkerBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(38, 139, 210));
+                markerBgBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(7, 54, 66));
                 break;
             default:
-                // Try to parse custom theme: "bg:#1E1E1E,fg:#D4D4D4,ln:#646464,sel:#264F78,cur:#FFFFFF1A"
                 if (theme.Contains(":")) {
                     foreach (string pair in theme.Split(',')) {
                         string[] kv = pair.Split(':');
@@ -5234,6 +5945,8 @@ public class AhkWpfEngine
                 }
                 break;
         }
+
+        CustomizeFoldingMargin(editor, markerBrush, selectedMarkerBrush, markerBgBrush);
     }
 #endif
 
@@ -5615,6 +6328,7 @@ public class AhkWpfEngine
             // Heading style
             if (pPr.ParagraphStyleId != null) {
                 string styleId = (pPr.ParagraphStyleId.Val != null) ? pPr.ParagraphStyleId.Val.Value : "";
+                flowPara.Tag = styleId;
                 if (styleId.StartsWith("Heading") || styleId.StartsWith("heading")) {
                     int level = 1;
                     if (styleId.Length > 7) int.TryParse(styleId.Substring(7), out level);
@@ -6075,53 +6789,287 @@ public class AhkWpfEngine
             mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
             var body = new DocumentFormat.OpenXml.Wordprocessing.Body();
 
-            foreach (var block in flowDoc.Blocks) {
-                if (block is System.Windows.Documents.Paragraph) {
-                    var flowPara = (System.Windows.Documents.Paragraph)block;
-                    var oxPara = new DocumentFormat.OpenXml.Wordprocessing.Paragraph();
+            ConvertWpfBlocksToOpenXml(flowDoc.Blocks, body, mainPart);
 
-                    // Alignment
-                    var pPr = new DocumentFormat.OpenXml.Wordprocessing.ParagraphProperties();
-                    JustificationValues jv = JustificationValues.Left;
-                    switch (flowPara.TextAlignment) {
-                        case System.Windows.TextAlignment.Center: jv = JustificationValues.Center; break;
-                        case System.Windows.TextAlignment.Right: jv = JustificationValues.Right; break;
-                        case System.Windows.TextAlignment.Justify: jv = JustificationValues.Both; break;
-                    }
-                    pPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Justification { Val = jv });
-                    oxPara.Append(pPr);
-
-                    foreach (var inline in flowPara.Inlines) {
-                        if (inline is System.Windows.Documents.Run) {
-                            var flowRun = (System.Windows.Documents.Run)inline;
-                            var oxRun = new DocumentFormat.OpenXml.Wordprocessing.Run();
-                            var rPr = new DocumentFormat.OpenXml.Wordprocessing.RunProperties();
-
-                            if (flowRun.FontWeight == FontWeights.Bold)
-                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Bold());
-                            if (flowRun.FontStyle == FontStyles.Italic)
-                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Italic());
-                            if (flowRun.TextDecorations != null && flowRun.TextDecorations == TextDecorations.Underline)
-                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Underline { Val = UnderlineValues.Single });
-                            if (flowRun.FontSize != 14) {
-                                int halfPoints = (int)(flowRun.FontSize * 2);
-                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.FontSize { Val = halfPoints.ToString() });
-                            }
-                            if (flowRun.Foreground is System.Windows.Media.SolidColorBrush) {
-                                var color = ((System.Windows.Media.SolidColorBrush)flowRun.Foreground).Color;
-                                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Color { Val = color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2") });
-                            }
-
-                            oxRun.Append(rPr);
-                            oxRun.Append(new DocumentFormat.OpenXml.Wordprocessing.Text(flowRun.Text) { Space = SpaceProcessingModeValues.Preserve });
-                            oxPara.Append(oxRun);
-                        }
-                    }
-                    body.Append(oxPara);
-                }
-            }
             mainPart.Document.Append(body);
             mainPart.Document.Save();
+        }
+    }
+
+    private void ConvertWpfBlocksToOpenXml(System.Windows.Documents.BlockCollection blocks, DocumentFormat.OpenXml.Wordprocessing.Body body, MainDocumentPart mainPart) {
+        foreach (var block in blocks) {
+            if (block is System.Windows.Documents.Paragraph) {
+                var flowPara = (System.Windows.Documents.Paragraph)block;
+                var oxPara = ConvertWpfParagraphToOpenXml(flowPara, mainPart);
+                body.AppendChild(oxPara);
+            } else if (block is System.Windows.Documents.Table) {
+                var flowTable = (System.Windows.Documents.Table)block;
+                var oxTable = ConvertWpfTableToOpenXml(flowTable, mainPart);
+                body.AppendChild(oxTable);
+            } else if (block is System.Windows.Documents.List) {
+                var flowList = (System.Windows.Documents.List)block;
+                foreach (var li in flowList.ListItems) {
+                    ConvertWpfBlocksToOpenXml(li.Blocks, body, mainPart);
+                }
+            } else if (block is System.Windows.Documents.Section) {
+                var flowSection = (System.Windows.Documents.Section)block;
+                ConvertWpfBlocksToOpenXml(flowSection.Blocks, body, mainPart);
+            }
+        }
+    }
+
+    private DocumentFormat.OpenXml.Wordprocessing.Paragraph ConvertWpfParagraphToOpenXml(System.Windows.Documents.Paragraph flowPara, MainDocumentPart mainPart) {
+        var oxPara = new DocumentFormat.OpenXml.Wordprocessing.Paragraph();
+
+        var pPr = new DocumentFormat.OpenXml.Wordprocessing.ParagraphProperties();
+        
+        string styleId = flowPara.Tag as string ?? "";
+        if (!string.IsNullOrEmpty(styleId)) {
+            pPr.Append(new DocumentFormat.OpenXml.Wordprocessing.ParagraphStyleId { Val = styleId });
+        }
+
+        JustificationValues jv = JustificationValues.Left;
+        switch (flowPara.TextAlignment) {
+            case System.Windows.TextAlignment.Center: jv = JustificationValues.Center; break;
+            case System.Windows.TextAlignment.Right: jv = JustificationValues.Right; break;
+            case System.Windows.TextAlignment.Justify: jv = JustificationValues.Both; break;
+        }
+        pPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Justification { Val = jv });
+        oxPara.Append(pPr);
+
+        foreach (var inline in flowPara.Inlines) {
+            AppendWpfInlineToOpenXmlParagraph(inline, oxPara, mainPart);
+        }
+        return oxPara;
+    }
+
+    private void AppendWpfInlineToOpenXmlParagraph(System.Windows.Documents.Inline inline, DocumentFormat.OpenXml.Wordprocessing.Paragraph oxPara, MainDocumentPart mainPart) {
+        if (inline is System.Windows.Documents.Run) {
+            var flowRun = (System.Windows.Documents.Run)inline;
+            var oxRun = new DocumentFormat.OpenXml.Wordprocessing.Run();
+            var rPr = new DocumentFormat.OpenXml.Wordprocessing.RunProperties();
+
+            if (flowRun.FontWeight == FontWeights.Bold)
+                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Bold());
+            if (flowRun.FontStyle == FontStyles.Italic)
+                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Italic());
+            if (flowRun.TextDecorations != null && flowRun.TextDecorations == TextDecorations.Underline)
+                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Underline { Val = UnderlineValues.Single });
+            if (flowRun.FontSize != 14) {
+                int halfPoints = (int)(flowRun.FontSize * 2);
+                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.FontSize { Val = halfPoints.ToString() });
+            }
+            if (flowRun.Foreground is System.Windows.Media.SolidColorBrush) {
+                var color = ((System.Windows.Media.SolidColorBrush)flowRun.Foreground).Color;
+                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Color { Val = color.R.ToString("X2") + color.G.ToString("X2") + color.B.ToString("X2") });
+            }
+            if (flowRun.Background is System.Windows.Media.SolidColorBrush) {
+                rPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Highlight { Val = HighlightColorValues.Yellow });
+            }
+
+            oxRun.Append(rPr);
+            oxRun.Append(new DocumentFormat.OpenXml.Wordprocessing.Text(flowRun.Text) { Space = SpaceProcessingModeValues.Preserve });
+            oxPara.Append(oxRun);
+        }
+        else if (inline is System.Windows.Documents.Hyperlink) {
+            var flowLink = (System.Windows.Documents.Hyperlink)inline;
+            string linkUrl = flowLink.NavigateUri != null ? flowLink.NavigateUri.ToString() : "";
+            
+            string linkText = "";
+            foreach (var linkInline in flowLink.Inlines) {
+                if (linkInline is System.Windows.Documents.Run) {
+                    linkText += ((System.Windows.Documents.Run)linkInline).Text;
+                }
+            }
+            if (string.IsNullOrEmpty(linkText)) linkText = linkUrl;
+
+            if (!string.IsNullOrEmpty(linkUrl)) {
+                string relId = "rIdH" + Guid.NewGuid().ToString().Substring(0, 8);
+                try {
+                    mainPart.AddHyperlinkRelationship(new Uri(linkUrl, UriKind.RelativeOrAbsolute), true, relId);
+                    var oxHl = new DocumentFormat.OpenXml.Wordprocessing.Hyperlink { Id = relId };
+                    
+                    var oxRun = new DocumentFormat.OpenXml.Wordprocessing.Run();
+                    var rPr = new DocumentFormat.OpenXml.Wordprocessing.RunProperties(
+                        new DocumentFormat.OpenXml.Wordprocessing.Underline { Val = UnderlineValues.Single },
+                        new DocumentFormat.OpenXml.Wordprocessing.Color { Val = "1155CC" }
+                    );
+                    oxRun.Append(rPr);
+                    oxRun.Append(new DocumentFormat.OpenXml.Wordprocessing.Text(linkText) { Space = SpaceProcessingModeValues.Preserve });
+                    oxHl.Append(oxRun);
+                    oxPara.Append(oxHl);
+                } catch {
+                    var oxRun = new DocumentFormat.OpenXml.Wordprocessing.Run();
+                    oxRun.Append(new DocumentFormat.OpenXml.Wordprocessing.Text(linkText));
+                    oxPara.Append(oxRun);
+                }
+            }
+        }
+        else if (inline is System.Windows.Documents.Span) {
+            var flowSpan = (System.Windows.Documents.Span)inline;
+            foreach (var childInline in flowSpan.Inlines) {
+                AppendWpfInlineToOpenXmlParagraph(childInline, oxPara, mainPart);
+            }
+        }
+        else if (inline is InlineUIContainer) {
+            var container = (InlineUIContainer)inline;
+            if (container.Child is System.Windows.Controls.Image) {
+                var img = (System.Windows.Controls.Image)container.Child;
+                var bSrc = img.Source as System.Windows.Media.Imaging.BitmapSource;
+                if (bSrc != null) {
+                    try {
+                        var imgPart = mainPart.AddImagePart(ImagePartType.Png);
+                        using (var stream = imgPart.GetStream()) {
+                            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bSrc));
+                            encoder.Save(stream);
+                        }
+                        string relId = mainPart.GetIdOfPart(imgPart);
+                        
+                        double width = img.Width;
+                        double height = img.Height;
+                        if (double.IsNaN(width) || width <= 0) width = img.ActualWidth;
+                        if (double.IsNaN(width) || width <= 0) width = bSrc.PixelWidth;
+                        
+                        if (double.IsNaN(height) || height <= 0) height = img.ActualHeight;
+                        if (double.IsNaN(height) || height <= 0) height = bSrc.PixelHeight;
+
+                        if (width > 650) {
+                            height = height * 650 / width;
+                            width = 650;
+                        }
+
+                        var drawing = CreateDrawingElement(relId, (int)width, (int)height);
+                        var oxRun = new DocumentFormat.OpenXml.Wordprocessing.Run();
+                        oxRun.Append(drawing);
+                        oxPara.Append(oxRun);
+                    } catch {}
+                }
+            }
+        }
+    }
+
+    private DocumentFormat.OpenXml.Wordprocessing.Table ConvertWpfTableToOpenXml(System.Windows.Documents.Table flowTable, MainDocumentPart mainPart) {
+        var oxTable = new DocumentFormat.OpenXml.Wordprocessing.Table();
+        var tblPr = new DocumentFormat.OpenXml.Wordprocessing.TableProperties(
+            new DocumentFormat.OpenXml.Wordprocessing.TableWidth { Type = TableWidthUnitValues.Pct, Width = "5000" },
+            new DocumentFormat.OpenXml.Wordprocessing.TableBorders(
+                new TopBorder { Val = BorderValues.Single, Size = 4, Space = 0, Color = "CCCCCC" },
+                new BottomBorder { Val = BorderValues.Single, Size = 12, Space = 0, Color = "2F5597" },
+                new LeftBorder { Val = BorderValues.None },
+                new RightBorder { Val = BorderValues.None },
+                new InsideHorizontalBorder { Val = BorderValues.Single, Size = 4, Space = 0, Color = "E0E0E0" },
+                new InsideVerticalBorder { Val = BorderValues.None }
+            )
+        );
+        oxTable.AppendChild(tblPr);
+
+        var tblGrid = new DocumentFormat.OpenXml.Wordprocessing.TableGrid();
+        if (flowTable.Columns.Count > 0) {
+            for (int i = 0; i < flowTable.Columns.Count; i++) {
+                tblGrid.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.GridColumn());
+            }
+        } else {
+            tblGrid.AppendChild(new DocumentFormat.OpenXml.Wordprocessing.GridColumn());
+        }
+        oxTable.AppendChild(tblGrid);
+
+        foreach (var rg in flowTable.RowGroups) {
+            foreach (var row in rg.Rows) {
+                var oxRow = new DocumentFormat.OpenXml.Wordprocessing.TableRow();
+                foreach (var cell in row.Cells) {
+                    var oxCell = new DocumentFormat.OpenXml.Wordprocessing.TableCell();
+                    
+                    var tcPr = new DocumentFormat.OpenXml.Wordprocessing.TableCellProperties();
+                    if (cell.Background is System.Windows.Media.SolidColorBrush) {
+                        var col = ((System.Windows.Media.SolidColorBrush)cell.Background).Color;
+                        string hex = col.R.ToString("X2") + col.G.ToString("X2") + col.B.ToString("X2");
+                        tcPr.Append(new DocumentFormat.OpenXml.Wordprocessing.Shading { Val = ShadingPatternValues.Clear, Color = "auto", Fill = hex });
+                    }
+                    if (cell.ColumnSpan > 1) {
+                        tcPr.Append(new DocumentFormat.OpenXml.Wordprocessing.GridSpan { Val = cell.ColumnSpan });
+                    }
+                    oxCell.Append(tcPr);
+
+                    foreach (var b in cell.Blocks) {
+                        if (b is System.Windows.Documents.Paragraph) {
+                            var flowPara = (System.Windows.Documents.Paragraph)b;
+                            oxCell.Append(ConvertWpfParagraphToOpenXml(flowPara, mainPart));
+                        }
+                    }
+                    if (oxCell.ChildElements.Count == 0) {
+                        oxCell.Append(new DocumentFormat.OpenXml.Wordprocessing.Paragraph());
+                    }
+                    oxRow.Append(oxCell);
+                }
+                oxTable.Append(oxRow);
+            }
+        }
+        return oxTable;
+    }
+
+    private DocumentFormat.OpenXml.Wordprocessing.Drawing CreateDrawingElement(string relationshipId, int widthPx, int heightPx) {
+        if (widthPx <= 0) widthPx = 300;
+        if (heightPx <= 0) heightPx = 200;
+        long cx = (long)(widthPx / 96.0 * 914400.0);
+        long cy = (long)(heightPx / 96.0 * 914400.0);
+
+        var drawing = new DocumentFormat.OpenXml.Wordprocessing.Drawing(
+            new DocumentFormat.OpenXml.Drawing.Wordprocessing.Inline(
+                new DocumentFormat.OpenXml.Drawing.Wordprocessing.Extent() { Cx = cx, Cy = cy },
+                new DocumentFormat.OpenXml.Drawing.Wordprocessing.EffectExtent() { LeftEdge = 0L, TopEdge = 0L, RightEdge = 0L, BottomEdge = 0L },
+                new DocumentFormat.OpenXml.Drawing.Wordprocessing.DocProperties() { Id = 1U, Name = "Image" },
+                new DocumentFormat.OpenXml.Drawing.Wordprocessing.NonVisualGraphicFrameDrawingProperties(
+                    new DocumentFormat.OpenXml.Drawing.GraphicFrameLocks() { NoChangeAspect = true }),
+                new DocumentFormat.OpenXml.Drawing.Graphic(
+                    new DocumentFormat.OpenXml.Drawing.GraphicData(
+                        new DocumentFormat.OpenXml.Drawing.Pictures.Picture(
+                            new DocumentFormat.OpenXml.Drawing.Pictures.NonVisualPictureProperties(
+                                new DocumentFormat.OpenXml.Drawing.Pictures.NonVisualDrawingProperties() { Id = 2U, Name = "Image.png" },
+                                new DocumentFormat.OpenXml.Drawing.Pictures.NonVisualPictureDrawingProperties()),
+                            new DocumentFormat.OpenXml.Drawing.Pictures.BlipFill(
+                                new DocumentFormat.OpenXml.Drawing.Blip() { Embed = relationshipId, CompressionState = DocumentFormat.OpenXml.Drawing.BlipCompressionValues.Print },
+                                new DocumentFormat.OpenXml.Drawing.Stretch(
+                                    new DocumentFormat.OpenXml.Drawing.FillRectangle())),
+                            new DocumentFormat.OpenXml.Drawing.Pictures.ShapeProperties(
+                                new DocumentFormat.OpenXml.Drawing.Transform2D(
+                                    new DocumentFormat.OpenXml.Drawing.Offset() { X = 0L, Y = 0L },
+                                    new DocumentFormat.OpenXml.Drawing.Extents() { Cx = cx, Cy = cy }),
+                                new DocumentFormat.OpenXml.Drawing.PresetGeometry() { Preset = DocumentFormat.OpenXml.Drawing.ShapeTypeValues.Rectangle }))
+                    ) { Uri = "http://schemas.openxmlformats.org/drawingml/2006/picture" }
+                )
+            ) { DistanceFromTop = 0U, DistanceFromBottom = 0U, DistanceFromLeft = 0U, DistanceFromRight = 0U }
+        );
+        return drawing;
+    }
+
+    private void TraverseBlocks(System.Windows.Documents.BlockCollection blocks, Action<System.Windows.Documents.Block> action) {
+        foreach (var block in blocks) {
+            action(block);
+            if (block is System.Windows.Documents.Section) {
+                TraverseBlocks(((System.Windows.Documents.Section)block).Blocks, action);
+            } else if (block is System.Windows.Documents.List) {
+                foreach (var li in ((System.Windows.Documents.List)block).ListItems) {
+                    TraverseBlocks(li.Blocks, action);
+                }
+            } else if (block is System.Windows.Documents.Table) {
+                foreach (var rg in ((System.Windows.Documents.Table)block).RowGroups) {
+                    foreach (var row in rg.Rows) {
+                        foreach (var cell in row.Cells) {
+                            TraverseBlocks(cell.Blocks, action);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void TraverseInlines(System.Windows.Documents.InlineCollection inlines, Action<System.Windows.Documents.Inline> action) {
+        foreach (var inline in inlines) {
+            action(inline);
+            if (inline is System.Windows.Documents.Span) {
+                TraverseInlines(((System.Windows.Documents.Span)inline).Inlines, action);
+            }
         }
     }
 
@@ -6450,16 +7398,16 @@ public class AhkWpfEngine
         return sb.ToString();
     }
 
-    private static readonly System.Collections.Generic.Dictionary<System.Type, System.Reflection.PropertyInfo[]> _propertiesCache = 
+    private static readonly System.Collections.Generic.Dictionary<System.Type, System.Reflection.PropertyInfo[]> _propertiesCache =
         new System.Collections.Generic.Dictionary<System.Type, System.Reflection.PropertyInfo[]>();
-        
-    private static readonly System.Collections.Generic.Dictionary<System.Type, System.Reflection.EventInfo[]> _eventsCache = 
+
+    private static readonly System.Collections.Generic.Dictionary<System.Type, System.Reflection.EventInfo[]> _eventsCache =
         new System.Collections.Generic.Dictionary<System.Type, System.Reflection.EventInfo[]>();
 
-    private static readonly System.Collections.Generic.Dictionary<string, System.ComponentModel.DependencyPropertyDescriptor> _dpDescriptorCache = 
+    private static readonly System.Collections.Generic.Dictionary<string, System.ComponentModel.DependencyPropertyDescriptor> _dpDescriptorCache =
         new System.Collections.Generic.Dictionary<string, System.ComponentModel.DependencyPropertyDescriptor>();
 
-    private static readonly System.Collections.Generic.Dictionary<string, AhkWpfEngine> _activeEngines = 
+    private static readonly System.Collections.Generic.Dictionary<string, AhkWpfEngine> _activeEngines =
         new System.Collections.Generic.Dictionary<string, AhkWpfEngine>();
 
     public static AhkWpfEngine GetEngine(string id)
@@ -6497,7 +7445,7 @@ public class AhkWpfEngine
 
                 bool isLocal = false;
                 bool isReadOnly = !prop.CanWrite || prop.GetSetMethod(false) == null;
-                
+
                 string key = type.FullName + "." + prop.Name;
                 System.ComponentModel.DependencyPropertyDescriptor dpDescriptor;
                 lock (_dpDescriptorCache)
@@ -6634,6 +7582,233 @@ public class BraceFoldingStrategy {
         return foldings;
     }
 }
+
+// Sexy, minimalist, hover-reactive folding margin mimicking VS Code
+public class SexyFoldingMargin : ICSharpCode.AvalonEdit.Editing.AbstractMargin
+{
+    public FoldingManager FoldingManager { get; set; }
+    
+    public Brush FoldingMarkerBrush { get; set; }
+    public Brush SelectedFoldingMarkerBrush { get; set; }
+    public Brush FoldingMarkerBackgroundBrush { get; set; }
+    
+    public SexyFoldingMargin()
+    {
+        FoldingMarkerBrush = Brushes.Gray;
+        SelectedFoldingMarkerBrush = Brushes.DodgerBlue;
+        FoldingMarkerBackgroundBrush = Brushes.Transparent;
+    }
+    
+    private int hoveredLine = -1;
+    private bool isMarginHovered = false;
+    
+    protected override void OnTextViewChanged(TextView oldTextView, TextView newTextView)
+    {
+        if (oldTextView != null) {
+            oldTextView.VisualLinesChanged -= OnVisualLinesChanged;
+        }
+        base.OnTextViewChanged(oldTextView, newTextView);
+        if (newTextView != null) {
+            newTextView.VisualLinesChanged += OnVisualLinesChanged;
+        }
+    }
+    
+    private void OnVisualLinesChanged(object sender, EventArgs e)
+    {
+        InvalidateVisual();
+    }
+    
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        return new Size(26, 0);
+    }
+    
+    protected override void OnRender(DrawingContext drawingContext)
+    {
+        if (TextView == null || !TextView.VisualLinesValid || FoldingManager == null)
+            return;
+            
+        var visualLines = TextView.VisualLines;
+        if (visualLines.Count == 0)
+            return;
+            
+        double viewTop = TextView.VerticalOffset;
+        double width = RenderSize.Width;
+        
+        // Draw a completely transparent rectangle covering the entire margin area.
+        // This is a CRITICAL WPF detail: elements with null background are transparent to hit-testing.
+        // Drawing a transparent rectangle makes the entire 26px gutter fully hit-testable!
+        drawingContext.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, width, RenderSize.Height));
+        
+        var foldings = FoldingManager.AllFoldings.ToList();
+        
+        Brush markerBrush = FoldingMarkerBrush ?? Brushes.Gray;
+        Brush highlightBrush = SelectedFoldingMarkerBrush ?? Brushes.DodgerBlue;
+        
+        // Dynamic faint color matching standard theme folding guide
+        Brush lineBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(40, 128, 128, 128));
+        SolidColorBrush scb = markerBrush as SolidColorBrush;
+        if (scb != null) {
+            lineBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(50, scb.Color.R, scb.Color.G, scb.Color.B));
+        }
+        
+        foreach (var line in visualLines) {
+            int lineNum = line.FirstDocumentLine.LineNumber;
+            double startY = line.VisualTop - viewTop;
+            double endY = startY + line.Height;
+            double centerY = startY + line.Height / 2;
+            double centerX = width / 2;
+            
+            // Find all active/expanded foldings that cover this line
+            var activeFolds = foldings.Where(f => !f.IsFolded && 
+                lineNum >= TextView.Document.GetLineByOffset(f.StartOffset).LineNumber && 
+                lineNum <= TextView.Document.GetLineByOffset(f.EndOffset).LineNumber).ToList();
+                
+            foreach (var fold in activeFolds) {
+                int foldStartLine = TextView.Document.GetLineByOffset(fold.StartOffset).LineNumber;
+                int foldEndLine = TextView.Document.GetLineByOffset(fold.EndOffset).LineNumber;
+                
+                double segmentStartY = startY;
+                double segmentEndY = endY;
+                
+                if (lineNum == foldStartLine) {
+                    segmentStartY = centerY + 6;
+                }
+                if (lineNum == foldEndLine) {
+                    segmentEndY = centerY - 4;
+                }
+                
+                bool isHovered = (hoveredLine >= foldStartLine && hoveredLine <= foldEndLine);
+                Brush currentLineBrush = isHovered ? highlightBrush : lineBrush;
+                Pen pen = new Pen(currentLineBrush, 1.5);
+                
+                drawingContext.DrawLine(pen, new Point(centerX, segmentStartY), new Point(centerX, segmentEndY));
+                
+                if (lineNum == foldEndLine) {
+                    drawingContext.DrawLine(pen, new Point(centerX, segmentEndY), new Point(centerX + 4, segmentEndY));
+                }
+            }
+            
+            // Draw chevrons starting on this line
+            var startFold = foldings.FirstOrDefault(f => 
+                TextView.Document.GetLineByOffset(f.StartOffset).LineNumber == lineNum);
+                
+            if (startFold != null) {
+                bool shouldDraw = isMarginHovered || startFold.IsFolded;
+                if (shouldDraw) {
+                    bool isHovered = (hoveredLine == lineNum);
+                    Brush brush = isHovered ? highlightBrush : markerBrush;
+                    Pen pen = new Pen(brush, 2.0);
+                    
+                    if (startFold.IsFolded) {
+                        StreamGeometry geometry = new StreamGeometry();
+                        using (StreamGeometryContext ctx = geometry.Open()) {
+                            ctx.BeginFigure(new Point(centerX - 2, centerY - 4), false, false);
+                            ctx.LineTo(new Point(centerX + 2, centerY), true, false);
+                            ctx.LineTo(new Point(centerX - 2, centerY + 4), true, false);
+                        }
+                        geometry.Freeze();
+                        drawingContext.DrawGeometry(null, pen, geometry);
+                    } else {
+                        StreamGeometry geometry = new StreamGeometry();
+                        using (StreamGeometryContext ctx = geometry.Open()) {
+                            ctx.BeginFigure(new Point(centerX - 4, centerY - 2), false, false);
+                            ctx.LineTo(new Point(centerX, centerY + 2), true, false);
+                            ctx.LineTo(new Point(centerX + 4, centerY - 2), true, false);
+                        }
+                        geometry.Freeze();
+                        drawingContext.DrawGeometry(null, pen, geometry);
+                    }
+                }
+            }
+        }
+    }
+    
+    protected override void OnMouseEnter(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseEnter(e);
+        isMarginHovered = true;
+        InvalidateVisual();
+    }
+    
+    protected override void OnMouseLeave(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseLeave(e);
+        isMarginHovered = false;
+        hoveredLine = -1;
+        InvalidateVisual();
+    }
+    
+    protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
+    {
+        base.OnMouseMove(e);
+        if (TextView == null || !TextView.VisualLinesValid) return;
+        
+        Point p = e.GetPosition(this);
+        double localY = p.Y;
+        
+        int newLine = -1;
+        foreach (var line in TextView.VisualLines) {
+            double startY = line.VisualTop - TextView.VerticalOffset;
+            double endY = startY + line.Height;
+            if (localY >= startY && localY <= endY) {
+                newLine = line.FirstDocumentLine.LineNumber;
+                break;
+            }
+        }
+        
+        if (newLine != hoveredLine) {
+            hoveredLine = newLine;
+            InvalidateVisual();
+        }
+    }
+    
+    protected override void OnMouseDown(System.Windows.Input.MouseButtonEventArgs e)
+    {
+        base.OnMouseDown(e);
+        if (TextView == null || !TextView.VisualLinesValid || FoldingManager == null) return;
+        
+        Point p = e.GetPosition(this);
+        double localY = p.Y;
+        
+        foreach (var line in TextView.VisualLines) {
+            double startY = line.VisualTop - TextView.VerticalOffset;
+            double endY = startY + line.Height;
+            if (localY >= startY && localY <= endY) {
+                int lineNum = line.FirstDocumentLine.LineNumber;
+                int lineStartOffset = line.FirstDocumentLine.Offset;
+                int lineEndOffset = line.FirstDocumentLine.EndOffset;
+                
+                // 1. Check direct chevron click
+                var startFoldings = FoldingManager.AllFoldings
+                    .Where(f => f.StartOffset >= lineStartOffset && f.StartOffset <= lineEndOffset)
+                    .ToList();
+                    
+                if (startFoldings.Count > 0) {
+                    startFoldings[0].IsFolded = !startFoldings[0].IsFolded;
+                    e.Handled = true;
+                    InvalidateVisual();
+                    break;
+                }
+                
+                // 2. Check vertical guide line click (collapse innermost expanded fold covering this line)
+                var activeFolds = FoldingManager.AllFoldings
+                    .Where(f => !f.IsFolded && 
+                        lineNum >= TextView.Document.GetLineByOffset(f.StartOffset).LineNumber && 
+                        lineNum <= TextView.Document.GetLineByOffset(f.EndOffset).LineNumber)
+                    .OrderByDescending(f => f.StartOffset)
+                    .ToList();
+                    
+                if (activeFolds.Count > 0) {
+                    activeFolds[0].IsFolded = true;
+                    e.Handled = true;
+                    InvalidateVisual();
+                    break;
+                }
+            }
+        }
+    }
+}
 #endif
 
 [ComImport]
@@ -6653,3 +7828,4 @@ public interface ITaskbarList
 public class TaskbarList
 {
 }
+

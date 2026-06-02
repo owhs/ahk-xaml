@@ -95,6 +95,17 @@ class XAMLHost {
     static daemonReceiver := 0
     static instanceCounter := 0
 
+    static GetEngineDllName() {
+        suffix := ""
+        if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW)
+            suffix .= "-wv2"
+        if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT)
+            suffix .= "-ava"
+        if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT)
+            suffix .= "-docs"
+        return "ahk-xaml" suffix ".dll"
+    }
+
     __New(xaml := "", exePath := "", ownerHwnd := 0) {
         XAMLHost.RestoreWebView2Dlls()
         XAMLHost.RestoreAvalonEditDlls()
@@ -159,8 +170,12 @@ class XAMLHost {
     }
 
     Update(controlName, propertyName, valueStr) {
-        if !this.wpfHwnd
+        if !this.wpfHwnd {
+            if !this.HasOwnProp("_updateQueue")
+                this._updateQueue := []
+            this._updateQueue.Push({ type: "single", ctrl: controlName, prop: propertyName, val: valueStr })
             return
+        }
         val := StrReplace(valueStr, "`r", "&#x0D;")
         val := StrReplace(val, "`n", "&#x0A;")
         payload := controlName "|" propertyName "|" val
@@ -179,8 +194,12 @@ class XAMLHost {
     }
 
     BatchUpdate(updatesArray) {
-        if (!this.wpfHwnd)
+        if !this.wpfHwnd {
+            if !this.HasOwnProp("_updateQueue")
+                this._updateQueue := []
+            this._updateQueue.Push({ type: "batch", arr: updatesArray })
             return
+        }
 
         payload := ""
         for updateObj in updatesArray {
@@ -209,6 +228,7 @@ class XAMLHost {
         }
     }
 
+
     ; Enable lightweight event mode: events only include the triggering control's value.
     ; Use ui.Query("TxtName") or ui.Query("*") for additional values.
     ; This dramatically reduces IPC payload for UIs with many tracked controls.
@@ -219,6 +239,8 @@ class XAMLHost {
     }
 
     static Prewarm(exePath := "") {
+        wvDataDir := (IsSet(XAML_WEBVIEW_USER_DATA_DIR) && XAML_WEBVIEW_USER_DATA_DIR != "") ? XAML_WEBVIEW_USER_DATA_DIR : A_Temp "\AhkWpf\WebView2Data"
+        EnvSet("AHK_XAML_WEBVIEW_DIR", wvDataDir)
         if XAMLHost.daemonHwnd
             return
         if (!XAMLHost.daemonReceiver) {
@@ -233,7 +255,7 @@ class XAMLHost {
         if !DirExist(A_Temp "\AhkWpf")
             DirCreate(A_Temp "\AhkWpf")
 
-        baseDllName := (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) ? "ahk-xaml-webview.dll" : "ahk-xaml.dll"
+        baseDllName := XAMLHost.GetEngineDllName()
         targetExe := (exePath != "") ? exePath : A_Temp "\AhkWpf\" baseDllName
 
         SplitPath(A_LineFile, , &libDir)
@@ -251,14 +273,11 @@ class XAMLHost {
 
 
             XAMLHost.RestoreWebView2Dlls()
+            XAMLHost.RestoreAvalonEditDlls()
+            XAMLHost.RestoreDocumentDlls()
             SplitPath(targetExe, , &targetDir)
-            if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) {
-                if FileExist(libDir "\WebView2\WebView2Loader.dll") {
-                    try FileCopy(libDir "\WebView2\WebView2Loader.dll", targetDir "\WebView2Loader.dll", 1)
-                    try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Core.dll", targetDir "\Microsoft.Web.WebView2.Core.dll", 1)
-                    try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Wpf.dll", targetDir "\Microsoft.Web.WebView2.Wpf.dll", 1)
-                }
-            }
+            XAMLHost.CopyRequiredDlls(libDir, targetDir)
+
         } else {
             if !FileExist(targetExe)
                 FileInstall("ahk-xaml.dll", targetExe, 1)
@@ -544,12 +563,13 @@ class XAMLHost {
             FileDelete(tempTxt)
         FileAppend(payload, tempTxt, "UTF-8")
 
-        targetExe := (this.exePath != "") ? this.exePath : A_Temp "\AhkWpf\ahk-xaml.dll"
+        baseDllName := XAMLHost.GetEngineDllName()
+        targetExe := (this.exePath != "") ? this.exePath : A_Temp "\AhkWpf\" baseDllName
         SplitPath(A_LineFile, , &libDir)
-        sharedExe := libDir "\ahk-xaml.dll"
+        sharedExe := libDir "\" baseDllName
 
-        if (A_IsCompiled && FileExist(A_ScriptDir "\ahk-xaml.dll")) {
-            targetExe := A_ScriptDir "\ahk-xaml.dll"
+        if (A_IsCompiled && FileExist(A_ScriptDir "\" baseDllName)) {
+            targetExe := A_ScriptDir "\" baseDllName
         } else if (!A_IsCompiled) {
             if !FileExist(sharedExe) {
                 if !XAMLHost.CompileEngine(libDir, sharedExe)
@@ -559,7 +579,7 @@ class XAMLHost {
         }
 
         if !FileExist(targetExe) {
-            MsgBox("Fatal Error: Could not locate ahk-xaml.dll to perform compilation.", "AHK-XAML", "Iconx")
+            MsgBox("Fatal Error: Could not locate " baseDllName " to perform compilation.", "AHK-XAML", "Iconx")
             return
         }
 
@@ -702,6 +722,31 @@ class XAMLHost {
         return true
     }
 
+    static CopyRequiredDlls(libDir, targetDir) {
+        if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) {
+            if FileExist(libDir "\WebView2\WebView2Loader.dll") {
+                try FileCopy(libDir "\WebView2\WebView2Loader.dll", targetDir "\WebView2Loader.dll", 1)
+                try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Core.dll", targetDir "\Microsoft.Web.WebView2.Core.dll", 1)
+                try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Wpf.dll", targetDir "\Microsoft.Web.WebView2.Wpf.dll", 1)
+            }
+        }
+        if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
+            if FileExist(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll")
+                try FileCopy(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll", targetDir "\ICSharpCode.AvalonEdit.dll", 1)
+        }
+        if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
+            if FileExist(libDir "\OpenXml\DocumentFormat.OpenXml.dll")
+                try FileCopy(libDir "\OpenXml\DocumentFormat.OpenXml.dll", targetDir "\DocumentFormat.OpenXml.dll", 1)
+            if FileExist(libDir "\OpenXml\NPOI.dll")
+                try FileCopy(libDir "\OpenXml\NPOI.dll", targetDir "\NPOI.dll", 1)
+            if FileExist(libDir "\OpenXml\NPOI.OOXML.dll")
+                try FileCopy(libDir "\OpenXml\NPOI.OOXML.dll", targetDir "\NPOI.OOXML.dll", 1)
+            if FileExist(libDir "\OpenXml\NPOI.OpenXml4Net.dll")
+                try FileCopy(libDir "\OpenXml\NPOI.OpenXml4Net.dll", targetDir "\NPOI.OpenXml4Net.dll", 1)
+        }
+    }
+
+
     BundleCustomEngine(targetExe) {
         cleanXaml := StrReplace(this.xaml, "%resources%", "")
         cleanXaml := StrReplace(cleanXaml, "%components%", "")
@@ -780,7 +825,9 @@ class XAMLHost {
     }
 
     _EnsureDaemon() {
-        baseDllName := (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) ? "ahk-xaml-webview.dll" : "ahk-xaml.dll"
+        wvDataDir := (IsSet(XAML_WEBVIEW_USER_DATA_DIR) && XAML_WEBVIEW_USER_DATA_DIR != "") ? XAML_WEBVIEW_USER_DATA_DIR : A_Temp "\AhkWpf\WebView2Data"
+        EnvSet("AHK_XAML_WEBVIEW_DIR", wvDataDir)
+        baseDllName := XAMLHost.GetEngineDllName()
         targetExe := (this.exePath != "") ? this.exePath : A_Temp "\AhkWpf\" baseDllName
         if XAMLHost.daemonHwnd
             return targetExe
@@ -799,12 +846,8 @@ class XAMLHost {
             sourceCs := libDir "\XAML_AHK_Bridge.cs"
             if (FileExist(sourceCs) && FileExist(sharedExe) && FileGetTime(sourceCs) > FileGetTime(sharedExe)) {
                 try {
-                    while ProcessExist("ahk-xaml.dll") {
-                        ProcessClose("ahk-xaml.dll")
-                        Sleep(50)
-                    }
-                    while ProcessExist("ahk-xaml-webview.dll") {
-                        ProcessClose("ahk-xaml-webview.dll")
+                    while ProcessExist(baseDllName) {
+                        ProcessClose(baseDllName)
                         Sleep(50)
                     }
                 }
@@ -827,29 +870,7 @@ class XAMLHost {
             XAMLHost.RestoreAvalonEditDlls()
             XAMLHost.RestoreDocumentDlls()
             SplitPath(targetExe, , &targetDir)
-            if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) {
-                if FileExist(libDir "\WebView2\WebView2Loader.dll") {
-                    try FileCopy(libDir "\WebView2\WebView2Loader.dll", targetDir "\WebView2Loader.dll", 1)
-                    try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Core.dll", targetDir "\Microsoft.Web.WebView2.Core.dll", 1)
-                    try FileCopy(libDir "\WebView2\Microsoft.Web.WebView2.Wpf.dll", targetDir "\Microsoft.Web.WebView2.Wpf.dll", 1)
-                }
-            }
-            ; AvalonEdit DLL copy
-            if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
-                if FileExist(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll")
-                    try FileCopy(libDir "\AvalonEdit\ICSharpCode.AvalonEdit.dll", targetDir "\ICSharpCode.AvalonEdit.dll", 1)
-            }
-            ; Document Editor DLL copy
-            if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
-                if FileExist(libDir "\OpenXml\DocumentFormat.OpenXml.dll")
-                    try FileCopy(libDir "\OpenXml\DocumentFormat.OpenXml.dll", targetDir "\DocumentFormat.OpenXml.dll", 1)
-                if FileExist(libDir "\OpenXml\NPOI.dll")
-                    try FileCopy(libDir "\OpenXml\NPOI.dll", targetDir "\NPOI.dll", 1)
-                if FileExist(libDir "\OpenXml\NPOI.OOXML.dll")
-                    try FileCopy(libDir "\OpenXml\NPOI.OOXML.dll", targetDir "\NPOI.OOXML.dll", 1)
-                if FileExist(libDir "\OpenXml\NPOI.OpenXml4Net.dll")
-                    try FileCopy(libDir "\OpenXml\NPOI.OpenXml4Net.dll", targetDir "\NPOI.OpenXml4Net.dll", 1)
-            }
+            XAMLHost.CopyRequiredDlls(libDir, targetDir)
         } else {
             if !FileExist(targetExe)
                 FileInstall("ahk-xaml.dll", targetExe, 1)
@@ -1098,6 +1119,15 @@ class XAMLHost {
 
         if (ctrlName == "Window" && eventName == "LoadedHwnd") {
             instance.wpfHwnd := Integer(parts[5])
+            if instance.HasOwnProp("_updateQueue") {
+                for item in instance._updateQueue {
+                    if (item.type == "single")
+                        instance.Update(item.ctrl, item.prop, item.val)
+                    else if (item.type == "batch")
+                        instance.BatchUpdate(item.arr)
+                }
+                instance._updateQueue := []
+            }
         }
         if (ctrlName == "Window" && eventName == "Closed") {
             instance.wpfHwnd := 0
@@ -1466,6 +1496,8 @@ class XAMLHost {
     }
 
     static RestoreWebView2Dlls() {
+        if (!IsSet(XAML_ENABLE_WEBVIEW) || !XAML_ENABLE_WEBVIEW)
+            return false
         libDir := ""
         SplitPath(A_LineFile, , &libDir)
         wvDir := libDir "\WebView2"
@@ -1476,29 +1508,22 @@ class XAMLHost {
             return false
         }
         
-        nativeDomDir := "C:\projects\NativeDOM\examples\webview\plugin\sdk"
-        sourceCore := nativeDomDir "\lib\net45\Microsoft.Web.WebView2.Core.dll"
-        sourceWpf  := nativeDomDir "\lib\net45\Microsoft.Web.WebView2.Wpf.dll"
-        sourceLoader := nativeDomDir "\build\native\x64\WebView2Loader.dll"
+        loaderArch := (A_PtrSize == 8) ? "x64" : "x86"
+        targetDlls := [
+            wvDir "\Microsoft.Web.WebView2.Core.dll",
+            wvDir "\Microsoft.Web.WebView2.Wpf.dll",
+            wvDir "\WebView2Loader.dll"
+        ]
         
-        if (FileExist(sourceCore) && FileExist(sourceWpf) && FileExist(sourceLoader)) {
-            if (!DirExist(wvDir)) {
-                DirCreate(wvDir)
-            }
-            try {
-                FileCopy(sourceCore, wvDir "\Microsoft.Web.WebView2.Core.dll", 1)
-                FileCopy(sourceWpf, wvDir "\Microsoft.Web.WebView2.Wpf.dll", 1)
-                FileCopy(sourceLoader, wvDir "\WebView2Loader.dll", 1)
-                
-                try FileDelete(libDir "\ahk-xaml-webview.dll")
-                try FileDelete(A_Temp "\AhkWpf\ahk-xaml-webview.dll")
-                
-                ToolTip("WebView2 DLLs successfully restored from NativeDOM!")
-                SetTimer(() => ToolTip(), -4000)
-                return true
-            } catch as err {
-                ; Silently fail
-            }
+        tmpDir := A_Temp "\AhkWpf\nuget_Microsoft_Web_WebView2"
+        extractCmds := "Copy-Item '" tmpDir "\lib\net45\Microsoft.Web.WebView2.Core.dll' '" wvDir "\Microsoft.Web.WebView2.Core.dll' -Force; "
+                     . "Copy-Item '" tmpDir "\lib\net45\Microsoft.Web.WebView2.Wpf.dll' '" wvDir "\Microsoft.Web.WebView2.Wpf.dll' -Force; "
+                     . "Copy-Item '" tmpDir "\build\native\" loaderArch "\WebView2Loader.dll' '" wvDir "\WebView2Loader.dll' -Force"
+                     
+        if XAMLHost.Downloader("Microsoft.Web.WebView2", "1.0.1722.45", "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.1722.45", wvDir, targetDlls, extractCmds) {
+            try FileDelete(libDir "\ahk-xaml-webview.dll")
+            try FileDelete(A_Temp "\AhkWpf\ahk-xaml-webview.dll")
+            return true
         }
         return false
     }
@@ -1514,38 +1539,14 @@ class XAMLHost {
         if FileExist(aeDll)
             return false
 
-        ; Auto-download from NuGet
-        if !DirExist(aeDir)
-            DirCreate(aeDir)
-
-        tmpDir := A_Temp "\AhkWpf\nuget_avalonedit"
-        nupkg := tmpDir "\avalonedit.nupkg.zip"
-        try {
-            if !DirExist(tmpDir)
-                DirCreate(tmpDir)
-            ToolTip("Downloading AvalonEdit from NuGet...")
-            Download("https://www.nuget.org/api/v2/package/AvalonEdit/6.3.0.90", nupkg)
-            ; NuGet packages are ZIP files — extract the DLL
-            q := Chr(34)
-            psCmd := "powershell.exe -NoProfile -Command " q "Expand-Archive -Path '" nupkg "' -DestinationPath '" tmpDir "' -Force; Copy-Item '" tmpDir "\lib\net462\ICSharpCode.AvalonEdit.dll' '" aeDll "' -Force" q
-            RunWait(psCmd, "", "Hide")
-            if FileExist(aeDll) {
-                ; Force recompile since we now have the DLL
-                try FileDelete(libDir "\ahk-xaml.dll")
-                try FileDelete(A_Temp "\AhkWpf\ahk-xaml.dll")
-                ToolTip("AvalonEdit downloaded and installed successfully!")
-                SetTimer(() => ToolTip(), -4000)
-                return true
-            } else {
-                ToolTip("Failed to extract AvalonEdit DLL from NuGet package.")
-                SetTimer(() => ToolTip(), -4000)
-            }
-        } catch as err {
-            ToolTip("Failed to download AvalonEdit: " err.Message)
-            SetTimer(() => ToolTip(), -4000)
+        tmpDir := A_Temp "\AhkWpf\nuget_AvalonEdit"
+        extractCmds := "Copy-Item '" tmpDir "\lib\net462\ICSharpCode.AvalonEdit.dll' '" aeDll "' -Force"
+        
+        if XAMLHost.Downloader("AvalonEdit", "6.3.0.90", "https://www.nuget.org/api/v2/package/AvalonEdit/6.3.0.90", aeDir, [aeDll], extractCmds) {
+            try FileDelete(libDir "\ahk-xaml*.dll")
+            try FileDelete(A_Temp "\AhkWpf\ahk-xaml*.dll")
+            return true
         }
-        ; Cleanup
-        try DirDelete(tmpDir, true)
         return false
     }
 
@@ -1560,35 +1561,105 @@ class XAMLHost {
         if FileExist(oxDll)
             return false
 
-        if !DirExist(oxDir)
-            DirCreate(oxDir)
-
-        tmpDir := A_Temp "\AhkWpf\nuget_openxml"
-        try {
-            if !DirExist(tmpDir)
-                DirCreate(tmpDir)
-            ToolTip("Downloading OpenXml SDK from NuGet...")
-            ; Download DocumentFormat.OpenXml (v2.20.0 for .NET Framework 4.x compatibility)
-            nupkg := tmpDir "\openxml.nupkg.zip"
-            Download("https://www.nuget.org/api/v2/package/DocumentFormat.OpenXml/2.20.0", nupkg)
-            q := Chr(34)
-            psCmd := "powershell.exe -NoProfile -Command " q "Expand-Archive -Path '" nupkg "' -DestinationPath '" tmpDir "' -Force; Copy-Item '" tmpDir "\lib\net46\DocumentFormat.OpenXml.dll' '" oxDll "' -Force" q
-            RunWait(psCmd, "", "Hide")
-            if FileExist(oxDll) {
-                try FileDelete(libDir "\ahk-xaml.dll")
-                try FileDelete(A_Temp "\AhkWpf\ahk-xaml.dll")
-                ToolTip("OpenXml SDK downloaded and installed successfully!")
-                SetTimer(() => ToolTip(), -4000)
-            } else {
-                ToolTip("Failed to extract OpenXml DLL from NuGet package.")
-                SetTimer(() => ToolTip(), -4000)
-            }
-        } catch as err {
-            ToolTip("Failed to download OpenXml SDK: " err.Message)
-            SetTimer(() => ToolTip(), -4000)
+        tmpDir := A_Temp "\AhkWpf\nuget_DocumentFormat_OpenXml"
+        extractCmds := "Copy-Item '" tmpDir "\lib\net46\DocumentFormat.OpenXml.dll' '" oxDll "' -Force"
+        
+        if XAMLHost.Downloader("DocumentFormat.OpenXml", "2.20.0", "https://www.nuget.org/api/v2/package/DocumentFormat.OpenXml/2.20.0", oxDir, [oxDll], extractCmds) {
+            try FileDelete(libDir "\ahk-xaml*.dll")
+            try FileDelete(A_Temp "\AhkWpf\ahk-xaml*.dll")
+            return true
         }
+        return false
+    }
+
+    ; Shared non-blocking rich GUI downloader helper
+    static Downloader(packageName, version, url, installDir, targetDlls, extractCommands) {
+        ; Create modern dark GUI
+        pg := Gui("+AlwaysOnTop -MinimizeBox -SysMenu +ToolWindow", "AHK-XAML — Bootstrap Downloader")
+        pg.SetFont("s10 bold", "Segoe UI")
+        pg.BackColor := "0x11111b"
+        
+        pg.Add("Text", "x15 y12 w270 c89B4FA", "📦 Restoring Dependency")
+        pg.SetFont("s9 norm", "Segoe UI")
+        statusText := pg.Add("Text", "x15 y35 w270 h18 cCDD6F4", "Downloading " packageName " " version "...")
+        progressBar := pg.Add("Progress", "x15 y58 w270 h6 c89B4FA Background313244 -Smooth +0x8", 50)
+        pg.Show("w300 h78 NoActivate")
+        
+        ; Enable continuous marquee style (PBM_SETMARQUEE)
+        SendMessage(0x040A, 1, 30, progressBar.Hwnd)
+        
+        tmpDir := A_Temp "\AhkWpf\nuget_" StrReplace(packageName, ".", "_")
+        nupkg := tmpDir "\package.nupkg.zip"
+        
+        try {
+            if !DirExist(A_Temp "\AhkWpf")
+                DirCreate(A_Temp "\AhkWpf")
+            if DirExist(tmpDir)
+                DirDelete(tmpDir, true)
+            DirCreate(tmpDir)
+        }
+        
+        ; Generate PowerShell command
+        q := Chr(34)
+        psCmd := "powershell.exe -NoProfile -Command " q
+            . "try { "
+            . "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
+            . "Invoke-WebRequest -Uri '" url "' -OutFile '" nupkg "' -UserAgent 'Mozilla/5.0'; "
+            . "Expand-Archive -Path '" nupkg "' -DestinationPath '" tmpDir "' -Force; "
+            . "if (!(Test-Path '" installDir "')) { New-Item -ItemType Directory -Force -Path '" installDir "' | Out-Null }; "
+            . extractCommands "; "
+            . "} catch { $_.Exception.Message | Out-File '" tmpDir "\err.txt' }"
+            . q
+            
+        success := false
+        try {
+            ; Run background process
+            Run(psCmd, "", "Hide", &pid)
+            
+            ; Wait and animate
+            dots := ""
+            loopCount := 0
+            while ProcessExist(pid) {
+                loopCount++
+                if (Mod(loopCount, 15) == 0) {
+                    dots .= "."
+                    if (StrLen(dots) > 3)
+                        dots := ""
+                    statusText.Value := "Downloading and extracting " dots
+                }
+                Sleep(50)
+            }
+            
+            ; Inspect completion results
+            if FileExist(tmpDir "\err.txt") {
+                errContent := FileRead(tmpDir "\err.txt")
+                throw Error(errContent)
+            }
+            
+            ; Check that all target DLLs now exist
+            for dll in targetDlls {
+                if !FileExist(dll)
+                    throw Error("Failed to extract: " dll)
+            }
+            
+            success := true
+            statusText.Value := "✓ Installed successfully!"
+            progressBar.Opt("cA6E3A1") ; premium success green
+            progressBar.Value := 100
+            Sleep(800)
+        } catch as e {
+            success := false
+            statusText.Value := "✗ Failed!"
+            progressBar.Opt("cF38BA8") ; premium error red
+            progressBar.Value := 100
+            
+            ; Show standard error dialog or tooltip
+            MsgBox("Failed to restore " packageName " " version ":`n`n" e.Message, "Bootstrap Restore Error", "Iconx AlwaysOnTop")
+        }
+        
+        pg.Destroy()
         try DirDelete(tmpDir, true)
-        return FileExist(oxDll)
+        return success
     }
 }
 
