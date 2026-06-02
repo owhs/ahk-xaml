@@ -166,6 +166,13 @@ class PanelManager {
             this.IniFile := iniPath
         }
 
+        ; Initialize last known main window position
+        try {
+            WinGetPos(&mX, &mY, , , "ahk_id " this.MainWindow)
+            this.lastMainX := mX
+            this.lastMainY := mY
+        }
+
         ; Timers for regular maintenance
         SetTimer(ObjBindMethod(this, "Magnetize"), 30)
         SetTimer(ObjBindMethod(this, "UpdateGlobalSnappedState"), 200)
@@ -185,13 +192,16 @@ class PanelManager {
     }
 
     static RegisterPanel(id, title, defaultX, defaultY, defaultW, defaultH) {
+        pinnedVal := this.GetSavedState(id, "Pinned", "0") == "1"
         this.Panels[id] := {
             Title: title,
             X: defaultX, Y: defaultY, W: defaultW, H: defaultH,
             Instance: "",
             GuiHwnd: 0,
             Snapped: this.GetSavedState(id, "Snapped", "0") == "1",
-            Pinned: this.GetSavedState(id, "Pinned", "0") == "1"
+            Pinned: pinnedVal,
+            PinOffsetX: Integer(this.GetSavedState(id, "PinOffsetX", "0")),
+            PinOffsetY: Integer(this.GetSavedState(id, "PinOffsetY", "0"))
         }
     }
 
@@ -526,32 +536,66 @@ class PanelManager {
         }
     }
 
-    static ApplyFinalSnappedPositions(finalX, finalY, fdx, fdy, hwnd, cluster, startPositions) {
+    static ApplyFinalPinnedPositions(hwnd, finalX, finalY) {
         this.isMovingPinned := true
 
-        moveCount := cluster.Length
+        mainX := 0, mainY := 0
+        if (hwnd == this.MainWindow) {
+            mainX := finalX
+            mainY := finalY
+        } else {
+            draggedId := ""
+            for id, pInfo in this.Panels {
+                if (pInfo.GuiHwnd == hwnd) {
+                    draggedId := id
+                    break
+                }
+            }
+            if (draggedId != "") {
+                pDrag := this.Panels[draggedId]
+                mainX := finalX - pDrag.PinOffsetX
+                mainY := finalY - pDrag.PinOffsetY
+            } else {
+                this.isMovingPinned := false
+                return
+            }
+        }
+
+        moveCount := this.dragCluster.Length
         if (moveCount > 0) {
             hdwp := DllCall("BeginDeferWindowPos", "Int", moveCount, "Ptr")
             if (hdwp) {
-                for h in cluster {
-                    if (h == hwnd) {
-                        hdwp := DllCall("DeferWindowPos",
-                            "Ptr", hdwp, "Ptr", h, "Ptr", 0,
-                            "Int", finalX, "Int", finalY,
-                            "Int", startPositions[h].w, "Int", startPositions[h].h,
-                            "UInt", 0x0014, ; SWP_NOZORDER | SWP_NOACTIVATE
-                            "Ptr"
-                        )
+                for h in this.dragCluster {
+                    targetX := 0, targetY := 0, targetW := 0, targetH := 0
+                    if (h == this.MainWindow) {
+                        targetX := mainX
+                        targetY := mainY
+                        WinGetPos(, , &targetW, &targetH, "ahk_id " h)
                     } else {
-                        sp := startPositions[h]
-                        hdwp := DllCall("DeferWindowPos",
-                            "Ptr", hdwp, "Ptr", h, "Ptr", 0,
-                            "Int", sp.x + fdx, "Int", sp.y + fdy,
-                            "Int", sp.w, "Int", sp.h,
-                            "UInt", 0x0014, ; SWP_NOZORDER | SWP_NOACTIVATE
-                            "Ptr"
-                        )
+                        targetId := ""
+                        for id, pInfo in this.Panels {
+                            if (pInfo.GuiHwnd == h) {
+                                targetId := id
+                                break
+                            }
+                        }
+                        if (targetId != "") {
+                            pTarget := this.Panels[targetId]
+                            targetX := mainX + pTarget.PinOffsetX
+                            targetY := mainY + pTarget.PinOffsetY
+                            WinGetPos(, , &targetW, &targetH, "ahk_id " h)
+                        } else {
+                            continue
+                        }
                     }
+
+                    hdwp := DllCall("DeferWindowPos",
+                        "Ptr", hdwp, "Ptr", h, "Ptr", 0,
+                        "Int", targetX, "Int", targetY,
+                        "Int", targetW, "Int", targetH,
+                        "UInt", 0x0014, ; SWP_NOZORDER | SWP_NOACTIVATE
+                        "Ptr"
+                    )
                 }
                 DllCall("EndDeferWindowPos", "Ptr", hdwp)
             }
@@ -652,11 +696,8 @@ class PanelManager {
                     aY := snappedY
                 }
 
-                if (this.dragActiveHwnd == rootHwnd && this.dragCluster.Length > 1 && IsObject(this.dragActiveStartPos)) {
-                    dx := aX - this.dragActiveStartPos.x
-                    dy := aY - this.dragActiveStartPos.y
-                    ; Atomic lock using cloned states to prevent timing regressions
-                    this.ApplyFinalSnappedPositions(aX, aY, dx, dy, rootHwnd, this.dragCluster.Clone(), this.dragStartPositions.Clone())
+                if (this.dragActiveHwnd == rootHwnd && this.dragCluster.Length > 1) {
+                    this.ApplyFinalPinnedPositions(rootHwnd, aX, aY)
                 } else {
                     ; Single window final snap lock
                     WinMove(aX, aY, aW, aH, "ahk_id " rootHwnd)
@@ -686,11 +727,27 @@ class PanelManager {
         if (!IsObject(this.dragActiveStartPos) || aW != this.dragActiveStartPos.w || aH != this.dragActiveStartPos.h)
             return
 
-        dx := aX - this.dragActiveStartPos.x
-        dy := aY - this.dragActiveStartPos.y
-
-        if (dx == 0 && dy == 0)
-            return
+        ; Determine implied main window position
+        mainX := 0, mainY := 0
+        if (hwnd == this.MainWindow) {
+            mainX := aX
+            mainY := aY
+        } else {
+            draggedId := ""
+            for id, pInfo in this.Panels {
+                if (pInfo.GuiHwnd == hwnd) {
+                    draggedId := id
+                    break
+                }
+            }
+            if (draggedId != "") {
+                pDrag := this.Panels[draggedId]
+                mainX := aX - pDrag.PinOffsetX
+                mainY := aY - pDrag.PinOffsetY
+            } else {
+                return
+            }
+        }
 
         this.isMovingPinned := true
         moveCount := this.dragCluster.Length - 1
@@ -700,10 +757,31 @@ class PanelManager {
                 for h in this.dragCluster {
                     if (h == hwnd)
                         continue
-                    startPos := this.dragStartPositions[h]
+                    
+                    targetX := 0, targetY := 0
+                    if (h == this.MainWindow) {
+                        targetX := mainX
+                        targetY := mainY
+                    } else {
+                        targetId := ""
+                        for id, pInfo in this.Panels {
+                            if (pInfo.GuiHwnd == h) {
+                                targetId := id
+                                break
+                            }
+                        }
+                        if (targetId != "") {
+                            pTarget := this.Panels[targetId]
+                            targetX := mainX + pTarget.PinOffsetX
+                            targetY := mainY + pTarget.PinOffsetY
+                        } else {
+                            continue
+                        }
+                    }
+
                     hdwp := DllCall("DeferWindowPos",
                         "Ptr", hdwp, "Ptr", h, "Ptr", 0,
-                        "Int", startPos.x + dx, "Int", startPos.y + dy,
+                        "Int", targetX, "Int", targetY,
                         "Int", 0, "Int", 0,
                         "UInt", 21, ; SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
                         "Ptr"
@@ -818,6 +896,17 @@ class PanelManager {
 
         pInfo.Pinned := !pInfo.Pinned
         this.SaveState(id, "Pinned", pInfo.Pinned ? "1" : "0")
+
+        if (pInfo.Pinned) {
+            if (this.MainWindow && WinExist("ahk_id " this.MainWindow) && pInfo.GuiHwnd && WinExist("ahk_id " pInfo.GuiHwnd)) {
+                WinGetPos(&mX, &mY, , , "ahk_id " this.MainWindow)
+                WinGetPos(&pX, &pY, , , "ahk_id " pInfo.GuiHwnd)
+                pInfo.PinOffsetX := pX - mX
+                pInfo.PinOffsetY := pY - mY
+                this.SaveState(id, "PinOffsetX", pInfo.PinOffsetX)
+                this.SaveState(id, "PinOffsetY", pInfo.PinOffsetY)
+            }
+        }
 
         ; Dynamic icon and color update in the local title bar
         if (pInfo.Instance != "") {
@@ -1034,8 +1123,19 @@ class PanelManager {
 
         w := this.GetSavedState(id, "W", pInfo.W)
         h := this.GetSavedState(id, "H", pInfo.H)
-        x := this.GetSavedState(id, "X", pInfo.X)
-        y := this.GetSavedState(id, "Y", pInfo.Y)
+        
+        if (pInfo.Pinned && this.MainWindow && WinExist("ahk_id " this.MainWindow)) {
+            WinGetPos(&mX, &mY, , , "ahk_id " this.MainWindow)
+            x := mX + pInfo.PinOffsetX
+            y := mY + pInfo.PinOffsetY
+            pInfo.X := x
+            pInfo.Y := y
+            this.SaveState(id, "X", x)
+            this.SaveState(id, "Y", y)
+        } else {
+            x := this.GetSavedState(id, "X", pInfo.X)
+            y := this.GetSavedState(id, "Y", pInfo.Y)
+        }
 
         titleHeight := "28"
         titleFont := "12"
@@ -1369,6 +1469,32 @@ class PanelManager {
     static Watchdog() {
         if (!this.MainWindow || !WinExist("ahk_id " this.MainWindow))
             return
+
+        ; Query current main window position to shift closed pinned panels
+        try {
+            WinGetPos(&mX, &mY, , , "ahk_id " this.MainWindow)
+            if (mX > -10000 && mY > -10000) { ; Ignore minimized state
+                if (!this.HasProp("lastMainX") || !this.HasProp("lastMainY")) {
+                    this.lastMainX := mX
+                    this.lastMainY := mY
+                } else {
+                    dx := mX - this.lastMainX
+                    dy := mY - this.lastMainY
+                    if (dx != 0 || dy != 0) {
+                        for id, pInfo in this.Panels {
+                            if (pInfo.Pinned && (pInfo.Instance == "" || !pInfo.GuiHwnd)) {
+                                pInfo.X += dx
+                                pInfo.Y += dy
+                                this.SaveState(id, "X", pInfo.X)
+                                this.SaveState(id, "Y", pInfo.Y)
+                            }
+                        }
+                        this.lastMainX := mX
+                        this.lastMainY := mY
+                    }
+                }
+            }
+        }
 
         showInAltTab := IniRead(this.IniFile, "Global", "ShowInAltTab", "0") == "1"
         expectedOwner := showInAltTab ? 0 : this.MainWindow

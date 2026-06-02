@@ -36,6 +36,7 @@ PanelManager.RegisterPanel("Toolbox", "Component Toolbox", 100, 450, 250, 400)
 
 ; --- Main Application ---
 app := XAML_GUI("IDE Docking Manager Example", { Sidebar: true, BurgerMenu: true, TitleBarHeight: 28, AppIcon: true })
+app.SkipDefaultThemeOnLoad := true
 
 ; Load saved settings
 savedRadius := IniRead(INI_FILE, "Global", "PanelRadius", "0")
@@ -122,16 +123,16 @@ for id, pInfo in PanelManager.Panels {
 ui.xaml := StrReplace(ui.xaml, 'Name="BtnMaximize"', 'Name="BtnAppMaximize"')
 
 ; Restore Main Window Position
-mainX := IniRead("docking_layout.ini", "MainWindow", "X", "")
-mainY := IniRead("docking_layout.ini", "MainWindow", "Y", "")
-mainW := IniRead("docking_layout.ini", "MainWindow", "W", "940")
-mainH := IniRead("docking_layout.ini", "MainWindow", "H", "700")
+mainX := IniRead(INI_FILE, "MainWindow", "X", "")
+mainY := IniRead(INI_FILE, "MainWindow", "Y", "")
+mainW := IniRead(INI_FILE, "MainWindow", "W", "940")
+mainH := IniRead(INI_FILE, "MainWindow", "H", "700")
 
 if (mainX != "" && mainY != "") {
     ui.xaml := StrReplace(ui.xaml, 'Width="940" Height="700"', 'Width="' mainW '" Height="' mainH '" Left="' mainX '" Top="' mainY '"')
     ui.xaml := StrReplace(ui.xaml, 'WindowStartupLocation="CenterScreen"', 'WindowStartupLocation="Manual"')
 }
-if (IniRead("docking_layout.ini", "Global", "NoShadows", "0") == "1") {
+if (IniRead(INI_FILE, "Global", "NoShadows", "0") == "1") {
     ui.xaml := StrReplace(ui.xaml, 'GlassFrameThickness="-1"', 'GlassFrameThickness="0" ResizeBorderThickness="6"')
 }
 ui.OnEvent("Window", "LoadedHwnd", (state, ctrl, event) => OnMainLoaded())
@@ -143,9 +144,11 @@ for id, pInfo in PanelManager.Panels {
     ui.OnEvent("ComboTheme_" id, "SelectionChanged", OnPanelThemeChanged.Bind(id))
 }
 ui.OnEvent("ComboScale", "SelectionChanged", (state, ctrl, event) => (
-    app.ScaleChanged(state, ctrl, event),
-    IniWrite(state["ComboScale"], INI_FILE, "Global", "Scale"),
-    PanelManager.UpdateScale(state["ComboScale"])
+    isInitializing ? "" : (
+        app.ScaleChanged(state, ctrl, event),
+        IniWrite(state["ComboScale"], INI_FILE, "Global", "Scale"),
+        PanelManager.UpdateScale(state["ComboScale"])
+    )
 ))
 ui.OnEvent("ComboRadius", "SelectionChanged", (state, ctrl, event) => OnRadiusChanged(state))
 ui.OnEvent("Window", "Closing", (*) => OnMainClosing())
@@ -193,17 +196,22 @@ OnMainLoaded() {
 ApplyInitialSelections(rIdx, tIdx, sIdx, savedRadius, savedTheme, savedScale) {
     global isAppReady, ui, app, isInitializing
     isAppReady := true
+    Trace("ApplyInitialSelections: Start. themeIdx=" tIdx ", savedTheme=" savedTheme)
     try {
         ui.Update("ComboRadius", "SelectedIndex", String(rIdx))
-    } catch {
+    } catch as e {
+        Trace("ApplyInitialSelections Radius index update failed: " e.Message)
     }
     try {
         ui.Update("ComboTheme", "SelectedIndex", String(tIdx))
-    } catch {
+        Trace("ApplyInitialSelections: ComboTheme selected index updated to " tIdx)
+    } catch as e {
+        Trace("ApplyInitialSelections Theme index update failed: " e.Message)
     }
     try {
         ui.Update("ComboScale", "SelectedIndex", String(sIdx))
-    } catch {
+    } catch as e {
+        Trace("ApplyInitialSelections Scale index update failed: " e.Message)
     }
 
     for id, pInfo in PanelManager.Panels {
@@ -265,7 +273,8 @@ ApplyInitialSelections(rIdx, tIdx, sIdx, savedRadius, savedTheme, savedScale) {
             case "16": radStr := "Fluid (16)"
             default: radStr := "Smooth (8)"
         }
-        OnRadiusChanged(Map("ComboRadius", radStr))
+        app.RadiusChanged(Map("ComboRadius", radStr), "", "")
+        PanelManager.UpdateRadius(savedRadius)
     } catch as eRad {
         Trace("ApplyInitialSelections OnRadiusChanged failed: " eRad.Message)
     }
@@ -277,7 +286,13 @@ ApplyInitialSelections(rIdx, tIdx, sIdx, savedRadius, savedTheme, savedScale) {
     }
 
     ; Done initializing!
+    SetTimer(EndInitialization, -500)
+}
+
+EndInitialization() {
+    global isInitializing
     isInitializing := false
+    Trace("Initialization ended. isInitializing=" isInitializing)
 }
 
 CheckMainMoved() {
@@ -289,17 +304,18 @@ CheckMainMoved() {
         static lastX := "", lastY := "", lastW := "", lastH := ""
         if (x != lastX || y != lastY || w != lastW || h != lastH) {
             lastX := x, lastY := y, lastW := w, lastH := h
-            IniWrite(x, "docking_layout.ini", "MainWindow", "X")
-            IniWrite(y, "docking_layout.ini", "MainWindow", "Y")
-            IniWrite(w, "docking_layout.ini", "MainWindow", "W")
-            IniWrite(h, "docking_layout.ini", "MainWindow", "H")
+            IniWrite(x, INI_FILE, "MainWindow", "X")
+            IniWrite(y, INI_FILE, "MainWindow", "Y")
+            IniWrite(w, INI_FILE, "MainWindow", "W")
+            IniWrite(h, INI_FILE, "MainWindow", "H")
         }
     }
 }
 
 OnThemeEngineChanged(themeName) {
     global INI_FILE, ui, app, isAppReady, isInitializing
-    if (!isAppReady)
+    Trace("OnThemeEngineChanged: Start. themeName='" themeName "', isAppReady=" isAppReady ", isInitializing=" isInitializing)
+    if (!isAppReady || isInitializing)
         return
 
     IniWrite(themeName, INI_FILE, "Global", "Theme")
@@ -410,8 +426,8 @@ OnThemeEngineChanged(themeName) {
 }
 
 OnRadiusChanged(state) {
-    global INI_FILE, isAppReady, app
-    if (!isAppReady || !state.Has("ComboRadius"))
+    global INI_FILE, isAppReady, app, isInitializing
+    if (!isAppReady || isInitializing || !state.Has("ComboRadius"))
         return
     radText := state["ComboRadius"]
     RegExMatch(radText, "\((\d+)\)", &match)
@@ -468,8 +484,8 @@ OnVisibilityChanged(state) {
     PanelManager.ApplyVisibilityStyles()
 }
 OnTransparencyToggle(state) {
-    global INI_FILE, isAppReady
-    if (!isAppReady)
+    global INI_FILE, isAppReady, isInitializing
+    if (!isAppReady || isInitializing)
         return
     val := state["ChkTransparency"] == "True" ? "1" : "0"
     IniWrite(val, INI_FILE, "Global", "Transparency")
@@ -477,8 +493,8 @@ OnTransparencyToggle(state) {
 }
 
 OnBlurEffectChanged(state) {
-    global INI_FILE, isAppReady
-    if (!isAppReady || !state.Has("ComboBlurEffect"))
+    global INI_FILE, isAppReady, isInitializing
+    if (!isAppReady || isInitializing || !state.Has("ComboBlurEffect"))
         return
     selected := state["ComboBlurEffect"]
     blur := selected == "Acrylic (Frosted Glass)" ? "Acrylic" : (selected == "Aero (Classic Glass)" ? "Aero" : "Mica")
@@ -516,8 +532,8 @@ UpdateBackdropEffects() {
 
 
 OnShadowsToggle(state) {
-    global INI_FILE, isAppReady
-    if (!isAppReady)
+    global INI_FILE, isAppReady, isInitializing
+    if (!isAppReady || isInitializing)
         return
     val := state["ChkEnableShadows"] == "True" ? "0" : "1"
     IniWrite(val, INI_FILE, "Global", "NoShadows")

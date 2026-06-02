@@ -35,6 +35,7 @@ PanelManager.RegisterPanel("Toolbox", "Component Toolbox", 100, 450, 250, 400)
 
 ; --- Main Application Setup ---
 app := XAML_GUI("Silky-Smooth Pinned Docking", { Sidebar: true, BurgerMenu: true, TitleBarHeight: 28, AppIcon: true, MaxButton: false })
+app.SkipDefaultThemeOnLoad := true
 
 ; Load saved settings
 savedRadius := IniRead(INI_FILE, "Global", "PanelRadius", "0")
@@ -141,9 +142,11 @@ for id, pInfo in PanelManager.Panels {
     ui.OnEvent("ComboTheme_" id, "SelectionChanged", OnPanelThemeChanged.Bind(id))
 }
 ui.OnEvent("ComboScale", "SelectionChanged", (state, ctrl, event) => (
-    app.ScaleChanged(state, ctrl, event),
-    IniWrite(state["ComboScale"], INI_FILE, "Global", "Scale"),
-    PanelManager.UpdateScale(state["ComboScale"])
+    isInitializing ? "" : (
+        app.ScaleChanged(state, ctrl, event),
+        IniWrite(state["ComboScale"], INI_FILE, "Global", "Scale"),
+        PanelManager.UpdateScale(state["ComboScale"])
+    )
 ))
 ui.OnEvent("ComboRadius", "SelectionChanged", (state, ctrl, event) => OnRadiusChanged(state))
 ui.OnEvent("Window", "Closing", (*) => OnMainClosing())
@@ -268,7 +271,8 @@ ApplyInitialSelections(rIdx, tIdx, sIdx, savedRadius, savedTheme, savedScale) {
             case "16": radStr := "Fluid (16)"
             default: radStr := "Smooth (8)"
         }
-        OnRadiusChanged(Map("ComboRadius", radStr))
+        app.RadiusChanged(Map("ComboRadius", radStr), "", "")
+        PanelManager.UpdateRadius(savedRadius)
     } catch as eRad {
         Trace("ApplyInitialSelections OnRadiusChanged failed: " eRad.Message)
     }
@@ -279,7 +283,14 @@ ApplyInitialSelections(rIdx, tIdx, sIdx, savedRadius, savedTheme, savedScale) {
         Trace("ApplyInitialSelections UpdateBackdropEffects failed: " eBackdrop.Message)
     }
 
+    ; Done initializing!
+    SetTimer(EndInitialization, -500)
+}
+
+EndInitialization() {
+    global isInitializing
     isInitializing := false
+    Trace("Initialization ended. isInitializing=" isInitializing)
 }
 
 CheckMainMoved() {
@@ -301,7 +312,7 @@ CheckMainMoved() {
 
 OnThemeEngineChanged(themeName) {
     global INI_FILE, ui, app, isAppReady, isInitializing
-    if (!isAppReady)
+    if (!isAppReady || isInitializing)
         return
 
     IniWrite(themeName, INI_FILE, "Global", "Theme")
@@ -402,8 +413,8 @@ OnThemeEngineChanged(themeName) {
 }
 
 OnRadiusChanged(state) {
-    global INI_FILE, isAppReady, app
-    if (!isAppReady || !state.Has("ComboRadius"))
+    global INI_FILE, isAppReady, app, isInitializing
+    if (!isAppReady || isInitializing || !state.Has("ComboRadius"))
         return
     radText := state["ComboRadius"]
     RegExMatch(radText, "\((\d+)\)", &match)
@@ -456,8 +467,8 @@ OnVisibilityChanged(state) {
 }
 
 OnTransparencyToggle(state) {
-    global INI_FILE, isAppReady
-    if (!isAppReady)
+    global INI_FILE, isAppReady, isInitializing
+    if (!isAppReady || isInitializing)
         return
     val := state["ChkTransparency"] == "True" ? "1" : "0"
     IniWrite(val, INI_FILE, "Global", "Transparency")
@@ -465,8 +476,8 @@ OnTransparencyToggle(state) {
 }
 
 OnBlurEffectChanged(state) {
-    global INI_FILE, isAppReady
-    if (!isAppReady || !state.Has("ComboBlurEffect"))
+    global INI_FILE, isAppReady, isInitializing
+    if (!isAppReady || isInitializing || !state.Has("ComboBlurEffect"))
         return
     selected := state["ComboBlurEffect"]
     blur := selected == "Acrylic (Frosted Glass)" ? "Acrylic" : (selected == "Aero (Classic Glass)" ? "Aero" : "Mica")
@@ -503,8 +514,8 @@ UpdateBackdropEffects() {
 }
 
 OnShadowsToggle(state) {
-    global INI_FILE, isAppReady
-    if (!isAppReady)
+    global INI_FILE, isAppReady, isInitializing
+    if (!isAppReady || isInitializing)
         return
     val := state["ChkEnableShadows"] == "True" ? "0" : "1"
     IniWrite(val, INI_FILE, "Global", "NoShadows")

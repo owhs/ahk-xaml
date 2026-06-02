@@ -254,11 +254,18 @@ class XAML_GUI {
     ; Walk the element tree and harvest all .On() / .Track() registrations.
     ; Called automatically during Compile() — no separate AutoBind step needed.
     _CollectInlineEvents(el) {
+        static autoNameCounter := 0
         name := ""
         if (el._Props.Has("Name"))
             name := el._Props["Name"]
         else if (el._Props.Has("x:Name"))
             name := el._Props["x:Name"]
+
+        if (name == "" && ((el.HasOwnProp("_Events") && el._Events.Length > 0) || (el.HasOwnProp("_Tracked") && el._Tracked) || (el.HasOwnProp("_Hotkeys") && el._Hotkeys.Length > 0))) {
+            autoNameCounter++
+            name := "Auto_" el._Tag "_" autoNameCounter
+            el._Props["x:Name"] := name
+        }
 
         if (name != "") {
             ; Auto-track if explicitly marked
@@ -540,6 +547,36 @@ class XAML_GUI {
     ; ==============================================================================
 
     OnUIReady(state, ctrl, event) {
+        if (this.HasProp("SkipDefaultThemeOnLoad") && this.SkipDefaultThemeOnLoad) {
+            this.host.Update("Window", "Title", this.title)
+
+            hIcon := LoadPicture("shell32.dll", "Icon26", &ImageType := 1)
+            this.host.Update("Window", "Icon", "HICON:" hIcon)
+            TraySetIcon("shell32.dll", 26)
+
+            this.host.Update("AppTitle", "Text", this.title)
+
+            if (this.showIcon) {
+                this.host.Update("AppIcon", "Source", "HICON:" hIcon)
+            }
+
+            if (this.windowState != "Normal") {
+                this.host.Update("Window", "WindowState", this.windowState)
+            }
+
+            if (this.HasProp("lightweightEvents") && this.lightweightEvents)
+                this.host.SetLightweightEvents(true)
+
+            for _, tok in this.tokenizers {
+                tok.RenderTags()
+            }
+
+            if (this.host.wpfHwnd) {
+                try WinActivate("ahk_id " this.host.wpfHwnd)
+            }
+            return
+        }
+
         this.host.Update("Window", "DWM", "2,1")
         this.host.Update("Window", "Title", this.title)
 

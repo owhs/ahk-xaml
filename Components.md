@@ -1119,3 +1119,46 @@ HandleClick(state, ctrl, event) {
     proxyOn := state["TglProxy"] == "True" ; Toggle state
 }
 ```
+
+---
+
+## X. Developer Tools (XAML_DevTools)
+
+The framework includes a comprehensive built-in developer tools panel implemented by the `XAML_DevTools` class in `XAML_DevTools.ahk`.
+
+### Activation
+
+DevTools is enabled by default in any `XAML_GUI` application window unless disabled via `XAML_ENABLE_DEVTOOLS := false` in `XAML_Config.ahk`.
+- **Keyboard Shortcut:** Press `F12` in any active application window to launch the floating DevTools window.
+- **Programmatic Launch:** Call `XAML_DevTools.ShowFor(app)` from your AHK code, where `app` is your `XAML_GUI` instance.
+
+```ahk
+; Manually trigger Developer Tools for an app instance
+XAML_DevTools.ShowFor(app)
+```
+
+### Static Methods
+
+| Method | Description |
+|---|---|
+| `XAML_DevTools.ShowFor(targetHost)` | Opens or activates the DevTools window parenting/hooking the specified application host instance. |
+
+### Core Tab Features
+
+#### 1. Elements Tab
+- **Visual Tree View:** Traverses and lists the entire live WPF element tree. Displays sizes, type names, and AHK line numbers (`Line: N`) from where elements were generated.
+- **Inspect Mode:** Click the "Inspect" button, hover over controls in the target window, and click to automatically expand and select that control in the DevTools tree.
+- **Styles Inspector:** View raw and inherited WPF styles currently applied to the selected element.
+- **Computed Box Model:** Displays a visual box-model overlay of the element's `Margin`, `BorderThickness`, and `Padding`, along with its current `ActualWidth` and `ActualHeight`.
+- **Properties Inspector:** Search and filter all WPF dependency properties and fields. Sort alphabetically or group by category.
+- **Events Inspector:** View registered event handlers on the selected control.
+
+#### 2. Pipeline Tab
+- **Real-Time Log:** Logs all `WM_COPYDATA` messages flowing between AHK and WPF with microsecond timestamps and direction arrows.
+- **Details Panel:** Select an IPC packet to view its raw headers, base64-decoded body payload, or visual preview.
+- **DevTools Traffic Filter:** Toggle the filter to hide internal DevTools IPC traffic, focusing solely on user-script interactions.
+
+#### 3. Console Tab
+- **Evaluator:** Write and execute custom AutoHotkey statements or send raw `ui.Update()` mutations directly to the running rendering engine.
+- **Output Log:** View console prints and runtime errors in a Consolas monospace textbox.
+

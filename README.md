@@ -16,6 +16,7 @@ By combining the speed of AHK with the rendering power of a compiled C# WPF engi
 - **Dynamic Theming:** Supports hot-swapping themes by injecting WPF `ResourceDictionaries`. Fully integrates with Windows DWM (Desktop Window Manager) for native Mica/Acrylic effects and rounded corners.
 - **Hot Reload:** Automatic state persistence across script restarts — text inputs, toggle states, slider values, and combo selections are saved and restored seamlessly.
 - **Crash Diagnostics:** Rich error dialogs that trace WPF parsing errors back to the originating AHK source line, with XAML snippet context.
+- **Interactive DevTools:** Built-in floating developer tools panel (activated with F12) that lets you inspect the live visual tree, inspect DWM/WPF properties, view computed layouts, and monitor real-time IPC message traffic.
 - **Production Builds:** Export your UI as a compiled `.baml` native WPF asset for zero-compilation deployment.
 
 ## The AXML System
@@ -23,7 +24,7 @@ By combining the speed of AHK with the rendering power of a compiled C# WPF engi
 AXML (AutoHotkey XAML) is a custom, declarative markup language designed specifically for this framework. It provides a clean, concise, YAML-like syntax to define UI structures, fully replacing raw programmatic `ui.Add()` calls while still seamlessly mapping to the underlying AST.
 
 - **Clean Syntax**: Indentation-based nesting, eliminating the need for bulky closing tags.
-- **Auto-Mapping**: Properties like `Text`, `Content`, or `Value` can be passed without explicitly naming them (e.g., `TextBlock: "Hello World"`).
+- **Two-Way Binding**: Simple variables prefixing with `$` (e.g. `Text: $MyVariable`) bind the visual element to the application state dynamically.
 - **Native Support**: Handled natively by the `XAML_Generator`, transforming `.axml` files straight into your dynamic, interactable UI.
 
 **Example AXML**:
@@ -33,11 +34,13 @@ Border (MyPanel):
   CornerRadius: 8
   
   StackPanel:
-    TextBlock: "Welcome!"
+    TextBlock:
+      Text: "Welcome!"
       FontSize: 24
       FontWeight: "Bold"
       
-    Button (BtnClickMe): "Submit"
+    Button (BtnClickMe):
+      Content: "Submit"
       Width: 120
       Cursor: "Hand"
 ```
@@ -115,6 +118,7 @@ ahk-xaml/
 │   ├── XAML_Config.ahk           # Global flags (XAML_DEBUG, XAML_ENABLE_WEBVIEW)
 │   ├── XAML_Components.ahk       # Standard & composite components, data grids, rating, emoji
 │   ├── XAML_Adv_Components.ahk   # Advanced components (NodeGraph, CodeEditor, WebView, etc.)
+│   ├── XAML_DevTools.ahk         # Floating inspect panel, property inspector, console, and IPC log
 │   ├── XAML_Dialog.ahk           # Modal dialog system (XDialog)
 │   ├── XAML_AHK_Bridge.cs        # C# WPF engine source (compiled at runtime)
 │   ├── xaml.components.xaml       # WPF ResourceDictionary (all control templates & styles)

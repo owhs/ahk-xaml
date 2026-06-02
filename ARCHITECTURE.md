@@ -17,8 +17,9 @@
 9. [Dynamic UI Mutations](#9-dynamic-ui-mutations)
 10. [Theming & Resource System](#10-theming--resource-system)
 11. [WebView2 Integration](#11-webview2-integration)
-12. [Production Builds](#12-production-builds)
-13. [File Map](#13-file-map)
+12. [DevTools Process](#12-devtools-process)
+13. [Production Builds](#13-production-builds)
+14. [File Map](#14-file-map)
 
 ---
 
@@ -123,7 +124,7 @@
     XAML_Generator (AST → XAML Compiler)
 ```
 
-The AXML parser reads the custom YAML-like indentation syntax, resolves shorthand property mappings (e.g. `TextBlock: "Hello"` → `Text="Hello"`), and seamlessly constructs the AST in the exact same manner as traditional programmatic `ui.Add()` calls.
+The AXML parser reads the custom YAML-like indentation syntax, binds dynamic variables, and seamlessly constructs the AST in the exact same manner as traditional programmatic `ui.Add()` calls.
 
 ### Engine Compilation
 
@@ -468,7 +469,38 @@ C#  → EVENT|...|WebMessageReceived|<Base64Msg>   // Delivered to AHK callback
 
 ---
 
-## 12. Production Builds
+## 12. DevTools Process
+
+`ahk-xaml` includes an interactive Developer Tools suite (`XAML_DevTools.ahk`) designed to aid in UI inspection, property tracking, console execution, and IPC debugging. 
+
+### Process & IPC Scaffolding
+
+```
+┌──────────────────────────────────────┐          Monitor IPC          ┌───────────────────────────────┐
+│        Target Application            │══════════════════════════════>│       DevTools Process        │
+│  (XAML_GUI main loop & WPF Process)  │                               │  • Separate XAML_GUI window   │
+│                                      │<══════════════════════════════│  • Live tree view inspector   │
+│                                      │          Inspect / Console    │  • Property grid viewer       │
+└──────────────────────────────────────┘                               └───────────────────────────────┘
+```
+
+1. **Independent Environment:** DevTools runs as its own separate `XAML_GUI` process instance, avoiding interference with the target application's main thread and UI state.
+2. **Monitor IPC:** The target application registers the global `XAML_DevTools_Instance` variable. Whenever IPC commands or events traverse between AHK and WPF, the traffic is duplicated and piped directly to the DevTools log window.
+3. **Inspect Live Tree:** DevTools queries the target WPF process via a specialized `DEVTOOLS|GetTree` command. The C# bridge walks the visual tree, serializes the node types, coordinates, and lines, and returns them to DevTools to populate its `TreeView` element.
+4. **Interactive Highlighting:** Selecting an element in the DevTools tree sends a `DEVTOOLS|Highlight|<Hash>` request. The WPF process draws a temporary semi-transparent overlay bounding box around the targeted control for easy identification.
+
+### Developer Tabs
+
+- **Elements Tab:** Traverses the full layout hierarchy. Features a collapsible **inspect** button allowing the user to hover over controls on the target window and click to auto-select them in the visual tree. Displays three property sub-tabs:
+  - *Styles:* Shows applied local and inherited WPF styles.
+  - *Computed:* Shows the box model layout (Margin, Border, Padding, and actual dimensions).
+  - *Properties:* Offers real-time inspection of WPF dependency properties and fields, searchable and filterable by preset categories.
+- **Pipeline Tab:** Displays a chronological, microsecond-accurate log of all `WM_COPYDATA` messages. Shows headers, byte sizes, and base64-decoded payloads.
+- **Console Tab:** An interactive command-line prompt to evaluate AHK expressions or send direct mutation commands to the target rendering engine.
+
+---
+
+## 13. Production Builds
 
 ### Export Workflow
 
@@ -498,7 +530,7 @@ At runtime:
 
 ---
 
-## 13. File Map
+## 14. File Map
 
 ```
 ahk-xaml/
@@ -509,6 +541,7 @@ ahk-xaml/
 │   ├── XAML_Config.ahk           # Global flags (XAML_DEBUG, XAML_ENABLE_WEBVIEW)
 │   ├── XAML_Components.ahk       # Standard components, composites, data grids, rating, emoji
 │   ├── XAML_Adv_Components.ahk   # Advanced components (NodeGraph, CodeEditor, WebView, etc.)
+│   ├── XAML_DevTools.ahk         # Floating inspect panel, property inspector, console, and IPC log
 │   ├── XAML_Dialog.ahk           # Modal dialog system (XDialog)
 │   ├── XAML_AHK_Bridge.cs        # C# WPF engine source (compiled at runtime)
 │   ├── xaml.components.xaml       # WPF ResourceDictionary (all control templates & styles)

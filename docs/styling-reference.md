@@ -328,29 +328,28 @@ Both paths call `_CollectInlineEvents()` which walks the element tree (built by 
 
 ## 7. AXML Compatibility
 
-All shorthands and aliases work in `.axml` files since AXML maps through the same property system:
+Since the AXML parser bypasses method-chaining and writes properties directly, you should use standard WPF property names (rather than shorthand aliases) inside `.axml` files.
 
 ```yaml
 StackPanel:
-  M: "20"
+  Margin: "20"
   
   TextBlock:
     Text: "Welcome!"
-    Size: 24
-    Bold: true
+    FontSize: 24
+    FontWeight: "Bold"
     
   Button (BtnSubmit):
-    Text: "Submit"
-    W: 120
-    H: 32
-    HAlign: "Left"
+    Content: "Submit"
+    Width: 120
+    Height: 32
+    HorizontalAlignment: "Left"
     OnClick: HandleClick
 ```
 
 AXML-specific features:
-- **Auto-detect `Text`/`Content`**: `Text: "Submit"` on a Button automatically maps to `Content`
-- **Event shorthand**: `OnClick: HandlerName` instead of `On("Click", "HandlerName")`
-- **State binding**: `Value: $MyVariable` for automatic two-way binding
+- **Event shorthand**: `OnClick: HandlerName` instead of calling `On("Click", "HandlerName")` in AHK.
+- **State binding**: `Value: $MyVariable` for automatic two-way state binding.
 
 ---
 
