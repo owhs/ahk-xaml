@@ -195,7 +195,8 @@ class XColorPicker {
 
         tmp := StrReplace(XAML_TEMPLATE, "%CaptionHeight%", "30")
         ui := XAMLHost(StrReplace(tmp, "%app%", main.ToString()), "", owner)
-        ui.xaml := StrReplace(ui.xaml, 'Width="940" Height="700"', 'Width="360" SizeToContent="Height" ResizeMode="NoResize" Topmost="True"')
+        ui.xaml := StrReplace(ui.xaml, 'Width="940" Height="700"', 'Width="360" SizeToContent="Height" Topmost="True"')
+        ui.xaml := StrReplace(ui.xaml, 'ResizeMode="CanResize"', 'ResizeMode="NoResize"')
 
         resultObj := { Color: "", Status: "Cancel", Instance: ui, IsDragging: false, Hue: 0.0, Sat: 1.0, Val: 1.0, Alpha: 255, R: 0, G: 0, B: 0, LastMoveTime: 0 }
 

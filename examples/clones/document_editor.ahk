@@ -252,6 +252,9 @@ ui.OnEvent("MenuFileOpen", "Click", (*) => DoOpen())
 ui.OnEvent("MenuFileSave", "Click", (*) => DoSave())
 ui.OnEvent("MenuFileSaveAs", "Click", (*) => DoSaveAs())
 ui.OnEvent("MenuFileProps", "Click", (*) => infoFlyout.Toggle())
+ui.OnEvent("DocEdit_BtnNew", "Click", (*) => DoNewDocument())
+ui.OnEvent("DocEdit", "DocumentLoaded", OnDocumentLoaded)
+ui.OnEvent("DocEdit", "DocumentSaved", OnDocumentSaved)
 
 ; --- Edit ---
 ui.OnEvent("MenuEditUndo", "Click", (*) => docEditor._Cmd("Undo"))
@@ -401,7 +404,7 @@ DoNewDocument() {
 DoOpen() {
     docEditor._OpenFile()
     if (docEditor.filePath != "") {
-        SplitPath(docEditor.filePath, &fn)
+        SplitPath(docEditor.filePath, , , , &fn)
         UpdateTitle(fn)
         SetStatus("Opened")
         SetTimer(() => docEditor.GetWordCount(), -500)
@@ -411,7 +414,7 @@ DoOpen() {
 DoSave() {
     docEditor._SaveFile()
     if (docEditor.filePath != "") {
-        SplitPath(docEditor.filePath, &fn)
+        SplitPath(docEditor.filePath, , , , &fn)
         UpdateTitle(fn)
         SetStatus("Saved")
     }
@@ -420,7 +423,7 @@ DoSave() {
 DoSaveAs() {
     docEditor._SaveFileAs()
     if (docEditor.filePath != "") {
-        SplitPath(docEditor.filePath, &fn)
+        SplitPath(docEditor.filePath, , , , &fn)
         UpdateTitle(fn)
         SetStatus("Saved as " fn)
     }
@@ -502,8 +505,29 @@ CheckMenuHide() {
 ; ============================================================================
 
 UpdateTitle(name) {
-    app.host.Update("AppTitle", "Text", name)
+    global app, ui
+    app.title := name
+    ui.Update("AppTitle", "Text", name)
     ui.Update("InfoFileName", "Text", name)
+    ui.Update("Window", "Title", name)
+}
+
+OnDocumentLoaded(state, ctrl, event) {
+    global docEditor
+    if (docEditor.filePath != "") {
+        SplitPath(docEditor.filePath, , , , &fn)
+        UpdateTitle(fn)
+    } else {
+        UpdateTitle("Untitled document")
+    }
+}
+
+OnDocumentSaved(state, ctrl, event) {
+    global docEditor
+    if (docEditor.filePath != "") {
+        SplitPath(docEditor.filePath, , , , &fn)
+        UpdateTitle(fn)
+    }
 }
 
 SetStatus(text) {
@@ -930,7 +954,7 @@ CleanXmlString(str) {
 ; ============================================================================
 if (A_Args.Length > 0 && FileExist(A_Args[1])) {
     docEditor.Open(A_Args[1])
-    SplitPath(A_Args[1], &fileName)
+    SplitPath(A_Args[1], , , , &fileName)
     UpdateTitle(fileName)
 }
 
