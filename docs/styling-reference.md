@@ -311,13 +311,7 @@ The `.On()` and `.Track()` APIs work with both development (`Compile()`) and pro
 panel.Add("Button").Name("BtnSave").On("Click", OnSaveClick)
 panel.Add("TextBox").Name("TxtName").Track()
 
-; ========== COMPILE / LOAD SWITCH ==========
-if (XAML_FORCE_DYNAMIC_COMPILE) {
-    ui := app.Compile()
-    app.ExportBundle("gui.dll")   ; serialize events into bundle
-} else {
-    ui := app.Load("gui.dll")     ; .On() events are harvested from tree
-}
+ui := app.Compile()
 
 app.Show()
 ```

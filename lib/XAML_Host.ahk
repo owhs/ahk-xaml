@@ -283,14 +283,85 @@ class XAMLHost {
             XAMLHost.CopyRequiredDlls(libDir, targetDir)
 
         } else {
-            ;@Ahk2Exe-IgnoreBegin
-            if !FileExist(targetExe)
-                FileInstall("dep\ahk-xaml.dll", targetExe, 1)
-            ;@Ahk2Exe-IgnoreEnd
+            ;;@Ahk2Exe-IgnoreBegin
+            ;if !FileExist(targetExe)
+            ;    FileInstall("dep\ahk-xaml.dll", targetExe, 1)
+            ;;@Ahk2Exe-IgnoreEnd
         }
 
         logArg := (IsSet(XAML_ENABLE_LOGGING) && !XAML_ENABLE_LOGGING) ? ' --no-log' : ''
-        Run('"' targetExe '" --daemon "' ProcessExist() '" "' String(XAMLHost.daemonReceiver.Hwnd) '"' logArg, "", "Hide")
+        XAMLHost.RunProcess(targetExe, '--daemon "' ProcessExist() '" "' String(XAMLHost.daemonReceiver.Hwnd) '"' logArg, "", true)
+    }
+
+    static RunProcess(exePath, args, workingDir := "", hide := true) {
+        cmdLine := '"' exePath '" ' args
+        siSize := A_PtrSize == 8 ? 104 : 68
+        si := Buffer(siSize, 0)
+        NumPut("UInt", siSize, si, 0) ; cb
+        if (hide) {
+            NumPut("UInt", 0x00000001, si, A_PtrSize == 8 ? 60 : 44) ; dwFlags = STARTF_USESHOWWINDOW
+            NumPut("UShort", 0, si, A_PtrSize == 8 ? 64 : 48)        ; wShowWindow = SW_HIDE
+        }
+        piSize := A_PtrSize == 8 ? 24 : 16
+        pi := Buffer(piSize, 0)
+        status := DllCall("kernel32\CreateProcessW",
+            "Ptr", 0,          ; lpApplicationName
+            "Str", cmdLine,    ; lpCommandLine
+            "Ptr", 0,          ; lpProcessAttributes
+            "Ptr", 0,          ; lpThreadAttributes
+            "Int", 0,          ; bInheritHandles
+            "UInt", 0,         ; dwCreationFlags
+            "Ptr", 0,          ; lpEnvironment
+            "Ptr", workingDir == "" ? 0 : StrPtr(workingDir), ; lpCurrentDirectory
+            "Ptr", si.Ptr,     ; lpStartupInfo
+            "Ptr", pi.Ptr,     ; lpProcessInformation
+            "Int"              ; Return type
+        )
+        if (!status)
+            return false
+        hProcess := NumGet(pi, 0, "Ptr")
+        hThread := NumGet(pi, A_PtrSize, "Ptr")
+        DllCall("kernel32\CloseHandle", "Ptr", hProcess)
+        DllCall("kernel32\CloseHandle", "Ptr", hThread)
+        return true
+    }
+
+    static RunProcessWait(exePath, args, workingDir := "", hide := true) {
+        cmdLine := '"' exePath '" ' args
+        siSize := A_PtrSize == 8 ? 104 : 68
+        si := Buffer(siSize, 0)
+        NumPut("UInt", siSize, si, 0) ; cb
+        if (hide) {
+            NumPut("UInt", 0x00000001, si, A_PtrSize == 8 ? 60 : 44) ; dwFlags = STARTF_USESHOWWINDOW
+            NumPut("UShort", 0, si, A_PtrSize == 8 ? 64 : 48)        ; wShowWindow = SW_HIDE
+        }
+        piSize := A_PtrSize == 8 ? 24 : 16
+        pi := Buffer(piSize, 0)
+        status := DllCall("kernel32\CreateProcessW",
+            "Ptr", 0,          ; lpApplicationName
+            "Str", cmdLine,    ; lpCommandLine
+            "Ptr", 0,          ; lpProcessAttributes
+            "Ptr", 0,          ; lpThreadAttributes
+            "Int", 0,          ; bInheritHandles
+            "UInt", 0,         ; dwCreationFlags
+            "Ptr", 0,          ; lpEnvironment
+            "Ptr", workingDir == "" ? 0 : StrPtr(workingDir), ; lpCurrentDirectory
+            "Ptr", si.Ptr,     ; lpStartupInfo
+            "Ptr", pi.Ptr,     ; lpProcessInformation
+            "Int"              ; Return type
+        )
+        if (!status)
+            return -1
+        hProcess := NumGet(pi, 0, "Ptr")
+        hThread := NumGet(pi, A_PtrSize, "Ptr")
+        DllCall("kernel32\WaitForSingleObject", "Ptr", hProcess, "UInt", 0xFFFFFFFF)
+        exitCode := 0
+        exitCodeBuf := Buffer(4, 0)
+        DllCall("kernel32\GetExitCodeProcess", "Ptr", hProcess, "Ptr", exitCodeBuf.Ptr)
+        exitCode := NumGet(exitCodeBuf, 0, "UInt")
+        DllCall("kernel32\CloseHandle", "Ptr", hProcess)
+        DllCall("kernel32\CloseHandle", "Ptr", hThread)
+        return exitCode
     }
 
     CheckForCrashes() {
@@ -589,7 +660,7 @@ class XAMLHost {
             return
         }
 
-        RunWait('"' targetExe '" --compress "' tempTxt '" "' filePath '"', "", "Hide")
+        XAMLHost.RunProcessWait(targetExe, '--compress "' tempTxt '" "' filePath '"', "", true)
 
         if FileExist(tempTxt)
             FileDelete(tempTxt)
@@ -771,12 +842,12 @@ class XAMLHost {
             escapedMetadata := StrReplace(escapedMetadata, "`n", "``n")
             escapedMetadata := StrReplace(escapedMetadata, '"', '""')
             metadataBlock := '`n;=== AXML METADATA ===`nAXML_METADATA := "' escapedMetadata '"`n;=== AXML METADATA END ===`n'
-            
+
             try {
                 scriptContent := FileRead(A_ScriptFullPath, "UTF-8")
                 ; Strip existing metadata block if present
                 scriptContent := RegExReplace(scriptContent, "s)(?:\r?\n)?[ \t]*;=== AXML METADATA ===.*;=== AXML METADATA END ===(?:\r?\n)?")
-                
+
                 ; Insert at the top of the file, right after #Requires if present, otherwise at the very top
                 if (pos := RegExMatch(scriptContent, "mi)^[ \t]*#Requires\b")) {
                     posLineEnd := InStr(scriptContent, "`n", , pos)
@@ -786,7 +857,7 @@ class XAMLHost {
                 } else {
                     scriptContent := metadataBlock scriptContent
                 }
-                
+
                 FileDelete(A_ScriptFullPath)
                 FileAppend(scriptContent, A_ScriptFullPath, "UTF-8")
             }
