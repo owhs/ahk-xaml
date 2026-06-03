@@ -2,6 +2,8 @@
 
 The modern, object-oriented framework for building native WPF (Windows Presentation Foundation) interfaces entirely within AutoHotkey v2.
 
+For discussions, updates, and community support, check out the [AutoHotkey Forum Thread](https://www.autohotkey.com/boards/viewtopic.php?f=83&t=140580).
+
 [![Architecture Diagram](images/architecture.png)](ahk-xaml%20-%20Architecture.pdf)
 *(Click diagram to view high-resolution PDF)*
 
@@ -158,3 +160,4 @@ This repository has been fully modularized. For deep dives into specific areas, 
 5. [Power Usage](docs/power-usage.md) - Deep engine hooks, tags, scroll control, drag-and-drop, canvas manipulation, media, WebView2, and window management.
 6. [Data Pipeline](docs/data-pipeline.md) - IPC protocol, length-prefix encoding, query API, and lightweight events.
 7. [Production Steps](docs/production-steps.md) - Packaging, `.baml` compilation, and `.dll` bundling.
+8. [AHK Forum Thread](https://www.autohotkey.com/boards/viewtopic.php?f=83&t=140580) - Community discussions, updates, and feedback.
