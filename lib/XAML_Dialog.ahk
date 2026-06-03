@@ -218,7 +218,7 @@ class XDialog {
 
         if (waitForResponse) {
             ; Wait for dialog to close
-            while (resultObj.Button == "" && ProcessExist(ui.pid)) {
+            while (resultObj.Button == "" && (ui.wpfHwnd == 0 || WinExist("ahk_id " ui.wpfHwnd))) {
                 Sleep(50)
             }
             if (resultObj.Button == "") {

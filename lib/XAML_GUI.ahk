@@ -820,6 +820,11 @@ class XAML_GUI {
         Hotkey "Escape", (*) => this.HandleEscapeKey(), "On"
         HotIf
 
+        HotIf (*) => (WinActive("ahk_id " this.host.wpfHwnd) && this.focusedInput != "" && this.tokenizers.Has(this.focusedInput))
+        Hotkey "Enter", (*) => this.HandleEnterKey(), "On"
+        Hotkey "NumpadEnter", (*) => this.HandleEnterKey(), "On"
+        HotIf
+
         HotIf (*) => WinActive("ahk_id " this.host.wpfHwnd)
         if (this.showBurger)
             Hotkey "^b", (*) => this.host.Update("BtnToggleSidebar", "Invoke", "1"), "On"
@@ -842,6 +847,12 @@ class XAML_GUI {
         if this.focusedInput != "" {
             this.host.Update(this.focusedInput, "Text", "")
             this.host.Update("AppGrid", "Focus", "True")
+        }
+    }
+
+    HandleEnterKey() {
+        if (this.focusedInput != "" && this.tokenizers.Has(this.focusedInput)) {
+            this.tokenizers[this.focusedInput].ValidateCurrentInput()
         }
     }
 }

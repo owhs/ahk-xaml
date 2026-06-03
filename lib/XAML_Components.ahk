@@ -233,7 +233,7 @@ class XColorPicker {
 
         ui.Show()
 
-        while (resultObj.Status == "Cancel" && ProcessExist(ui.pid)) {
+        while (resultObj.Status == "Cancel" && (ui.wpfHwnd == 0 || WinExist("ahk_id " ui.wpfHwnd))) {
             Sleep(50)
         }
 
@@ -550,7 +550,7 @@ class XTokenizer {
         this.ui.host.Track(this.inputName)
 
         this.ui.host.OnEvent(this.inputName, "TextChanged", ObjBindMethod(this, "OnTextChanged"))
-        this.ui.host.OnEvent(this.wpName, "PreviewMouseLeftButtonDown", ObjBindMethod(this, "FocusInput"))
+        this.ui.host.OnEvent(this.wpName, "MouseLeftButtonDown", ObjBindMethod(this, "FocusInput"))
 
         Loop 15 {
             this.ui.host.OnEvent("BtnDeleteTag_" this.baseId "_" A_Index, "Click", ObjBindMethod(this, "OnDeleteClick"))
