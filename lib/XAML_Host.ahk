@@ -279,8 +279,10 @@ class XAMLHost {
             XAMLHost.CopyRequiredDlls(libDir, targetDir)
 
         } else {
+            ;@Ahk2Exe-IgnoreBegin
             if !FileExist(targetExe)
                 FileInstall("dep\ahk-xaml.dll", targetExe, 1)
+            ;@Ahk2Exe-IgnoreEnd
         }
 
         logArg := (IsSet(XAML_ENABLE_LOGGING) && !XAML_ENABLE_LOGGING) ? ' --no-log' : ''
@@ -611,7 +613,7 @@ class XAMLHost {
             coreDll := libDir "\dep\WebView2\Microsoft.Web.WebView2.Core.dll"
             wpfDll := libDir "\dep\WebView2\Microsoft.Web.WebView2.Wpf.dll"
             if (FileExist(coreDll) && FileExist(wpfDll)) {
-                wvRefs := ' /reference:"' coreDll '" /reference:"' wpfDll '"'
+                wvRefs := ' /reference:"' coreDll '" /resource:"' coreDll '",Microsoft.Web.WebView2.Core.dll /reference:"' wpfDll '" /resource:"' wpfDll '",Microsoft.Web.WebView2.Wpf.dll'
                 wvDef := ' /define:ENABLE_WEBVIEW'
             } else {
                 ToolTip("WebView2 DLLs not found in lib\dep\WebView2. Compiling without WebView2 support.")
@@ -625,7 +627,7 @@ class XAMLHost {
         if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
             aeDll := libDir "\dep\AvalonEdit\ICSharpCode.AvalonEdit.dll"
             if (FileExist(aeDll)) {
-                aeRefs := ' /reference:"' aeDll '" /reference:System.Windows.Forms.dll /reference:WindowsFormsIntegration.dll'
+                aeRefs := ' /reference:"' aeDll '" /resource:"' aeDll '",ICSharpCode.AvalonEdit.dll /reference:System.Windows.Forms.dll /reference:WindowsFormsIntegration.dll'
                 aeDef := ' /define:ENABLE_AVALONEDIT'
             } else {
                 ToolTip("AvalonEdit DLL not found in lib\dep\AvalonEdit. Compiling without IDE support.")
@@ -639,17 +641,17 @@ class XAMLHost {
         if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
             oxDll := libDir "\dep\OpenXml\DocumentFormat.OpenXml.dll"
             if (FileExist(oxDll)) {
-                docRefs := ' /reference:"' oxDll '"'
+                docRefs := ' /reference:"' oxDll '" /resource:"' oxDll '",DocumentFormat.OpenXml.dll'
                 ; Also add NPOI if available for .doc support
                 npoiDll := libDir "\dep\OpenXml\NPOI.dll"
                 if (FileExist(npoiDll)) {
-                    docRefs .= ' /reference:"' npoiDll '"'
+                    docRefs .= ' /reference:"' npoiDll '" /resource:"' npoiDll '",NPOI.dll'
                     npoiOoxmlDll := libDir "\dep\OpenXml\NPOI.OOXML.dll"
                     npoiOpenXml4NetDll := libDir "\dep\OpenXml\NPOI.OpenXml4Net.dll"
                     if (FileExist(npoiOoxmlDll))
-                        docRefs .= ' /reference:"' npoiOoxmlDll '"'
+                        docRefs .= ' /reference:"' npoiOoxmlDll '" /resource:"' npoiOoxmlDll '",NPOI.OOXML.dll'
                     if (FileExist(npoiOpenXml4NetDll))
-                        docRefs .= ' /reference:"' npoiOpenXml4NetDll '"'
+                        docRefs .= ' /reference:"' npoiOpenXml4NetDll '" /resource:"' npoiOpenXml4NetDll '",NPOI.OpenXml4Net.dll'
                 }
                 docDef := ' /define:ENABLE_DOCUMENT'
             } else {
@@ -674,6 +676,8 @@ class XAMLHost {
         }
 
         cmd := A_ComSpec ' /c ""' cscPath '" /nologo /target:winexe /out:"' sharedExe '" /lib:"' wpfDir '" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:PresentationFramework.dll /reference:PresentationCore.dll /reference:WindowsBase.dll /reference:System.Xaml.dll /reference:UIAutomationProvider.dll /reference:UIAutomationTypes.dll' wvRefs wvDef aeRefs aeDef docRefs docDef embeddedRes ' "' sourceCs '" > "' errLog '" 2>&1"'
+        ;try FileDelete(A_ScriptDir "\csc_cmd.log")
+        ;try FileAppend(cmd "`n", A_ScriptDir "\csc_cmd.log", "UTF-8")
         RunWait(cmd, "", "Hide")
 
         if !FileExist(sharedExe) {
@@ -873,8 +877,10 @@ class XAMLHost {
             SplitPath(targetExe, , &targetDir)
             XAMLHost.CopyRequiredDlls(libDir, targetDir)
         } else {
+            ;@Ahk2Exe-IgnoreBegin
             if !FileExist(targetExe)
                 FileInstall("dep\ahk-xaml.dll", targetExe, 1)
+            ;@Ahk2Exe-IgnoreEnd
         }
 
         if FileExist(this.errLog)
@@ -1173,6 +1179,11 @@ class XAMLHost {
             parts := StrSplit(eventName, ":")
             baseEventName := parts[1]
             extraArg := parts[2]
+        }
+
+        hasEvent := instance.events.Has(ctrlName) && instance.events[ctrlName].Has(baseEventName)
+        if (!IsSet(XAML_ENABLE_LOGGING) || XAML_ENABLE_LOGGING) {
+            try FileAppend("OnCopyData dispatch check: " ctrlName "." baseEventName " hasEvent=" (hasEvent ? "true" : "false") " eventsCount=" (instance.events.Has(ctrlName) ? instance.events[ctrlName].Count : 0) "`n", A_Temp "\AhkWpf\AhkTrace.log", "UTF-8")
         }
 
         if (instance.events.Has(ctrlName) && instance.events[ctrlName].Has(baseEventName)) {
@@ -1681,6 +1692,7 @@ XAML_TEMPLATE := '
         </WindowChrome.WindowChrome>
     
         <Window.Resources>
+            <sys:Double x:Key="TitleBarHeight">%CaptionHeight%</sys:Double>
             %resources%
         </Window.Resources>
     

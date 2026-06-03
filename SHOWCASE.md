@@ -148,9 +148,9 @@ Dynamic snap points, glued multi-window dragging with relative offset tracking, 
 There is so much more you can build with AHK-XAML! 
 
 To explore these features in action, download the repository and check out the interactive examples:
-- [basic_components.ahk](examples\showcase\basic_components.ahk): The primary playground for widgets, inputs, and customization.
-- [document_editor.ahk](examples\clones\document_editor.ahk): The themed Microsoft Word/Google Docs clone.
-- [pinned_docking.ahk](examples\showcase\pinned_docking.ahk): The panel docking alignment showcase.
-- [nodegraph.ahk](examples\showcase\nodegraph.ahk): The vector nodegraph editor canvas.
+- [basic_components.ahk](examples/showcase/basic_components.ahk): The primary playground for widgets, inputs, and customization.
+- [document_editor.ahk](examples/clones/document_editor.ahk): The themed Microsoft Word/Google Docs clone.
+- [pinned_docking.ahk](examples/showcase/pinned_docking.ahk): The panel docking alignment showcase.
+- [nodegraph.ahk](examples/showcase/nodegraph.ahk): The vector nodegraph editor canvas.
 
 Launch any example with AutoHotkey v2 to experience the speed, responsiveness, and beauty of AHK-XAML first-hand!

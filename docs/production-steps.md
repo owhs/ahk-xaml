@@ -68,18 +68,28 @@ Persistent()
 ## Distribution
 
 When distributing your final application, ship:
-- `MyApplication.exe` (compiled AHK)
-- `gui.dll` (bundled UI)
+- `MyApplication.exe` (compiled AHK executable, e.g. `document_editor.exe`)
+- `editor.dll` (the bundled WPF UI/BAML assembly, containing all resources and event bindings)
 
-Users get instant startup with zero disk I/O, no XML parsing, and no `%TEMP%` file extraction.
+Place these two files side-by-side in the same folder. Users get instant startup with zero disk I/O, no XML parsing, and no `%TEMP%` file extraction.
+
+## Build Scripts (`_build.ahk`)
+
+To make compilation easy for distribution, you can create a build script (like [document_editor_build.ahk](../examples/clones/document_editor_build.ahk)) which automates building the precompiled DLL and the compiled executable.
+
+The build script will:
+1. Verify if the AutoHotkey interpreter (`AutoHotkey64.exe`) and compiler (`Ahk2Exe.exe`) are present.
+2. If any of the required executable files are missing from their default paths, it will present a GUI dialog (`FileSelect`) prompting the user to locate them.
+3. Automatically export the bundle (compiling BAML and events) into `editor.dll`.
+4. Compile the AHK script using `Ahk2Exe` to output the final executable.
 
 ## Implementation Details
 
 ### Unified Asset Bundler (`XAML_GUI.ahk`)
-`ExportBundle(outFile)` takes the final XAML string, compiles it into WPF `.baml` using MSBuild, serializes all AHK event bindings, and bundles everything into a standalone `.dll`.
+`ExportBundle(outFile)` takes the final XAML string, compiles it into WPF `.baml` using MSBuild, serializes all AHK event bindings, and bundles everything into a standalone `.dll` (such as `editor.dll`).
 
 ### Zero-Overhead Asset Ingestion (`XAML_AHK_Bridge.cs`)
-When `app.Load("gui.dll")` is called, the bridge loads the bundled DLL directly. BAML and events are embedded in the DLL's manifest resources — the C# engine ingests them instantly without file I/O.
+When `app.Load("editor.dll")` is called, the bridge loads the bundled DLL directly. BAML and events are embedded in the DLL's manifest resources — the C# engine ingests them instantly without file I/O.
 
 ### Side-by-Side Distribution
-You no longer need `ahk-xaml.dll` alongside your executable. The bundled `gui.dll` is self-contained.
+You no longer need `ahk-xaml.dll` alongside your executable. The bundled `editor.dll` is self-contained.

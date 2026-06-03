@@ -476,6 +476,8 @@ class XAML_GUI {
     }
 
     ExportBundle(dllName := "") {
+        ;try FileDelete(A_ScriptDir "\export_bundle.log")
+        ;try FileAppend("ExportBundle called. dllName=" dllName " HasProp(host)=" (this.HasProp("host") ? "true" : "false") "`n", A_ScriptDir "\export_bundle.log", "UTF-8")
         if (!this.HasProp("host")) {
             MsgBox("Error: You must call app.Compile() before app.ExportBundle().", "AHK-XAML", "Iconx")
             return false
@@ -506,6 +508,30 @@ class XAML_GUI {
         ; because the tree-building code (.Add(), .On() calls) always runs before Load().
         this._CollectInlineEvents(this.X)
 
+        ; Auto-bind registered composite components (KanbanBoard, NavigationView, etc.)
+        _dragComps := []
+        for comp in this._components {
+            if (comp.HasMethod("Bind")) {
+                if (comp.HasOwnProp("_hotkey") && comp._hotkey != "")
+                    comp.Bind(this.host, comp._hotkey)
+                else
+                    comp.Bind(this.host)
+            }
+            ; Collect drag-enabled components for deferred enable after window loads
+            if (comp.HasOwnProp("_dragEnabled") && comp._dragEnabled && comp.HasMethod("EnableDrag"))
+                _dragComps.Push(comp)
+        }
+        ; EnableDrag sends Update commands that need WPF elements to exist,
+        ; so defer to LoadedHwnd event
+        if (_dragComps.Length > 0) {
+            _host := this.host
+            _OnLoaded(s, c, e) {
+                for dc in _dragComps
+                    dc.EnableDrag(_host)
+            }
+            this.host.OnEvent("Window", "LoadedHwnd", _OnLoaded)
+        }
+
         for k, v in this.tokenizers {
             this.host.OnEvent(v.inputName, "GotFocus", ObjBindMethod(this, "OnInputFocus"))
             this.host.OnEvent(v.inputName, "LostFocus", ObjBindMethod(this, "OnInputBlur"))
@@ -517,6 +543,18 @@ class XAML_GUI {
             this.host.OnEvent("PART_UpButton", "Click", (s, c, e) => this.HandleSpinnerButton(v, true))
             this.host.OnEvent("PART_DownButton", "Click", (s, c, e) => this.HandleSpinnerButton(v, false))
             v.Bind()
+        }
+        for k, v in this.hotkeyBoxes {
+            this.host.OnEvent(k, "GotFocus", ObjBindMethod(this, "OnInputFocus"))
+            this.host.OnEvent(k, "LostFocus", ObjBindMethod(this, "OnInputBlur"))
+        }
+        for k, v in this.segmentedInputs {
+            v.Bind(this.host)
+        }
+        if (this.HasProp("sliderRanges")) {
+            for _, sr in this.sliderRanges {
+                sr.Bind(this.host)
+            }
         }
 
         return this.host
@@ -671,7 +709,7 @@ class XAML_GUI {
         radText := state.Has("ComboRadius") ? state["ComboRadius"] : "Smooth (8)"
         RegExMatch(radText, "\((\d+)\)", &match)
         radius := match ? match[1] : "8"
-        
+
         ; If host window is snapped to any panel, force radius to 0 (square hover borders)
         try {
             pmClass := %"PanelManager"%

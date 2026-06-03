@@ -160,6 +160,7 @@ public class AhkWpfEngine
     public static extern uint ExtractIconEx(string szFileName, int nIconIndex, IntPtr[] phiconLarge, IntPtr[] phiconSmall, uint nIcons);
 
     string winId; IntPtr ahkHwnd; string[] tracked; Window win;
+    System.Collections.Generic.HashSet<string> _boundEvents = new System.Collections.Generic.HashSet<string>();
     bool LightweightEvents = false; // When true, events only send the triggering control's value (use ui.Query() for others)
     System.Collections.Generic.Dictionary<string, string> canvasModes = new System.Collections.Generic.Dictionary<string, string>();
     System.Windows.Shapes.Rectangle selectionBox = null;
@@ -411,6 +412,35 @@ public class AhkWpfEngine
     [STAThread]
     public static void Main(string[] args)
     {
+        AppDomain.CurrentDomain.AssemblyResolve += (sender, resolveArgs) =>
+        {
+            string name = new AssemblyName(resolveArgs.Name).Name;
+            string resourceName = name + ".dll";
+            var asm = Assembly.GetExecutingAssembly();
+            string matchName = null;
+            foreach (var r in asm.GetManifestResourceNames())
+            {
+                if (r.EndsWith(resourceName, StringComparison.OrdinalIgnoreCase))
+                {
+                    matchName = r;
+                    break;
+                }
+            }
+            if (matchName != null)
+            {
+                using (var stream = asm.GetManifestResourceStream(matchName))
+                {
+                    if (stream != null)
+                    {
+                        byte[] data = new byte[stream.Length];
+                        stream.Read(data, 0, data.Length);
+                        return Assembly.Load(data);
+                    }
+                }
+            }
+            return null;
+        };
+
         try
         {
             EventManager.RegisterClassHandler(typeof(Slider), Slider.PreviewMouseLeftButtonDownEvent, new System.Windows.Input.MouseButtonEventHandler(Slider_PreviewMouseLeftButtonDown), true);
@@ -791,8 +821,23 @@ public class AhkWpfEngine
             string[] pairs = eventsContent.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (string p in pairs)
             {
-                string[] kv = p.Split(':');
-                if (kv.Length == 2) BindEvent(kv[0], kv[1]);
+                string evtStr = p;
+                int limitFps = 0;
+                bool isQueue = false;
+                int atIndex = p.IndexOf('@');
+                if (atIndex > 0)
+                {
+                    evtStr = p.Substring(0, atIndex);
+                    string limitStr = p.Substring(atIndex + 1);
+                    if (limitStr.EndsWith("Q"))
+                    {
+                        isQueue = true;
+                        limitStr = limitStr.Substring(0, limitStr.Length - 1);
+                    }
+                    int.TryParse(limitStr, out limitFps);
+                }
+                string[] kv = evtStr.Split(':');
+                if (kv.Length == 2) BindEvent(kv[0], kv[1], limitFps, isQueue);
             }
         }
 
@@ -1039,7 +1084,20 @@ public class AhkWpfEngine
                 {
                     var chrome = new System.Windows.Shell.WindowChrome();
                     chrome.GlassFrameThickness = new Thickness(-1);
-                    chrome.CaptionHeight = 50;
+                    double captionHeight = 50;
+                    try
+                    {
+                        if (win.Resources.Contains("TitleBarHeight"))
+                        {
+                            captionHeight = System.Convert.ToDouble(win.Resources["TitleBarHeight"]);
+                        }
+                        else if (Application.Current.Resources.Contains("TitleBarHeight"))
+                        {
+                            captionHeight = System.Convert.ToDouble(Application.Current.Resources["TitleBarHeight"]);
+                        }
+                    }
+                    catch { }
+                    chrome.CaptionHeight = captionHeight;
                     try { chrome.CornerRadius = (CornerRadius)Application.Current.Resources["WindowRadius"]; } catch { chrome.CornerRadius = new CornerRadius(12); }
                     System.Windows.Shell.WindowChrome.SetWindowChrome(win, chrome);
                     // Re-apply IsHitTestVisibleInChrome on known buttons
@@ -1740,6 +1798,8 @@ public class AhkWpfEngine
 
     private void BindEvent(string ctrlName, string eventName, int fpsLimit = 0, bool queueLimited = false)
     {
+        string eventKey = ctrlName + ":" + eventName;
+        if (!_boundEvents.Add(eventKey)) return;
         try
         {
             object ctrl = ctrlName == "Window" ? (object)win : win.FindName(ctrlName);
@@ -1915,13 +1975,29 @@ public class AhkWpfEngine
         private void FireEvent(object args)
         {
             var bridgeType = _bridge.GetType();
-            if (args != null)
+            Action action = () =>
             {
-                bridgeType.GetMethod("DumpStateWithArgs", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(_bridge, new object[] { _ctrlName, _eventName, args });
+                try
+                {
+                    if (args != null)
+                    {
+                        bridgeType.GetMethod("DumpStateWithArgs", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(_bridge, new object[] { _ctrlName, _eventName, args });
+                    }
+                    else
+                    {
+                        bridgeType.GetMethod("DumpState", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(_bridge, new object[] { _ctrlName, _eventName });
+                    }
+                }
+                catch { }
+            };
+
+            if (Application.Current != null && !Application.Current.Dispatcher.CheckAccess())
+            {
+                Application.Current.Dispatcher.BeginInvoke(action);
             }
             else
             {
-                bridgeType.GetMethod("DumpState", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(_bridge, new object[] { _ctrlName, _eventName });
+                action();
             }
         }
     }

@@ -24,6 +24,7 @@
 #Include "..\..\lib\XAML_Config.ahk"
 global XAML_ENABLE_DOCUMENT := true
 
+
 #Include "..\..\lib\XAML_GUI.ahk"
 #Include "..\..\lib\XAML_Adv_Components.ahk"
 
@@ -237,8 +238,13 @@ for action in [{ Id: "QuickNew", Icon: 0xE8A5, Label: "New Document" }, { Id: "Q
     aSp.Add("TextBlock").Text(action.Label).VerticalAlignment("Center").FontSize(12)
 }
 
-; === COMPILE ===
-global ui := app.Compile()
+; === COMPILE OR LOAD ===
+global ui
+if (A_IsCompiled) {
+    ui := app.Load(A_ScriptDir "\editor.dll")
+} else {
+    ui := app.Compile()
+}
 
 ui.OnEvent("BtnCloseInfo", "Click", (*) => infoFlyout.Toggle())
 
@@ -956,6 +962,17 @@ if (A_Args.Length > 0 && FileExist(A_Args[1])) {
     docEditor.Open(A_Args[1])
     SplitPath(A_Args[1], , , , &fileName)
     UpdateTitle(fileName)
+}
+
+; === BUILD BUNDLE FOR PRODUCTION ===
+if (A_Args.Length > 0 && A_Args[1] == "/build") {
+    try {
+        app.ExportBundle("editor.dll")
+    } catch Any as err {
+        ;try FileDelete(A_ScriptDir "\build_err.log")
+        ;FileAppend("Build Error: " err.Message "`nFile: " err.File "`nLine: " err.Line "`nStack: " err.Stack "`n", A_ScriptDir "\build_err.log")
+    }
+    ExitApp()
 }
 
 app.Show()

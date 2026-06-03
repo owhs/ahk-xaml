@@ -28,3 +28,4 @@ package-lock.json
 work_docs/
 *.py
 !examples/showcase/snippets.txt
+*.zip
