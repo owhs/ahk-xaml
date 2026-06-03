@@ -29,6 +29,7 @@ class XAML_GUI {
         this.closeAction := hasOpt("CloseAction") ? getOpt("CloseAction") : "ExitApp"
         this.width := hasOpt("Width") ? getOpt("Width") : 940
         this.height := hasOpt("Height") ? getOpt("Height") : 700
+        this.forceDynamic := hasOpt("ForceDynamic") ? getOpt("ForceDynamic") : false
 
         ; Expose the root generator for customization
         this.X := XAML_Generator("Grid").Name("AppGrid").Background("{DynamicResource BgColor}").Focusable("True")
@@ -181,7 +182,20 @@ class XAML_GUI {
         callback(this.bottomBar)
     }
 
+    GetBundleDllName() {
+        if (IsSet(CUSTOM_DLL_BUNDLE_NAME) && CUSTOM_DLL_BUNDLE_NAME != "")
+            return CUSTOM_DLL_BUNDLE_NAME
+        SplitPath(A_ScriptName, , , , &nameNoExt)
+        return nameNoExt "_bundled.dll"
+    }
+
     Compile(outFile := "", options*) {
+        if (A_IsCompiled && !this.forceDynamic) {
+            dllPath := (outFile != "") ? outFile : this.GetBundleDllName()
+            actualDll := FileExist(A_ScriptDir "\" dllPath) ? (A_ScriptDir "\" dllPath) : dllPath
+            return this.Load(actualDll, options*)
+        }
+
         if (outFile != "" && FileExist(outFile)) {
             this.xamlString := ""
             this.host := XAMLHost("", outFile, options*)
@@ -484,8 +498,7 @@ class XAML_GUI {
         }
 
         if (dllName == "") {
-            SplitPath(A_ScriptName, , , , &nameNoExt)
-            dllName := A_ScriptDir "\" nameNoExt "_bundled.dll"
+            dllName := this.GetBundleDllName()
         }
 
         return this.host.BundleCustomEngine(dllName)

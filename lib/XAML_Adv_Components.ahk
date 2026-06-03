@@ -1631,6 +1631,8 @@ _ImageViewer(this, name := "") {
 ; ==============================================================================
 
 class XClock {
+    lastTickTime := ""
+
     __New(parentXAML, name := "") {
         this.parent := parentXAML
         this.id := name != "" ? name : "Clock_" XClock.Count()

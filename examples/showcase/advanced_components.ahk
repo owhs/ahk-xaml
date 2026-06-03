@@ -352,6 +352,8 @@ myEditor.Bind(ui)
 
 ; Load snippets dynamically from text database
 SplitPath(A_LineFile, , &showcaseDir)
+if (A_IsCompiled)
+    showcaseDir := A_ScriptDir
 global snippetsMap := LoadSnippets(showcaseDir "\snippets.txt")
 
 LoadSnippets(filePath) {
@@ -638,5 +640,6 @@ ui.OnEvent("KbMoveRight", "Click", (*) => kb.MoveSelectedTo(kb.selectedColIdx + 
 HotIfWinActive "ahk_pid " DllCall("GetCurrentProcessId")
 Hotkey("Delete", (*) => ng.DeleteSelectedConnections())
 HotIfWinActive
+
 
 app.Show()

@@ -35,12 +35,6 @@ if (XAML_FORCE_DYNAMIC_COMPILE) {
 ; --- Event Handlers (always needed) ---
 #Include "basic_components/basic_components_events.ahk"
 
-; --- Bundle for Production ---
-; Must be called AFTER binding events so they are embedded in the DLL!
-if (XAML_FORCE_DYNAMIC_COMPILE && BUILD_DLL) {
-    app.ExportBundle("gui.dll")
-}
-
 ; --- Launch ---
 app.Show()
 ui.Update("MyEmoji_EmojiScroll", "TrapScroll", "")

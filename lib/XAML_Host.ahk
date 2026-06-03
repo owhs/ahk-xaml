@@ -96,6 +96,8 @@ class XAMLHost {
     static instanceCounter := 0
 
     static GetEngineDllName() {
+        if (IsSet(CUSTOM_DLL_BUNDLE_NAME) && CUSTOM_DLL_BUNDLE_NAME != "")
+            return CUSTOM_DLL_BUNDLE_NAME
         suffix := ""
         if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW)
             suffix .= "-wv2"
@@ -107,9 +109,11 @@ class XAMLHost {
     }
 
     __New(xaml := "", exePath := "", ownerHwnd := 0) {
-        XAMLHost.RestoreWebView2Dlls()
-        XAMLHost.RestoreAvalonEditDlls()
-        XAMLHost.RestoreDocumentDlls()
+        if (!A_IsCompiled) {
+            XAMLHost.RestoreWebView2Dlls()
+            XAMLHost.RestoreAvalonEditDlls()
+            XAMLHost.RestoreDocumentDlls()
+        }
         XAMLHost.instanceCounter++
         this.id := "WPF_" A_TickCount "_" XAMLHost.instanceCounter "_" Random(1000, 9999)
         XAMLHost._instances[this.id] := this
@@ -671,13 +675,20 @@ class XAMLHost {
         }
 
         for _, res in extraResources {
-            if FileExist(res)
-                embeddedRes .= ' /resource:"' res '"'
+            if FileExist(res) {
+                SplitPath(res, &resName)
+                embeddedRes .= ' /resource:"' res '",' resName
+            }
+        }
+
+        try FileDelete(sharedExe)
+        if FileExist(sharedExe) {
+            SplitPath(sharedExe, &sharedName)
+            MsgBox("Error: The target DLL '" sharedName "' is locked by a running process.`n`nPlease close all running instances of your application and try compiling again.", "Build Error", "Iconx")
+            return false
         }
 
         cmd := A_ComSpec ' /c ""' cscPath '" /nologo /target:winexe /out:"' sharedExe '" /lib:"' wpfDir '" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:PresentationFramework.dll /reference:PresentationCore.dll /reference:WindowsBase.dll /reference:System.Xaml.dll /reference:UIAutomationProvider.dll /reference:UIAutomationTypes.dll' wvRefs wvDef aeRefs aeDef docRefs docDef embeddedRes ' "' sourceCs '" > "' errLog '" 2>&1"'
-        ;try FileDelete(A_ScriptDir "\csc_cmd.log")
-        ;try FileAppend(cmd "`n", A_ScriptDir "\csc_cmd.log", "UTF-8")
         RunWait(cmd, "", "Hide")
 
         if !FileExist(sharedExe) {
@@ -753,6 +764,34 @@ class XAMLHost {
 
 
     BundleCustomEngine(targetExe) {
+        ; If running in /build mode, write AXML metadata directly to the source script for standalone compiled execution
+        if (A_Args.Length > 0 && A_Args[1] == "/build" && IsSet(AXML) && HasProp(AXML, "ParsedData") && AXML.ParsedData.Length > 0) {
+            metadataStr := AXML.SerializeParsedData()
+            escapedMetadata := StrReplace(metadataStr, "`r", "")
+            escapedMetadata := StrReplace(escapedMetadata, "`n", "``n")
+            escapedMetadata := StrReplace(escapedMetadata, '"', '""')
+            metadataBlock := '`n;=== AXML METADATA ===`nAXML_METADATA := "' escapedMetadata '"`n;=== AXML METADATA END ===`n'
+            
+            try {
+                scriptContent := FileRead(A_ScriptFullPath, "UTF-8")
+                ; Strip existing metadata block if present
+                scriptContent := RegExReplace(scriptContent, "s)(?:\r?\n)?[ \t]*;=== AXML METADATA ===.*;=== AXML METADATA END ===(?:\r?\n)?")
+                
+                ; Insert at the top of the file, right after #Requires if present, otherwise at the very top
+                if (pos := RegExMatch(scriptContent, "mi)^[ \t]*#Requires\b")) {
+                    posLineEnd := InStr(scriptContent, "`n", , pos)
+                    left := SubStr(scriptContent, 1, posLineEnd)
+                    right := SubStr(scriptContent, posLineEnd + 1)
+                    scriptContent := left metadataBlock right
+                } else {
+                    scriptContent := metadataBlock scriptContent
+                }
+                
+                FileDelete(A_ScriptFullPath)
+                FileAppend(scriptContent, A_ScriptFullPath, "UTF-8")
+            }
+        }
+
         cleanXaml := StrReplace(this.xaml, "%resources%", "")
         cleanXaml := StrReplace(cleanXaml, "%components%", "")
 
@@ -772,7 +811,8 @@ class XAMLHost {
 
         SplitPath(A_LineFile, , &libDir)
         toolPath := libDir "\..\tools\compile_baml.ps1"
-        if FileExist(toolPath) {
+        forceXaml := (IsSet(XAML_FORCE_XAML_BUNDLING) && XAML_FORCE_XAML_BUNDLING) || EnvGet("AHK_XAML_FORCE_XAML") == "1"
+        if (!forceXaml && FileExist(toolPath)) {
             cmd := 'powershell.exe -ExecutionPolicy Bypass -File "' toolPath '" -InputXaml "' tempXaml '" -OutputBaml "' tempBaml '"'
             RunWait(cmd, "", "Hide")
         }
@@ -805,26 +845,56 @@ class XAMLHost {
         if FileExist(tempBaml) {
             resList.Push(tempBaml)
         } else {
-            MsgBox("Failed to compile BAML during bundle export! Check the compiler log.", "AHK-XAML", "Iconx")
-            return false
+            ToolTip("Warning: BAML compilation failed. Falling back to XAML bundling...")
+            SetTimer(() => ToolTip(), -3000)
+            if FileExist(tempXaml) {
+                resList.Push(tempXaml)
+            } else {
+                MsgBox("Failed to bundle custom engine: XAML payload file not found.", "AHK-XAML", "Iconx")
+                return false
+            }
         }
 
         if FileExist(tempEvents)
             resList.Push(tempEvents)
 
+        tempAxml := tempDir "\app_payload.axml"
+        try FileDelete(tempAxml)
+        if (IsSet(AXML) && HasProp(AXML, "ParsedData") && AXML.ParsedData.Length > 0) {
+            FileAppend(AXML.SerializeParsedData(), tempAxml, "UTF-8")
+            resList.Push(tempAxml)
+        }
+
+        SplitPath(targetExe, &targetName)
         try {
-            while ProcessExist(targetExe) {
-                ProcessClose(targetExe)
+            while ProcessExist(targetName) {
+                ProcessClose(targetName)
                 Sleep(50)
             }
-            FileDelete(targetExe)
+        }
+        try FileDelete(targetExe)
+        if FileExist(targetExe) {
+            MsgBox("Error: The target DLL '" targetName "' is locked by a running process.`n`nPlease close all running instances of your application and try building again.", "Build Error", "Iconx")
+            return false
         }
 
         success := XAMLHost.CompileEngine(libDir, targetExe, resList)
 
+        if (success) {
+            SplitPath(targetExe, , &targetDir)
+            ; Copy native WebView2Loader.dll if WebView2 is enabled
+            if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW) {
+                depDir := libDir "\dep"
+                if FileExist(depDir "\WebView2\WebView2Loader.dll") {
+                    try FileCopy(depDir "\WebView2\WebView2Loader.dll", targetDir "\WebView2Loader.dll", 1)
+                }
+            }
+        }
+
         try FileDelete(tempXaml)
         try FileDelete(tempBaml)
         try FileDelete(tempEvents)
+        try FileDelete(tempAxml)
 
         return success
     }

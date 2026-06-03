@@ -29,3 +29,4 @@ work_docs/
 *.py
 !examples/showcase/snippets.txt
 *.zip
+build_settings.ini

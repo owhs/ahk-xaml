@@ -872,6 +872,36 @@ public class AhkWpfEngine
 
     public void RunEngine(string id, string hwndStr, string trackedCsv, string scriptName, string xamlFilePath, string eventsFilePath, string ownerHwndStr = "0", bool isDaemon = false)
     {
+        if (EnableLogging)
+        {
+            try
+            {
+                var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                var names = string.Join(",", asm.GetManifestResourceNames());
+                bool bamlExists = false;
+                bool xamlExists = false;
+                using (var bamlStream = asm.GetManifestResourceStream("app_payload.baml"))
+                {
+                    bamlExists = bamlStream != null;
+                }
+                using (var xamlStream = asm.GetManifestResourceStream("app_payload.xaml"))
+                {
+                    xamlExists = xamlStream != null;
+                }
+                System.IO.File.WriteAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "xaml_debug_startup.log"),
+                    "Assembly: " + asm.FullName + "\n" +
+                    "Resources: " + names + "\n" +
+                    "app_payload.baml exists: " + bamlExists + "\n" +
+                    "app_payload.xaml exists: " + xamlExists + "\n"
+                );
+            }
+            catch (Exception ex)
+            {
+                try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "xaml_debug_err.log"), ex.ToString()); } catch { }
+            }
+        }
+
         winId = id; ahkHwnd = (IntPtr)long.Parse(hwndStr);
         lock (_activeEngines)
         {
@@ -881,18 +911,15 @@ public class AhkWpfEngine
 
         string xamlContent = "";
         string eventsContent = "";
-        System.IO.Stream customBamlStream = null;
-        try
-        {
-            customBamlStream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("app_payload.baml");
-        }
-        catch { }
 
-        bool isCustomEngine = customBamlStream != null;
+        var resourceNames = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceNames();
+        bool hasCustomBaml = resourceNames.Contains("app_payload.baml");
+        bool hasCustomXaml = resourceNames.Contains("app_payload.xaml");
+        bool isCustomEngine = hasCustomBaml || hasCustomXaml;
         bool isBin = !isCustomEngine && !string.IsNullOrEmpty(xamlFilePath) && xamlFilePath.EndsWith(".bin", StringComparison.OrdinalIgnoreCase);
-        bool isBaml = isCustomEngine || (!string.IsNullOrEmpty(xamlFilePath) && xamlFilePath.EndsWith(".baml", StringComparison.OrdinalIgnoreCase));
+        bool isBaml = hasCustomBaml || (!isCustomEngine && !string.IsNullOrEmpty(xamlFilePath) && xamlFilePath.EndsWith(".baml", StringComparison.OrdinalIgnoreCase));
 
-        if (isCustomEngine)
+        if (isCustomEngine && isBaml)
         {
             // Bypass file loading and streams completely
         }
@@ -946,7 +973,7 @@ public class AhkWpfEngine
                 throw new Exception("Timed out waiting for XAML payload stream from AHK.");
             }
         }
-        else if (!string.IsNullOrEmpty(xamlFilePath) && System.IO.File.Exists(xamlFilePath))
+        else if (!isCustomEngine && !string.IsNullOrEmpty(xamlFilePath) && System.IO.File.Exists(xamlFilePath))
         {
             if (isBin)
             {
@@ -985,18 +1012,59 @@ public class AhkWpfEngine
         {
             try
             {
-                using (var stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("AppXaml"))
+                var streamName = (isCustomEngine && hasCustomXaml) ? "app_payload.xaml" : "AppXaml";
+                using (var targetStream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream(streamName))
                 {
-                    if (stream != null)
+                    if (targetStream != null)
                     {
-                        using (var reader = new System.IO.StreamReader(stream, Encoding.UTF8))
+                        using (var reader = new System.IO.StreamReader(targetStream, Encoding.UTF8))
                         {
                             xamlContent = reader.ReadToEnd();
                         }
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                if (EnableLogging)
+                {
+                    try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "xaml_load_err.log"), ex.ToString()); } catch { }
+                }
+            }
+        }
+
+        // Load companion event bindings (.events resource or file) if not already set (e.g. from STREAM)
+        if (string.IsNullOrEmpty(eventsContent))
+        {
+            if (isCustomEngine)
+            {
+                try
+                {
+                    using (var eventsStream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("app_payload.events"))
+                    {
+                        if (eventsStream != null)
+                        {
+                            using (var reader = new System.IO.StreamReader(eventsStream, Encoding.UTF8))
+                            {
+                                eventsContent = reader.ReadToEnd();
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+            else if (!string.IsNullOrEmpty(xamlFilePath))
+            {
+                string eventsPath = System.IO.Path.ChangeExtension(xamlFilePath, ".events");
+                if (System.IO.File.Exists(eventsPath))
+                {
+                    try
+                    {
+                        eventsContent = System.IO.File.ReadAllText(eventsPath, Encoding.UTF8);
+                    }
+                    catch { }
+                }
+            }
         }
 
         if (!isBin && !isBaml && xamlFilePath != "STREAM" && !string.IsNullOrEmpty(xamlFilePath) && System.IO.File.Exists(xamlFilePath))
@@ -1010,7 +1078,9 @@ public class AhkWpfEngine
             if (Application.Current == null) new Application();
             try
             {
-                using (var bamlStream = isCustomEngine ? customBamlStream : System.IO.File.OpenRead(xamlFilePath))
+                using (var bamlStream = isCustomEngine ? 
+                       System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("app_payload.baml") : 
+                       System.IO.File.OpenRead(xamlFilePath))
                 {
                     var bamlReader = new System.Windows.Baml2006.Baml2006Reader(bamlStream);
                     var objWriter = new System.Xaml.XamlObjectWriter(bamlReader.SchemaContext);
@@ -1107,32 +1177,6 @@ public class AhkWpfEngine
                         if (el != null) System.Windows.Shell.WindowChrome.SetIsHitTestVisibleInChrome(el, true);
                     }
                 }
-                // Load companion event bindings (.events file)
-                if (isCustomEngine)
-                {
-                    try
-                    {
-                        using (var eventsStream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("app_payload.events"))
-                        {
-                            if (eventsStream != null)
-                            {
-                                using (var reader = new System.IO.StreamReader(eventsStream, Encoding.UTF8))
-                                {
-                                    eventsContent = reader.ReadToEnd();
-                                }
-                            }
-                        }
-                    }
-                    catch { }
-                }
-                else
-                {
-                    string eventsPath = System.IO.Path.ChangeExtension(xamlFilePath, ".events");
-                    if (System.IO.File.Exists(eventsPath))
-                    {
-                        eventsContent = System.IO.File.ReadAllText(eventsPath, Encoding.UTF8);
-                    }
-                }
             }
             catch (Exception bamlEx)
             {
@@ -1171,6 +1215,10 @@ public class AhkWpfEngine
         else
         {
             // Text-based path (existing behavior)
+            if (EnableLogging)
+            {
+                try { System.IO.File.WriteAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "xaml_content_debug.log"), xamlContent ?? "NULL"); } catch { }
+            }
             byte[] xamlBytes;
             if (string.IsNullOrWhiteSpace(xamlContent))
             {

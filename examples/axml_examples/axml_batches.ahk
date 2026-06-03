@@ -1,4 +1,5 @@
-#Requires AutoHotkey v2.0
+﻿#Requires AutoHotkey v2.0
+
 #Include "..\..\lib\XAML_GUI.ahk"
 #Include "..\..\lib\AXML.ahk"
 #Include "..\..\lib\XAML_Config.ahk"
@@ -30,8 +31,8 @@ global currentIteration := 0
 global colors := ["#FF3333", "#33FF33", "#3333FF", "#FFFF33", "#FF33FF", "#33FFFF"]
 
 GetTime() {
-    DllCall("QueryPerformanceCounter", "Int64*", &counter:=0)
-    DllCall("QueryPerformanceFrequency", "Int64*", &freq:=0)
+    DllCall("QueryPerformanceCounter", "Int64*", &counter := 0)
+    DllCall("QueryPerformanceFrequency", "Int64*", &freq := 0)
     return (counter * 1000) / freq ; returns ms
 }
 
@@ -39,21 +40,21 @@ RunStandard(uiState, ctrl, evt) {
     global currentIteration
     currentIteration++
     c := colors[Mod(currentIteration, colors.Length) + 1]
-    
+
     appState.StatusText := "Running Standard Update (Unbatched)..."
-    
+
     start := GetTime()
-    
+
     ; Loop and update each property individually.
     ; Each assignment fires a synchronous IPC call.
     Loop NUM_BOXES {
         appState.%"BoxColor" A_Index% := c
         appState.%"BoxText" A_Index% := currentIteration
     }
-    
+
     end := GetTime()
     elapsed := Round(end - start, 2)
-    
+
     appState.StatusText := "Standard Update finished in " elapsed " ms (" (NUM_BOXES * 2) " IPC Calls)"
 }
 
@@ -61,23 +62,23 @@ RunBatched(uiState, ctrl, evt) {
     global currentIteration
     currentIteration++
     c := colors[Mod(currentIteration, colors.Length) + 1]
-    
+
     appState.StatusText := "Running Batched Update..."
-    
+
     start := GetTime()
-    
+
     ; Prepare a batch object
     batchObj := {}
     Loop NUM_BOXES {
         batchObj.%"BoxColor" A_Index% := c
         batchObj.%"BoxText" A_Index% := currentIteration
     }
-    
+
     ; Dispatch EXACTLY 1 IPC call containing all updates
     appState.Batch(batchObj)
-    
+
     end := GetTime()
     elapsed := Round(end - start, 2)
-    
+
     appState.StatusText := "Batched Update finished in " elapsed " ms (1 IPC Call!)"
 }
