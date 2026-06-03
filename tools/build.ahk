@@ -178,10 +178,15 @@ RunBuild(*) {
 
     if !RegExMatch(scriptContent, "i)#Include\s+[\x22\x27][^\x22\x27]*XAML_Builder\.ahk[\x22\x27]") {
         relPath := GetRelativePath(scriptDir, A_ScriptDir "\..\lib\XAML_Builder.ahk")
-        ; Try to find .Show() to insert it right before it
-        if (pos := RegExMatch(scriptContent, "mi)^[ \t]*\w+\.Show\b")) {
-            leftSide := SubStr(scriptContent, 1, pos - 1)
-            rightSide := SubStr(scriptContent, pos)
+        ; Try to find the last .Show() call (typically the main application show) to insert it right before it
+        pos := 0
+        lastPos := 0
+        while (pos := RegExMatch(scriptContent, "mi)^[ \t]*\w+\.Show\b", &match, pos ? pos + match.Len : 1)) {
+            lastPos := pos
+        }
+        if (lastPos > 0) {
+            leftSide := SubStr(scriptContent, 1, lastPos - 1)
+            rightSide := SubStr(scriptContent, lastPos)
             nl := InStr(scriptContent, "`r`n") ? "`r`n" : "`n"
             if (leftSide != "" && SubStr(leftSide, -1) != "`n") {
                 leftSide .= nl

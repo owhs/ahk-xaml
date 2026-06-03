@@ -1,4 +1,4 @@
-; ==============================================================================
+﻿; ==============================================================================
 ; Document Editor — Google Docs-Inspired Clone
 ; ==============================================================================
 ; A comprehensive document editor with DOCX/DOC support, rich text formatting,
@@ -20,6 +20,7 @@
 ; Requirements: XAML_ENABLE_DOCUMENT := true (DLLs auto-download from NuGet)
 ; ==============================================================================
 #Requires AutoHotkey v2.0
+global CUSTOM_DLL_BUNDLE_NAME := "editor.dll"
 #SingleInstance Force
 #Include "..\..\lib\XAML_Config.ahk"
 global XAML_ENABLE_DOCUMENT := true
@@ -240,11 +241,7 @@ for action in [{ Id: "QuickNew", Icon: 0xE8A5, Label: "New Document" }, { Id: "Q
 
 ; === COMPILE OR LOAD ===
 global ui
-if (A_IsCompiled) {
-    ui := app.Load(A_ScriptDir "\editor.dll")
-} else {
-    ui := app.Compile()
-}
+ui := app.Compile()
 
 ui.OnEvent("BtnCloseInfo", "Click", (*) => infoFlyout.Toggle())
 
@@ -962,17 +959,6 @@ if (A_Args.Length > 0 && FileExist(A_Args[1])) {
     docEditor.Open(A_Args[1])
     SplitPath(A_Args[1], , , , &fileName)
     UpdateTitle(fileName)
-}
-
-; === BUILD BUNDLE FOR PRODUCTION ===
-if (A_Args.Length > 0 && A_Args[1] == "/build") {
-    try {
-        app.ExportBundle("editor.dll")
-    } catch Any as err {
-        ;try FileDelete(A_ScriptDir "\build_err.log")
-        ;FileAppend("Build Error: " err.Message "`nFile: " err.File "`nLine: " err.Line "`nStack: " err.Stack "`n", A_ScriptDir "\build_err.log")
-    }
-    ExitApp()
 }
 
 app.Show()
