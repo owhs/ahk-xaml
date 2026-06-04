@@ -16,6 +16,10 @@ This document describes the Inter-Process Communication (IPC) architecture betwe
 
 Both directions use Windows `WM_COPYDATA` (`0x004A`) messages with `COPYDATASTRUCT`. The payload is always UTF-8 encoded.
 
+> [!NOTE]
+> **In-Process CLR Mode Optimization:**
+> When `XAML_IN_PROCESS_PREVIEW := true` is active, the communication channel still employs the `WM_COPYDATA` protocol, but the message transfer occurs inside the same process space between threads. This allows Windows to bypass cross-process marshalling and paging overhead, resulting in synchronous, near-zero-latency event loops and queries.
+
 ---
 
 ## 1. AHK → C# (Updates)

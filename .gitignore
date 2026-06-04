@@ -30,3 +30,4 @@ work_docs/
 !examples/showcase/snippets.txt
 *.zip
 build_settings.ini
+.backups/

@@ -94,6 +94,10 @@ class XAMLHost {
     static daemonHwnd := 0
     static daemonReceiver := 0
     static instanceCounter := 0
+    static CLR_Started := false
+    static CLR_BridgeAssembly := ""
+    static CLR_AppDomain := ""
+    static CLR_BridgeClass := ""
 
     static GetEngineDllName() {
         if (IsSet(CUSTOM_DLL_BUNDLE_NAME) && CUSTOM_DLL_BUNDLE_NAME != "")
@@ -1028,10 +1032,27 @@ class XAMLHost {
             FileDelete(this.errLog)
 
         if !XAMLHost.daemonHwnd {
-            XAMLHost.Prewarm(targetExe)
-            startWait := A_TickCount
-            while (!XAMLHost.daemonHwnd && A_TickCount - startWait < 5000) {
-                Sleep(10)
+            if (IsSet(XAML_IN_PROCESS_PREVIEW) && XAML_IN_PROCESS_PREVIEW) {
+                if (!XAMLHost.daemonReceiver) {
+                    XAMLHost.daemonReceiver := Gui()
+                    DllCall("user32\ChangeWindowMessageFilterEx", "Ptr", XAMLHost.daemonReceiver.Hwnd, "UInt", 0x004A, "UInt", 1, "Ptr", 0)
+                    if (!XAMLHost._msgHooked) {
+                        OnMessage(0x004A, ObjBindMethod(XAMLHost, "OnCopyData"), 255)
+                        XAMLHost._msgHooked := true
+                    }
+                }
+                XAMLHost.InitializeInProcess(targetExe)
+                engineType := XAMLHost.CLR_BridgeAssembly.GetType_2("AhkWpfEngine")
+                static nullObj := ComValue(13, 0)
+                args := ComObjArray(0xC, 1)
+                args[0] := String(XAMLHost.daemonReceiver.Hwnd)
+                XAMLHost.daemonHwnd := engineType.InvokeMember_3("StartInProcess", 0x158, nullObj, nullObj, args)
+            } else {
+                XAMLHost.Prewarm(targetExe)
+                startWait := A_TickCount
+                while (!XAMLHost.daemonHwnd && A_TickCount - startWait < 5000) {
+                    Sleep(10)
+                }
             }
         }
         return targetExe
@@ -1813,6 +1834,79 @@ class XAMLHost {
         pg.Destroy()
         try DirDelete(tmpDir, true)
         return success
+    }
+
+    static InitializeInProcess(dllPath) {
+        if (XAMLHost.CLR_Started)
+            return XAMLHost.CLR_BridgeClass
+
+        CLSID := Buffer(16), IID := Buffer(16)
+        DllCall("ole32\CLSIDFromString", "WStr", "{CB2F6723-AB3A-11D2-9C40-00C04FA30A3E}", "Ptr", CLSID)
+        DllCall("ole32\CLSIDFromString", "WStr", "{CB2F6722-AB3A-11D2-9C40-00C04FA30A3E}", "Ptr", IID)
+
+        hr := DllCall("mscoree\CorBindToRuntimeEx"
+            , "WStr", "v4.0.30319"
+            , "Ptr", 0
+            , "UInt", 0
+            , "Ptr", CLSID, "Ptr", IID
+            , "Ptr*", &pHost := 0, "Int")
+        if (hr < 0)
+            throw Error("CorBindToRuntimeEx failed: " Format("0x{:08X}", hr))
+
+        ComCall(10, pHost, "Int")   ; ICorRuntimeHost::Start
+        ComCall(13, pHost, "Ptr*", &pDomain := 0, "Int")  ; GetDefaultDomain
+
+        XAMLHost.CLR_AppDomain := ComValue(9, pDomain)
+
+        domType := XAMLHost.CLR_AppDomain.GetType()
+        mscorlib := domType.Assembly
+        asmType := mscorlib.GetType_2("System.Reflection.Assembly")
+
+        fileObj := FileOpen(dllPath, "r")
+        fileSize := fileObj.Length
+        rawBuf := Buffer(fileSize)
+        fileObj.Pos := 0
+        fileObj.RawRead(rawBuf, fileSize)
+        fileObj.Close()
+
+        bytes := ComObjArray(0x11, fileSize)
+        Loop fileSize
+            bytes[A_Index - 1] := NumGet(rawBuf, A_Index - 1, "UChar")
+
+        static nullObj := ComValue(13, 0)
+        loadArgs := ComObjArray(0xC, 1)
+        loadArgs[0] := bytes
+        bridgeAsm := asmType.InvokeMember_3("Load", 0x158, nullObj, nullObj, loadArgs)
+
+        XAMLHost.CLR_BridgeAssembly := bridgeAsm
+        XAMLHost.CLR_BridgeClass := bridgeAsm.CreateInstance("AhkWpfEngine")
+        XAMLHost.CLR_Started := true
+
+        return XAMLHost.CLR_BridgeClass
+    }
+
+    static DockWindow(childHwnd, parentHwnd, x := 0, y := 0, width := 0, height := 0) {
+        ; 1. Set the parent relationship
+        DllCall("user32\SetParent", "Ptr", childHwnd, "Ptr", parentHwnd, "Ptr")
+
+        ; 2. Modify window styles: clear WS_POPUP, WS_CAPTION, WS_THICKFRAME
+        ; and set WS_CHILD, WS_VISIBLE, WS_CLIPSIBLINGS
+        GWL_STYLE := -16
+        WS_POPUP := 0x80000000
+        WS_CHILD := 0x40000000
+        WS_VISIBLE := 0x10000000
+        WS_CLIPSIBLINGS := 0x04000000
+        WS_CAPTION := 0x00C00000
+        WS_THICKFRAME := 0x00040000
+
+        styles := DllCall("user32\GetWindowLongW", "Ptr", childHwnd, "Int", GWL_STYLE, "Int")
+        styles := (styles & ~WS_POPUP & ~WS_CAPTION & ~WS_THICKFRAME) | WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS
+        DllCall("user32\SetWindowLongW", "Ptr", childHwnd, "Int", GWL_STYLE, "Ptr", styles, "Ptr")
+
+        ; 3. Resize and position child window
+        if (width > 0 && height > 0) {
+            DllCall("user32\MoveWindow", "Ptr", childHwnd, "Int", x, "Int", y, "Int", width, "Int", height, "Int", 1, "Int")
+        }
     }
 }
 

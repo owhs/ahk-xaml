@@ -325,6 +325,75 @@ Set a native Win32 HWND as the WPF window's owner (for AHK-to-WPF window parenti
 ui.Update("Window", "NativeOwner", String(ahkGuiHwnd))
 ```
 
+### Win32 Window Docking (`SetParent`)
+
+To embed a WPF preview window directly inside an AutoHotkey GUI panel or container (e.g., for creating a unified IDE / Designer layout), you can use the `XAMLHost.DockWindow` static helper method. 
+
+This helper attaches the child WPF window handle to the parent AHK window, strips the window chrome (borders, title bar, caption/titlebar, shadow), and sizes it to fit the host container bounds:
+
+```ahk
+; 1. Compile the UI (it holds the WPF window)
+ui := app.Compile()
+
+; 2. Show the WPF window (generates its HWND)
+app.Show()
+
+; 3. Dock the WPF window inside the parent AHK GUI panel container
+; Arguments: childHwnd, parentHwnd, x, y, width, height
+XAMLHost.DockWindow(ui.wpfHwnd, myPanelHwnd, 0, 0, panelW, panelH)
+```
+
+#### Handling Parent Resizing
+
+When the parent AutoHotkey GUI is resized, the docked child WPF window does not automatically scale. You must handle the parent GUI's `Size` event and re-dock (or resize) the child:
+
+```ahk
+myGui := Gui("+Resize")
+myGui.OnEvent("Size", OnGuiSize)
+panel := myGui.Add("Text", "w600 h400") ; Host panel for docking
+
+; ... Compile and show WPF UI ...
+
+OnGuiSize(guiObj, minMax, width, height) {
+    if (minMax == -1)
+        return
+    ; Calculate new dimensions for the host panel
+    panelW := width - 40
+    panelH := height - 60
+    panel.Move(,, panelW, panelH)
+    
+    ; Resize and reposition the child WPF window
+    if (ui.wpfHwnd) {
+        XAMLHost.DockWindow(ui.wpfHwnd, panel.Hwnd, 0, 0, panelW, panelH)
+    }
+}
+```
+
+#### Keyboard Focus & Input Routing
+
+The Win32 `SetParent` API introduces distinct behaviors depending on the engine's process boundaries:
+
+- **Out-of-Process Mode (`XAML_IN_PROCESS_PREVIEW := false`):** Because the WPF window lives in a separate C# daemon process, Windows isolates their message loops. Keystrokes (like Tab, cursor keys, and hotkeys) may not route between AHK and WPF controls naturally.
+- **In-Process CLR Mode (`XAML_IN_PROCESS_PREVIEW := true`):** The WPF STA thread runs in the same process space as AHK. Message hooks resolve input routing instantly, enabling perfect keyboard navigation, standard tab order traversal, and zero-latency focus switching.
+
+> [!TIP]
+> **Performance Recommendation:**
+> For active designer workspaces, workspaces with inline code editors (AvalonEdit), or browser previews (WebView2), always enable **In-Process CLR Mode** to get smooth, desktop-native input routing.
+
+#### Safe Window Teardown
+
+When the parent AutoHotkey GUI window is destroyed, Windows automatically terminates any docked child windows assigned via `SetParent`. However, for a clean teardown under in-process CLR hosting, it is good practice to explicitly close the WPF window resource to release thread resources:
+
+```ahk
+myGui.OnEvent("Close", OnGuiClose)
+
+OnGuiClose(*) {
+    if (ui.wpfHwnd) {
+        ui.Update("Window", "Close", "")
+    }
+}
+```
+
 ### `GlassFrameThickness`
 
 Control the extent of DWM glass framing (extends glass into the client area):

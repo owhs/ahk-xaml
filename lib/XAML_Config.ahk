@@ -1,4 +1,4 @@
-﻿; ==============================================================================
+; ==============================================================================
 ; AHK-XAML Global Configuration
 ; ==============================================================================
 
@@ -54,3 +54,14 @@ global XAML_AUTO_PREWARM := false
 ; When true, enables the premium developer tools panel.
 ; Pressing F12 in any active app window opens the floating DevTools suite.
 global XAML_ENABLE_DEVTOOLS := true
+
+; --- In-Process CLR Hosting (Opt-In) ---
+; When true, boots the WPF engine in-process inside the parent AHK thread using CLR hosting.
+; When false, spawns a separate background daemon process (default, robust).
+global XAML_IN_PROCESS_PREVIEW := true
+
+; --- Designer Auto-Backups ---
+; When true, the designer automatically saves a backup of your layout to a `.backups/`
+; directory relative to the project root every 5 seconds (debounced).
+global XAML_DESIGNER_BACKUPS_ENABLED := true
+global XAML_DESIGNER_MAX_BACKUPS := 50

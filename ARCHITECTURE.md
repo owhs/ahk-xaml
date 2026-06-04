@@ -90,6 +90,22 @@
 6. **C# parses XAML** → `XamlReader.Load()` → Window appears → Sends `EVENT|<id>|Window|LoadedHwnd|<Hwnd>`.
 7. **Bidirectional IPC loop** begins.
 
+### In-Process CLR Hosting Mode (Opt-In)
+
+When `XAML_IN_PROCESS_PREVIEW := true` is set in `XAML_Config.ahk`, the framework switches from a two-process model to a **single-process CLR hosting model**.
+
+#### Bootstrapping Mechanics
+1. **CLR Boot:** `XAMLHost.InitializeInProcess()` dynamically initializes the .NET 4.0 Common Language Runtime (CLR) inside the parent AutoHotkey process using standard Windows `mscoree.dll` (`CorBindToRuntimeEx`).
+2. **Memory Loading:** The engine DLL (`ahk-xaml.dll`) is read as raw bytes and loaded into the default AppDomain via reflection (`Assembly.Load(byte[])`), preventing file locking on disk.
+3. **STA Thread Spawn:** C# spawns a new background `System.Threading.Thread` and sets its apartment state to Single-Threaded Apartment (`ApartmentState.STA`), which is a strict requirement for WPF.
+4. **Dispatcher Loop:** The STA thread initializes the WPF `Application` object, loads all embedded styling resources (`LoadComponentStyles`), starts a hidden message receiver window, and enters the WPF `Dispatcher.Run()` loop.
+5. **Direct Handle Retrieval:** The `StartInProcess` call returns the hidden message window's HWND directly to AHK, which assigns it to `XAMLHost.daemonHwnd`.
+
+#### Communication & Performance Wins
+- **Zero-Latency Interactions:** Mouse coordinates, visual tree structures, and property queries bypass the double process boundary traversal.
+- **In-Memory Reflection:** Selecting elements in DevTools allows querying properties instantly via direct memory access rather than parsing serialized strings, yielding a massive performance boost.
+- **Flawless Win32 Docking:** Placing a WPF preview window inside an AHK GUI container using `SetParent` works seamlessly without focus loss or input routing glitches because both parent and child reside in the same process space.
+
 ### Threading Model
 
 - **AHK:** Single-threaded, but `OnMessage(0x004A)` is registered with `MaxThreads=255` to prevent message queue saturation during rapid UI initialization.

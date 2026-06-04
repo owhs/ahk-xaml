@@ -39,6 +39,8 @@ using DocumentFormat.OpenXml.Wordprocessing;
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
 
+[ComVisible(true)]
+[ClassInterface(ClassInterfaceType.AutoDispatch)]
 public class AhkWpfEngine
 {
     [StructLayout(LayoutKind.Sequential)]
@@ -189,6 +191,157 @@ public class AhkWpfEngine
         _activeMatchBrush.Freeze();
         EventManager.RegisterClassHandler(typeof(ScrollViewer), FrameworkElement.LoadedEvent, new RoutedEventHandler(OnScrollViewerLoaded), false);
         EventManager.RegisterClassHandler(typeof(ScrollViewer), UIElement.PreviewMouseWheelEvent, new System.Windows.Input.MouseWheelEventHandler(OnPreviewMouseWheel), false);
+    }
+
+    private static HwndSource inProcessMsgWindow;
+
+    public static IntPtr StartInProcess(string ahkHwndStr)
+    {
+        IntPtr ahkHwnd = (IntPtr)long.Parse(ahkHwndStr);
+        IntPtr resultHwnd = IntPtr.Zero;
+        using (var readyEvent = new System.Threading.ManualResetEvent(false))
+        {
+            var thread = new System.Threading.Thread(() =>
+            {
+                try
+                {
+                    AppDomain.CurrentDomain.AssemblyResolve += (sender, resolveArgs) =>
+                    {
+                        string name = new AssemblyName(resolveArgs.Name).Name;
+                        string resourceName = name + ".dll";
+                        var asm = Assembly.GetExecutingAssembly();
+                        string matchName = null;
+                        foreach (var r in asm.GetManifestResourceNames())
+                        {
+                            if (r.EndsWith(resourceName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                matchName = r;
+                                break;
+                            }
+                        }
+                        if (matchName != null)
+                        {
+                            using (var stream = asm.GetManifestResourceStream(matchName))
+                            {
+                                if (stream != null)
+                                {
+                                    byte[] data = new byte[stream.Length];
+                                    stream.Read(data, 0, data.Length);
+                                    return Assembly.Load(data);
+                                }
+                            }
+                        }
+                        return null;
+                    };
+
+                    EventManager.RegisterClassHandler(typeof(Slider), Slider.PreviewMouseLeftButtonDownEvent, new System.Windows.Input.MouseButtonEventHandler(Slider_PreviewMouseLeftButtonDown), true);
+
+                    if (System.Windows.Application.Current == null)
+                    {
+                        var app = new System.Windows.Application();
+                        LoadComponentStyles(app);
+                    }
+
+                    HwndSourceParameters parameters = new HwndSourceParameters("InProcessReceiver", 0, 0);
+                    parameters.WindowStyle = 0;
+                    inProcessMsgWindow = new HwndSource(parameters);
+
+                    inProcessMsgWindow.AddHook((IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) =>
+                    {
+                        if (msg == 0x004A)
+                        {
+                            try
+                            {
+                                var cds = (COPYDATASTRUCT)Marshal.PtrToStructure(lParam, typeof(COPYDATASTRUCT));
+                                byte[] bytes = new byte[cds.cbData];
+                                Marshal.Copy(cds.lpData, bytes, 0, cds.cbData);
+                                string text = Encoding.UTF8.GetString(bytes).TrimEnd('\0');
+
+                                if (text.StartsWith("CREATE_WINDOW_INLINE|"))
+                                {
+                                    string[] p = text.Split(new[] { '|' }, 6);
+                                    if (p.Length >= 6)
+                                    {
+                                        string wId = p[1];
+                                        string tCsv = p[2];
+                                        string sName = p[3];
+                                        string oHwnd = p[4];
+                                        string inlineData = p[5];
+
+                                        System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                        {
+                                            try
+                                            {
+                                                AhkWpfEngine eng = new AhkWpfEngine();
+                                                eng.RunEngineInline(wId, ahkHwnd.ToString(), tCsv, sName, oHwnd, inlineData, true);
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.Message) + "\n");
+                                                var c = new COPYDATASTRUCT { cbData = b.Length + 1, lpData = Marshal.AllocHGlobal(b.Length + 1) };
+                                                Marshal.Copy(b, 0, c.lpData, b.Length); Marshal.WriteByte(c.lpData, b.Length, 0);
+                                                SendMessage(ahkHwnd, 0x004A, IntPtr.Zero, ref c);
+                                                Marshal.FreeHGlobal(c.lpData);
+                                            }
+                                        }));
+                                    }
+                                }
+                                else if (text.StartsWith("CREATE_WINDOW|"))
+                                {
+                                    string[] p = text.Split(new[] { '|' }, 7);
+                                    if (p.Length >= 7)
+                                    {
+                                        string wId = p[1];
+                                        string tCsv = p[2];
+                                        string sName = p[3];
+                                        string oHwnd = p[4];
+                                        string xPath = p[5];
+                                        string ePath = p[6];
+
+                                        System.Windows.Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+                                        {
+                                            try
+                                            {
+                                                AhkWpfEngine eng = new AhkWpfEngine();
+                                                eng.RunEngine(wId, ahkHwnd.ToString(), tCsv, sName, xPath, ePath, oHwnd, true);
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.Message) + "\n");
+                                                var c = new COPYDATASTRUCT { cbData = b.Length + 1, lpData = Marshal.AllocHGlobal(b.Length + 1) };
+                                                Marshal.Copy(b, 0, c.lpData, b.Length); Marshal.WriteByte(c.lpData, b.Length, 0);
+                                                SendMessage(ahkHwnd, 0x004A, IntPtr.Zero, ref c);
+                                                Marshal.FreeHGlobal(c.lpData);
+                                            }
+                                        }));
+                                    }
+                                }
+                            }
+                            catch { }
+                            handled = true;
+                        }
+                        return IntPtr.Zero;
+                    });
+
+                    resultHwnd = inProcessMsgWindow.Handle;
+                    readyEvent.Set();
+
+                    System.Windows.Threading.Dispatcher.Run();
+                }
+                catch (Exception)
+                {
+                    readyEvent.Set();
+                }
+            });
+
+            thread.SetApartmentState(System.Threading.ApartmentState.STA);
+            thread.IsBackground = true;
+            thread.Start();
+
+            readyEvent.WaitOne(5000);
+        }
+
+        return resultHwnd;
     }
 
     private static void OnScrollViewerLoaded(object sender, RoutedEventArgs e)

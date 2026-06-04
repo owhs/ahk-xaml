@@ -623,4 +623,103 @@ class AXML {
             }
         }
     }
+
+    static SerializeAST(nodes, templates := "") {
+        out := ""
+        if (templates && Type(templates) == "Map") {
+            for tName, tNode in templates {
+                out .= AXML.SerializeNode(tNode, 0) "`n"
+            }
+        }
+        for node in nodes {
+            out .= AXML.SerializeNode(node, 0)
+        }
+        return out
+    }
+
+    static SerializeNode(node, indent) {
+        pad := ""
+        Loop indent
+            pad .= "  "
+
+        out := ""
+        if (node.HasProp("IsLoop") && node.IsLoop) {
+            out .= pad "@For " node.LoopStart ".." node.LoopEnd " as " node.LoopVar ":`n"
+        } else {
+            prefix := (node.HasProp("IsTemplate") && node.IsTemplate) ? "@Template " : ""
+            nameSuffix := (node.HasProp("Name") && node.Name != "") ? " (" node.Name ")" : ""
+            out .= pad prefix node.Type nameSuffix ":`n"
+        }
+
+        ; Properties
+        for k, v in node.Properties {
+            propName := StrReplace(k, ".", "_")
+            if (SubStr(v, 1, 1) == "$" || IsNumber(v)) {
+                out .= pad "  " propName ": " v "`n"
+            } else {
+                escapedVal := StrReplace(v, '"', '\"')
+                out .= pad "  " propName ": `"" escapedVal "`"`n"
+            }
+        }
+
+        ; Events
+        for k, v in node.Events {
+            out .= pad "  " k ": " v "`n"
+        }
+
+        ; Children
+        for child in node.Children {
+            out .= AXML.SerializeNode(child, indent + 1)
+        }
+
+        return out
+    }
+
+    static SaveBackup(filePath, content) {
+        if (!IsSet(XAML_DESIGNER_BACKUPS_ENABLED) || !XAML_DESIGNER_BACKUPS_ENABLED)
+            return
+
+        SplitPath(filePath, &name, &dir)
+        backupsDir := (dir != "" ? dir : A_ScriptDir) "\.backups"
+        if !DirExist(backupsDir) {
+            try {
+                DirCreate(backupsDir)
+            } catch {
+                return
+            }
+        }
+
+        timestamp := FormatTime(, "yyyyMMddHHmmss")
+        backupPath := backupsDir "\" name "." timestamp ".axml"
+        
+        try {
+            if FileExist(backupPath)
+                FileDelete(backupPath)
+            FileAppend(content, backupPath, "UTF-8")
+        } catch {
+            return
+        }
+
+        maxBackups := (IsSet(XAML_DESIGNER_MAX_BACKUPS) ? XAML_DESIGNER_MAX_BACKUPS : 50)
+        backupFiles := []
+        loop Files backupsDir "\" name ".*.axml" {
+            backupFiles.Push(A_LoopFileFullPath)
+        }
+
+        if (backupFiles.Length > maxBackups) {
+            fileList := ""
+            for file in backupFiles
+                fileList .= file "`n"
+            fileList := RTrim(fileList, "`n")
+            fileList := Sort(fileList)
+            sortedFiles := StrSplit(fileList, "`n")
+            
+            deleteCount := sortedFiles.Length - maxBackups
+            Loop deleteCount {
+                try {
+                    FileDelete(sortedFiles[A_Index])
+                }
+            }
+        }
+    }
 }

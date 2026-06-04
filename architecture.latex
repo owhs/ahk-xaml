@@ -1,7 +1,7 @@
-\documentclass[11pt, a2paper, landscape]{article}
+\documentclass[11pt]{article}
 
 % --- UNIVERSAL PREAMBLE BLOCK ---
-\usepackage[a2paper, landscape, top=1.5cm, bottom=1.5cm, left=1cm, right=1cm]{geometry}
+\usepackage[paperwidth=516.23mm, paperheight=267.09mm, top=1cm, bottom=0cm, left=0cm, right=0cm]{geometry}
 \usepackage{fontspec}
 
 \usepackage[english, bidi=basic, provide=*]{babel}
@@ -48,21 +48,21 @@
 
     % --- Optional Component Nodes ---
     \node[ui, draw=teal!50, dashed, minimum width=3.5cm, align=center] (webview) at (24.0, 0.5) {%
-        \textbf{WebView2 (Optional)}\\Chromium Edge Core\\[1ex]%
-        \textcolor{teal!80!black}{\sffamily\tiny\textbf{Events:}}\\%
-        \sffamily\tiny WebMessageReceived\\%
-        \sffamily\tiny NavigationCompleted%
+        \textbf{WebView2 (Optional)}\\Chromium Edge Core\\[1.2ex]
+        \sffamily\tiny\textcolor{teal!80!black}{\textbf{Events:}}\\[-0.6ex]
+        \sffamily\fontsize{4.5pt}{5.2pt}\selectfont WebMessageReceived\\[-0.6ex]
+        \sffamily\fontsize{4.5pt}{5.2pt}\selectfont NavigationCompleted
     };
     \node[ui, draw=teal!50, dashed, minimum width=3.5cm, align=center] (avalon) at (24.0, -2.0) {%
-        \textbf{AvalonEdit (Optional)}\\IDE Code Editor\\[1ex]%
-        \textcolor{teal!80!black}{\sffamily\tiny\textbf{Events:}}\\%
-        \sffamily\tiny TextChanged\\%
-        \sffamily\tiny CaretChanged%
+        \textbf{AvalonEdit (Optional)}\\IDE Code Editor\\[1.2ex]
+        \sffamily\tiny\textcolor{teal!80!black}{\textbf{Events:}}\\[-0.6ex]
+        \sffamily\fontsize{4.5pt}{5.2pt}\selectfont TextChanged\\[-0.6ex]
+        \sffamily\fontsize{4.5pt}{5.2pt}\selectfont CaretChanged
     };
     \node[ui, draw=teal!50, dashed, minimum width=3.5cm, align=center] (openxml) at (24.0, -4.3) {%
-        \textbf{OpenXml (Optional)}\\Document Editor\\[1ex]%
-        \textcolor{teal!80!black}{\sffamily\tiny\textbf{Events:}}\\%
-        \sffamily\tiny SelectionFormat%
+        \textbf{OpenXml (Optional)}\\Document Editor\\[1.2ex]
+        \sffamily\tiny\textcolor{teal!80!black}{\textbf{Events:}}\\[-0.6ex]
+        \sffamily\fontsize{4.5pt}{5.2pt}\selectfont SelectionFormat
     };
 
     % --- DevTools Node ---
@@ -70,6 +70,12 @@
 
     % --- Background Process Containers ---
     \begin{pgfonlayer}{background}
+        % Optional: Single Process CLR boundary (dashed outline)
+        \coordinate (clr_tl) at (-7.5, 6.2);
+        \coordinate (clr_br) at (35.7, -14.7);
+        \draw[draw=teal!40, dashed, line width=1.2mm, rounded corners=12mm] (clr_tl) rectangle (clr_br);
+        \node[title, text=teal!80!black, anchor=north] at (11.0, 5.8) {Optional Single Process CLR boundary};
+
         % AHK Process Box
         \coordinate (ahk_tl) at (-6.0, 4.5);
         \coordinate (ahk_br) at (4.5, -12.5);
@@ -121,18 +127,18 @@
     % --- Phase 2: Native Event Dispatch (Red) ---
     \draw[arrow_event] (wpf.south) -- node[label_style, pos=0.5] {5. Native UI Interaction\\(e.g., Click, KeyDown)} (csbridge.north);
     
-    \draw[arrow_event] (csbridge.185) -- node[label_style] {6. \texttt{WM\_COPYDATA} (0x004A)\\Event ID + Base64 Tracked State} (ahkhost.355);
+    \draw[arrow_event] (csbridge.185) -- node[label_style] {6. \texttt{WM\_COPYDATA} / In-Process Message\\Event ID + Length-Prefixed Tracked State} (ahkhost.355);
 
     % Orthogonal routing for Event Callback (Left side, inner loop)
     \draw[arrow_event, rounded corners=4mm] (ahkhost.170) -- ++(-2.3, 0) |- (app.190);
-    \node[label_style] at (-4.8, -5.5) {7. Trigger AHK Callback\\(\texttt{state, ctrl, event})};
+    \node[label_style] at (-4.9, -9.5) {7. Trigger AHK Callback\\(\texttt{state, ctrl, event})};
 
     % --- Phase 3: Dynamic Mutation (Blue) ---
     % Orthogonal routing for Update Command (Left side, outer loop)
     \draw[arrow_update, rounded corners=4mm] (app.170) -- ++(-4.0, 0) |- (ahkhost.190);
-    \node[label_style] at (-8.3, -5.5) {8. Script Updates GUI\\(\texttt{ui.Update()})};
+    \node[label_style] at (-4.9, 1.1) {8. Script Updates GUI\\(\texttt{ui.Update()})};
 
-    \draw[arrow_update] (ahkhost.345) -- node[label_style, below=1mm] {9. \texttt{WM\_COPYDATA} (0x004A)\\Command string to engine} (csbridge.195);
+    \draw[arrow_update] (ahkhost.345) -- node[label_style, below=1mm] {9. \texttt{WM\_COPYDATA} / In-Process Message\\Command string to engine} (csbridge.195);
 
     % Vertically staggered and horizontally spaced paths
     \draw[arrow_update] ([xshift=2.2cm]csbridge.north) -- node[label_style, pos=0.75, right=-20mm] {10. Engine Mutates UI\\(WPF Dispatcher Thread)} ([xshift=2.2cm]wpf.south);
