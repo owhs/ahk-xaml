@@ -3448,28 +3448,44 @@ public class AhkWpfEngine
                     {
                         object element = XamlReader.Parse(parts[2]);
 
-                        // Register names in the current window's NameScope so FindName works for dynamic elements
-                        Action<DependencyObject> registerNames = null;
-                        registerNames = new Action<DependencyObject>((DependencyObject d) =>
+                        var visited = new System.Collections.Generic.HashSet<object>();
+                        Action<object> registerNames = null;
+                        registerNames = new Action<object>((object obj) =>
                         {
-                            if (d is FrameworkElement)
+                            if (obj == null || !visited.Add(obj)) return;
+                            var fe = obj as FrameworkElement;
+                            if (fe != null)
                             {
-                                var fe = (FrameworkElement)d;
                                 if (!string.IsNullOrEmpty(fe.Name))
                                 {
                                     try { win.UnregisterName(fe.Name); } catch { }
                                     try { win.RegisterName(fe.Name, fe); } catch { }
                                 }
                             }
-                            foreach (object child in System.Windows.LogicalTreeHelper.GetChildren(d))
+                            var dobj = obj as DependencyObject;
+                            if (dobj != null)
                             {
-                                if (child is DependencyObject)
+                                foreach (object child in System.Windows.LogicalTreeHelper.GetChildren(dobj))
                                 {
-                                    registerNames((DependencyObject)child);
+                                    registerNames(child);
+                                }
+                                var cc = dobj as System.Windows.Controls.ContentControl;
+                                if (cc != null && cc.Content != null) registerNames(cc.Content);
+                                var dec = dobj as System.Windows.Controls.Decorator;
+                                if (dec != null && dec.Child != null) registerNames(dec.Child);
+                                var panel = dobj as System.Windows.Controls.Panel;
+                                if (panel != null)
+                                {
+                                    foreach (UIElement c in panel.Children) registerNames(c);
+                                }
+                                var ic = dobj as ItemsControl;
+                                if (ic != null)
+                                {
+                                    foreach (object item in ic.Items) registerNames(item);
                                 }
                             }
                         });
-                        registerNames((DependencyObject)element);
+                        registerNames(element);
 
                         if (ctrl is ItemsControl)
                         {
@@ -3490,6 +3506,12 @@ public class AhkWpfEngine
                     }
                     catch (Exception ex)
                     {
+                        try {
+                            System.IO.File.AppendAllText(
+                                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfError.log"),
+                                "XamlParse Error in AddXamlItem:\n" + ex.ToString() + "\n\n"
+                            );
+                        } catch {}
                         Console.WriteLine("XamlParse Error: " + ex.Message);
                     }
                 }
@@ -5239,7 +5261,13 @@ public class AhkWpfEngine
 
     private void UnregisterNamesRecursive(DependencyObject d)
     {
-        if (d == null) return;
+        var visited = new System.Collections.Generic.HashSet<object>();
+        UnregisterNamesRecursiveInternal(d, visited);
+    }
+
+    private void UnregisterNamesRecursiveInternal(DependencyObject d, System.Collections.Generic.HashSet<object> visited)
+    {
+        if (d == null || !visited.Add(d)) return;
         var fe = d as FrameworkElement;
         if (fe != null && !string.IsNullOrEmpty(fe.Name))
         {
@@ -5249,25 +5277,25 @@ public class AhkWpfEngine
         {
             if (child is DependencyObject)
             {
-                UnregisterNamesRecursive((DependencyObject)child);
+                UnregisterNamesRecursiveInternal((DependencyObject)child, visited);
             }
         }
         var cc = d as ContentControl;
         if (cc != null && cc.Content is DependencyObject)
         {
-            UnregisterNamesRecursive((DependencyObject)cc.Content);
+            UnregisterNamesRecursiveInternal((DependencyObject)cc.Content, visited);
         }
         var dec = d as Decorator;
         if (dec != null && dec.Child != null)
         {
-            UnregisterNamesRecursive(dec.Child);
+            UnregisterNamesRecursiveInternal(dec.Child, visited);
         }
         var panel = d as Panel;
         if (panel != null)
         {
             foreach (UIElement child in panel.Children)
             {
-                UnregisterNamesRecursive(child);
+                UnregisterNamesRecursiveInternal(child, visited);
             }
         }
         var ic = d as ItemsControl;
@@ -5277,7 +5305,7 @@ public class AhkWpfEngine
             {
                 if (item is DependencyObject)
                 {
-                    UnregisterNamesRecursive((DependencyObject)item);
+                    UnregisterNamesRecursiveInternal((DependencyObject)item, visited);
                 }
             }
         }

@@ -577,7 +577,7 @@ class AXML {
             if (node.Name != "")
                 el.SetProp("x:Name", node.Name)
                 
-            for propName, propVal in node.Properties {
+             for propName, propVal in node.Properties {
                 if (SubStr(propVal, 1, 1) == "$") {
                     stateKey := SubStr(propVal, 2)
                     
@@ -594,6 +594,8 @@ class AXML {
                     else
                         propVal := ""
                 }
+                if (propVal == "")
+                    continue
                 if (propName == "Cols" || propName == "ColumnDefinitions" || propName == "ColDefs") {
                     colsArr := StrSplit(propVal, ",")
                     for index, val in colsArr
@@ -653,7 +655,8 @@ class AXML {
             out .= pad "@For " node.LoopStart ".." node.LoopEnd " as " node.LoopVar ":`n"
         } else {
             prefix := (node.HasProp("IsTemplate") && node.IsTemplate) ? "@Template " : ""
-            nameSuffix := (node.HasProp("Name") && node.Name != "") ? " (" node.Name ")" : ""
+            isGenerated := (node.HasProp("isGeneratedName") && node.isGeneratedName)
+            nameSuffix := (node.HasProp("Name") && node.Name != "" && !isGenerated) ? " (" node.Name ")" : ""
             out .= pad prefix node.Type nameSuffix ":`n"
         }
 
