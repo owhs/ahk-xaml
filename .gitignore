@@ -31,3 +31,4 @@ work_docs/
 *.zip
 build_settings.ini
 .backups/
+projects/

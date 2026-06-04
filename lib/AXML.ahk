@@ -392,8 +392,10 @@ class AXML {
         for k, v in node.Properties
             out .= pad "  - Prop: " k " = " v "`n"
             
-        for k, v in node.Events
-            out .= pad "  - Event: " k " = " v "`n"
+        if (node.HasProp("Events") && node.Events) {
+            for k, v in node.Events
+                out .= pad "  - Event: " k " = " v "`n"
+        }
             
         for child in node.Children
             out .= this.DumpNode(child, indent + 1)
@@ -406,7 +408,7 @@ class AXML {
         stack := [{ Indent: -1, Node: rootNode }]
         
         for index, line in lines {
-            if (Trim(line) == "" || SubStr(Trim(line), 1, 1) == "#" || SubStr(Trim(line), 1, 2) == "//" || SubStr(Trim(line), 1, 2) == "/*")
+            if (Trim(line) == "" || SubStr(Trim(line), 1, 1) == "#" || SubStr(Trim(line), 1, 1) == ";" || SubStr(Trim(line), 1, 2) == "//" || SubStr(Trim(line), 1, 2) == "/*")
                 continue
             
             indent := 0
@@ -523,8 +525,10 @@ class AXML {
             cloned.Properties[k] := newVal
         }
         
-        for k, v in node.Events {
-            cloned.Events[k] := v
+        if (node.HasProp("Events") && node.Events) {
+            for k, v in node.Events {
+                cloned.Events[k] := v
+            }
         }
         
         for child in node.Children {
@@ -590,12 +594,12 @@ class AXML {
                     else
                         propVal := ""
                 }
-                if (propName == "Cols") {
+                if (propName == "Cols" || propName == "ColumnDefinitions" || propName == "ColDefs") {
                     colsArr := StrSplit(propVal, ",")
                     for index, val in colsArr
                         colsArr[index] := Trim(val)
                     el.Cols(colsArr*)
-                } else if (propName == "Rows") {
+                } else if (propName == "Rows" || propName == "RowDefinitions" || propName == "RowDefs") {
                     rowsArr := StrSplit(propVal, ",")
                     for index, val in rowsArr
                         rowsArr[index] := Trim(val)
@@ -608,14 +612,16 @@ class AXML {
                 }
             }
             
-            for evtName, fnName in node.Events {
-                if (node.Name == "") {
-                    AXML._idCounter := (AXML.HasOwnProp("_idCounter") ? AXML._idCounter + 1 : 1)
-                    node.Name := "AXML_" node.Type "_" AXML._idCounter
-                    el.SetProp("x:Name", node.Name)
+            if (node.HasProp("Events") && node.Events) {
+                for evtName, fnName in node.Events {
+                    if (node.Name == "") {
+                        AXML._idCounter := (AXML.HasOwnProp("_idCounter") ? AXML._idCounter + 1 : 1)
+                        node.Name := "AXML_" node.Type "_" AXML._idCounter
+                        el.SetProp("x:Name", node.Name)
+                    }
+                    realEvtName := SubStr(evtName, 3) ; Strip "On"
+                    events.Push({ ControlName: node.Name, EventName: realEvtName, FuncName: fnName })
                 }
-                realEvtName := SubStr(evtName, 3) ; Strip "On"
-                events.Push({ ControlName: node.Name, EventName: realEvtName, FuncName: fnName })
             }
             
             if (node.Children.Length > 0) {
@@ -663,8 +669,10 @@ class AXML {
         }
 
         ; Events
-        for k, v in node.Events {
-            out .= pad "  " k ": " v "`n"
+        if (node.HasProp("Events") && node.Events) {
+            for k, v in node.Events {
+                out .= pad "  " k ": " v "`n"
+            }
         }
 
         ; Children

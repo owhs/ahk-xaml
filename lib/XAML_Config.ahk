@@ -37,7 +37,7 @@ global XAML_WEBVIEW_USER_DATA_DIR := ""
 ; When true, compiles with ICSharpCode.AvalonEdit for a robust code editor
 ; with syntax highlighting, code folding, line numbers, autocomplete, and LSP hooks.
 ; Requires AvalonEdit DLLs in lib/dep/AvalonEdit/ (auto-downloaded from NuGet if missing).
-global XAML_ENABLE_AVALONEDIT := false
+global XAML_ENABLE_AVALONEDIT := true
 
 ; --- Document Editor ---
 ; When true, compiles with OpenXml SDK + NPOI for rich document viewing/editing

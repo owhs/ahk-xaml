@@ -277,7 +277,7 @@ public class AhkWpfEngine
                                             }
                                             catch (Exception ex)
                                             {
-                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.Message) + "\n");
+                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.ToString()) + "\n");
                                                 var c = new COPYDATASTRUCT { cbData = b.Length + 1, lpData = Marshal.AllocHGlobal(b.Length + 1) };
                                                 Marshal.Copy(b, 0, c.lpData, b.Length); Marshal.WriteByte(c.lpData, b.Length, 0);
                                                 SendMessage(ahkHwnd, 0x004A, IntPtr.Zero, ref c);
@@ -307,7 +307,7 @@ public class AhkWpfEngine
                                             }
                                             catch (Exception ex)
                                             {
-                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.Message) + "\n");
+                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.ToString()) + "\n");
                                                 var c = new COPYDATASTRUCT { cbData = b.Length + 1, lpData = Marshal.AllocHGlobal(b.Length + 1) };
                                                 Marshal.Copy(b, 0, c.lpData, b.Length); Marshal.WriteByte(c.lpData, b.Length, 0);
                                                 SendMessage(ahkHwnd, 0x004A, IntPtr.Zero, ref c);
@@ -649,7 +649,7 @@ public class AhkWpfEngine
                                             }
                                             catch (Exception ex)
                                             {
-                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.Message) + "\n");
+                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.ToString()) + "\n");
                                                 var c = new COPYDATASTRUCT { cbData = b.Length + 1, lpData = Marshal.AllocHGlobal(b.Length + 1) };
                                                 Marshal.Copy(b, 0, c.lpData, b.Length); Marshal.WriteByte(c.lpData, b.Length, 0);
                                                 SendMessage(ahkHwnd, 0x004A, IntPtr.Zero, ref c);
@@ -679,7 +679,7 @@ public class AhkWpfEngine
                                             }
                                             catch (Exception ex)
                                             {
-                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.Message) + "\n");
+                                                byte[] b = Encoding.UTF8.GetBytes("EVENT|" + wId + "|Engine|Error|" + LengthPrefix(ex.ToString()) + "\n");
                                                 var c = new COPYDATASTRUCT { cbData = b.Length + 1, lpData = Marshal.AllocHGlobal(b.Length + 1) };
                                                 Marshal.Copy(b, 0, c.lpData, b.Length); Marshal.WriteByte(c.lpData, b.Length, 0);
                                                 SendMessage(ahkHwnd, 0x004A, IntPtr.Zero, ref c);
@@ -2426,6 +2426,25 @@ public class AhkWpfEngine
                         }
                     }
                     break;
+                case "Position":
+                    if (c is System.Windows.Media.Visual)
+                    {
+                        try
+                        {
+                            var visual = (System.Windows.Media.Visual)c;
+                            var parentWindow = Window.GetWindow(visual);
+                            if (parentWindow != null)
+                            {
+                                var pos = visual.TransformToAncestor(parentWindow).Transform(new System.Windows.Point(0, 0));
+                                val = pos.X + "," + pos.Y;
+                            }
+                        }
+                        catch { }
+                    }
+                    break;
+                case "Handle":
+                    val = new System.Windows.Interop.WindowInteropHelper(win).Handle.ToString();
+                    break;
                 default:
                     // Generic: try to read an arbitrary dependency property by name
                     if (c is FrameworkElement)
@@ -2472,6 +2491,11 @@ public class AhkWpfEngine
             {
                 object tag = ((TreeViewItem)tv.SelectedItem).Tag;
                 val = tag != null && tag.ToString() != "" ? tag.ToString() : "";
+                if (string.IsNullOrEmpty(val))
+                {
+                    object header = ((TreeViewItem)tv.SelectedItem).Header;
+                    val = header != null ? header.ToString() : "";
+                }
             }
         }
         else if (c is ListBox)
@@ -2549,6 +2573,26 @@ public class AhkWpfEngine
             return;
         }
 #endif
+        else if (e is System.Windows.Input.MouseEventArgs)
+        {
+            if (eName == "MouseMove" || eName == "PreviewMouseMove")
+            {
+                if ((DateTime.Now - lastSendMouseMove).TotalMilliseconds < 16) return;
+                lastSendMouseMove = DateTime.Now;
+            }
+            var me = (System.Windows.Input.MouseEventArgs)e;
+            var ctrl = win.FindName(cName) as System.Windows.IInputElement;
+            if (ctrl != null)
+            {
+                var pos = me.GetPosition(ctrl);
+                string coords = ((int)pos.X) + "," + ((int)pos.Y);
+                var sb = new StringBuilder("EVENT|" + winId + "|" + cName + "|" + eName + "|" + LengthPrefix(coords) + "\n");
+                sb.Append(cName + "=" + LengthPrefix(coords) + "\n");
+                sb.Append("DragCoords=" + LengthPrefix(coords) + "\n");
+                SendToAhkAsync(sb.ToString());
+                return;
+            }
+        }
         DumpState(cName, eName);
     }
 
@@ -3338,23 +3382,7 @@ public class AhkWpfEngine
         }
         else
         {
-            object ctrl = parts[0] == "Window" ? win : win.FindName(parts[0]);
-            if (ctrl == null && parts[0] != "Window")
-            {
-                ctrl = FindLogicalNodeDeep(win, parts[0]);
-                if (ctrl == null)
-                {
-                    WalkVisualTree(win, (DependencyObject d) =>
-                    {
-                        if (ctrl != null) return;
-                        FrameworkElement fe = d as FrameworkElement;
-                        if (fe != null && fe.Name == parts[0])
-                        {
-                            ctrl = d;
-                        }
-                    });
-                }
-            }
+            object ctrl = parts[0] == "Window" ? win : FindControlByPath(parts[0]);
             if (ctrl == null && parts[0] != "Window")
             {
                 if (EnableLogging)
@@ -3364,7 +3392,7 @@ public class AhkWpfEngine
             }
             if (ctrl != null)
             {
-                if (parts[1] == "AddItem" && ctrl is ItemsControl)
+                if (parts[1] == "AddItem")
                 {
                     if (ctrl is ListBox)
                     {
@@ -3381,7 +3409,35 @@ public class AhkWpfEngine
                             lb.ScrollIntoView(lb.SelectedItem);
                         }
                     }
-                    else
+                    else if (ctrl is TreeView)
+                    {
+                        TreeViewItem newItem = new TreeViewItem { Header = parts[2] };
+                        int openParen = parts[2].LastIndexOf('(');
+                        int closeParen = parts[2].LastIndexOf(')');
+                        if (openParen >= 0 && closeParen > openParen)
+                        {
+                            string itemName = parts[2].Substring(openParen + 1, closeParen - openParen - 1);
+                            newItem.Name = itemName;
+                            try { win.UnregisterName(itemName); } catch {}
+                            try { win.RegisterName(itemName, newItem); } catch {}
+                        }
+                        ((TreeView)ctrl).Items.Add(newItem);
+                    }
+                    else if (ctrl is TreeViewItem)
+                    {
+                        TreeViewItem newItem = new TreeViewItem { Header = parts[2] };
+                        int openParen = parts[2].LastIndexOf('(');
+                        int closeParen = parts[2].LastIndexOf(')');
+                        if (openParen >= 0 && closeParen > openParen)
+                        {
+                            string itemName = parts[2].Substring(openParen + 1, closeParen - openParen - 1);
+                            newItem.Name = itemName;
+                            try { win.UnregisterName(itemName); } catch {}
+                            try { win.RegisterName(itemName, newItem); } catch {}
+                        }
+                        ((TreeViewItem)ctrl).Items.Add(newItem);
+                    }
+                    else if (ctrl is ItemsControl)
                     {
                         ((ItemsControl)ctrl).Items.Add(parts[2]);
                     }
@@ -3422,6 +3478,14 @@ public class AhkWpfEngine
                         else if (ctrl is System.Windows.Controls.Panel)
                         {
                             ((System.Windows.Controls.Panel)ctrl).Children.Add((UIElement)element);
+                        }
+                        else if (ctrl is System.Windows.Controls.Border)
+                        {
+                            ((System.Windows.Controls.Border)ctrl).Child = (UIElement)element;
+                        }
+                        else if (ctrl is ContentControl)
+                        {
+                            ((ContentControl)ctrl).Content = element;
                         }
                     }
                     catch (Exception ex)
@@ -3567,11 +3631,37 @@ public class AhkWpfEngine
                 {
                     if (ctrl is ItemsControl)
                     {
-                        ((ItemsControl)ctrl).Items.Clear();
+                        var ic = (ItemsControl)ctrl;
+                        foreach (var item in ic.Items)
+                        {
+                            if (item is DependencyObject)
+                                UnregisterNamesRecursive((DependencyObject)item);
+                        }
+                        ic.Items.Clear();
                     }
                     else if (ctrl is System.Windows.Controls.Panel)
                     {
-                        ((System.Windows.Controls.Panel)ctrl).Children.Clear();
+                        var panel = (System.Windows.Controls.Panel)ctrl;
+                        foreach (var child in panel.Children)
+                        {
+                            if (child is DependencyObject)
+                                UnregisterNamesRecursive((DependencyObject)child);
+                        }
+                        panel.Children.Clear();
+                    }
+                    else if (ctrl is System.Windows.Controls.Border)
+                    {
+                        var border = (System.Windows.Controls.Border)ctrl;
+                        if (border.Child != null)
+                            UnregisterNamesRecursive(border.Child);
+                        border.Child = null;
+                    }
+                    else if (ctrl is ContentControl)
+                    {
+                        var cc = (ContentControl)ctrl;
+                        if (cc.Content is DependencyObject)
+                            UnregisterNamesRecursive((DependencyObject)cc.Content);
+                        cc.Content = null;
                     }
                 }
                 else if (parts[1] == "Play" && ctrl is MediaElement)
@@ -5023,6 +5113,11 @@ public class AhkWpfEngine
                     {
                         EnableListBoxDragDrop((ListBox)ctrl, parts[0]);
                     }
+                    else if (parts[1] == "EnableListBoxDragSource" && ctrl is ListBox)
+                    {
+                        string dragFormat = parts.Length > 2 ? parts[2] : "ListBoxItem";
+                        EnableListBoxDragSource((ListBox)ctrl, parts[0], dragFormat);
+                    }
                     else if (parts[1] == "EnableDragSource" && ctrl is UIElement)
                     {
                         string dragFormat = parts.Length > 2 ? parts[2] : "DragItem";
@@ -5142,6 +5237,52 @@ public class AhkWpfEngine
             }
         }
 
+    private void UnregisterNamesRecursive(DependencyObject d)
+    {
+        if (d == null) return;
+        var fe = d as FrameworkElement;
+        if (fe != null && !string.IsNullOrEmpty(fe.Name))
+        {
+            try { win.UnregisterName(fe.Name); } catch { }
+        }
+        foreach (object child in LogicalTreeHelper.GetChildren(d))
+        {
+            if (child is DependencyObject)
+            {
+                UnregisterNamesRecursive((DependencyObject)child);
+            }
+        }
+        var cc = d as ContentControl;
+        if (cc != null && cc.Content is DependencyObject)
+        {
+            UnregisterNamesRecursive((DependencyObject)cc.Content);
+        }
+        var dec = d as Decorator;
+        if (dec != null && dec.Child != null)
+        {
+            UnregisterNamesRecursive(dec.Child);
+        }
+        var panel = d as Panel;
+        if (panel != null)
+        {
+            foreach (UIElement child in panel.Children)
+            {
+                UnregisterNamesRecursive(child);
+            }
+        }
+        var ic = d as ItemsControl;
+        if (ic != null)
+        {
+            foreach (object item in ic.Items)
+            {
+                if (item is DependencyObject)
+                {
+                    UnregisterNamesRecursive((DependencyObject)item);
+                }
+            }
+        }
+    }
+
     private DependencyObject FindLogicalNodeDeep(DependencyObject parent, string name)
     {
         FrameworkElement fe = parent as FrameworkElement;
@@ -5167,6 +5308,87 @@ public class AhkWpfEngine
             callback(child);
             WalkVisualTree(child, callback);
         }
+    }
+
+    private object FindControlByPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        string[] parts = path.Split('>');
+        object current = win.FindName(parts[0]);
+        if (current == null) current = FindLogicalNodeDeep(win, parts[0]);
+        if (current == null)
+        {
+            WalkVisualTree(win, (DependencyObject d) =>
+            {
+                if (current != null) return;
+                FrameworkElement fe = d as FrameworkElement;
+                if (fe != null && fe.Name == parts[0])
+                {
+                    current = d;
+                }
+            });
+        }
+        if (current == null) return null;
+
+        for (int i = 1; i < parts.Length; i++)
+        {
+            string segment = parts[i];
+            if (current is ItemsControl)
+            {
+                ItemsControl ic = (ItemsControl)current;
+                object found = null;
+                foreach (var item in ic.Items)
+                {
+                    if (item is HeaderedItemsControl)
+                    {
+                        var hic = (HeaderedItemsControl)item;
+                        string headerStr = hic.Header != null ? hic.Header.ToString() : "";
+                        if (headerStr.Contains("(" + segment + ")") || headerStr == segment || hic.Name == segment || (hic.Tag != null && hic.Tag.ToString() == segment))
+                        {
+                            found = hic;
+                            break;
+                        }
+                    }
+                    else if (item is FrameworkElement)
+                    {
+                        var fe = (FrameworkElement)item;
+                        if (fe.Name == segment || (fe.Tag != null && fe.Tag.ToString() == segment))
+                        {
+                            found = fe;
+                            break;
+                        }
+                    }
+                }
+                if (found != null)
+                {
+                    current = found;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+            else if (current is DependencyObject)
+            {
+                object found = null;
+                WalkVisualTree((DependencyObject)current, (DependencyObject d) =>
+                {
+                    if (found != null) return;
+                    FrameworkElement fe = d as FrameworkElement;
+                    if (fe != null && (fe.Name == segment || (fe.Tag != null && fe.Tag.ToString() == segment)))
+                    {
+                        found = fe;
+                    }
+                });
+                if (found != null) current = found;
+                else return null;
+            }
+            else
+            {
+                return null;
+            }
+        }
+        return current;
     }
 
     // Canvas drag infrastructure: enables real-time C#-side mouse tracking that sends events to AHK
@@ -6099,6 +6321,56 @@ public class AhkWpfEngine
             return depObj as ListBoxItem;
         }
         return null;
+    }
+
+    private void EnableListBoxDragSource(ListBox listBox, string ctrlName, string dataFormat)
+    {
+        Point dragStart = new Point();
+        bool isDragging = false;
+
+        listBox.PreviewMouseLeftButtonDown += (s, e) =>
+        {
+            dragStart = e.GetPosition(null);
+            isDragging = true;
+        };
+
+        listBox.PreviewMouseMove += (s, e) =>
+        {
+            if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed && isDragging)
+            {
+                Point pos = e.GetPosition(null);
+                if (Math.Abs(pos.X - dragStart.X) > SystemParameters.MinimumHorizontalDragDistance ||
+                    Math.Abs(pos.Y - dragStart.Y) > SystemParameters.MinimumVerticalDragDistance)
+                {
+                    var item = GetListBoxItemUnderMouse(listBox, e.GetPosition(listBox));
+                    if (item != null)
+                    {
+                        string content = "";
+                        if (item.Content is string)
+                        {
+                            content = (string)item.Content;
+                        }
+                        else if (item.Content is System.Windows.Controls.TextBlock)
+                        {
+                            content = ((System.Windows.Controls.TextBlock)item.Content).Text;
+                        }
+                        else
+                        {
+                            content = item.Content != null ? item.Content.ToString() : "";
+                        }
+
+                        DataObject dragData = new DataObject(dataFormat, content);
+                        dragData.SetData("DragSourceName", ctrlName);
+                        try
+                        {
+                            DragDrop.DoDragDrop(listBox, dragData, DragDropEffects.Copy | DragDropEffects.Move);
+                        }
+                        catch { }
+                    }
+                    isDragging = false;
+                }
+            }
+        };
     }
 
 #if ENABLE_AVALONEDIT
