@@ -1928,6 +1928,18 @@ XAML_TEMPLATE := '
     
         <Window.Resources>
             <sys:Double x:Key="TitleBarHeight">%CaptionHeight%</sys:Double>
+            <SolidColorBrush x:Key="BgColor" Color="#1E1E1E" />
+            <SolidColorBrush x:Key="TitleBarColor" Color="Transparent" />
+            <SolidColorBrush x:Key="TitleBarForeground" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextMain" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextSub" Color="#CCCCCC" />
+            <SolidColorBrush x:Key="SidebarColor" Color="#252526" />
+            <SolidColorBrush x:Key="ControlBg" Color="#333333" />
+            <SolidColorBrush x:Key="ControlBorder" Color="#2D2D2D" />
+            <CornerRadius x:Key="WindowRadius">12</CornerRadius>
+            <Thickness x:Key="WindowBorderThickness">0</Thickness>
+            <SolidColorBrush x:Key="WindowBorderBrush" Color="Transparent" />
+            <sys:Double x:Key="TitleBarGradientOpacity">0</sys:Double>
             %resources%
         </Window.Resources>
     

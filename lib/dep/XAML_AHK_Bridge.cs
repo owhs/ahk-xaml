@@ -5224,6 +5224,7 @@ public class AhkWpfEngine
                             object val = null;
                             string pt = prop.PropertyType.Name;
                             if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
+                            else if (pt == "Color") val = System.Windows.Media.ColorConverter.ConvertFromString(parts[2]);
                             else if (prop.PropertyType.IsEnum) val = Enum.Parse(prop.PropertyType, parts[2], true);
                             else if (pt == "Double") val = double.Parse(parts[2]);
                             else if (pt == "Boolean" || pt == "Nullable`1") val = Convert.ToBoolean(parts[2]);

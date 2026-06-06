@@ -343,7 +343,14 @@ class XAMLElement {
 
     ; Inject raw XAML resources into this element
     InjectResources(rawXamlString) {
-        res := XAMLElement(this._Tag ".Resources")
+        targetTag := this._Tag ".Resources"
+        for child in this._Children {
+            if (child._Tag == targetTag) {
+                child._TextContent .= "`n" rawXamlString
+                return this
+            }
+        }
+        res := XAMLElement(targetTag)
         res._TextContent := rawXamlString
         this._Children.InsertAt(1, res)
         return this

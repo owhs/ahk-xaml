@@ -653,6 +653,12 @@ ApplyTheme(themeName) {
         
     themeMap := ThemeDefinitions[themeName]
     
+    ; Apply TitleBar defaults first so switching themes works cleanly
+    titleBarColor := themeMap.Has("Resource_TitleBarColor") ? themeMap["Resource_TitleBarColor"] : "Transparent"
+    titleBarForeground := themeMap.Has("Resource_TitleBarForeground") ? themeMap["Resource_TitleBarForeground"] : (themeMap.Has("Resource_TextMain") ? themeMap["Resource_TextMain"] : "#000000")
+    ui.Update("Resource", "TitleBarColor", titleBarColor)
+    ui.Update("Resource", "TitleBarForeground", titleBarForeground)
+
     ; Apply all parameters of this theme
     for key, val in themeMap {
         if (key == "Window_DWM") {

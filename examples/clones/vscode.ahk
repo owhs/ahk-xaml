@@ -241,7 +241,7 @@ global openTabs := ["Main", "XAML_GUI", "README"]
 global currentTab := "Main"
 
 UpdateActivityHighlights(viewName) {
-    global currentThemeMap
+    global currentThemeMap, currentTab
     acts := Map("EXPLORER", "BtnActExplorer", "SEARCH", "BtnActSearch", "SOURCE CONTROL", "BtnActSourceControl", "RUN AND DEBUG", "BtnActRun", "EXTENSIONS", "BtnActExtensions")
 
     for v, btnName in acts {
@@ -252,6 +252,12 @@ UpdateActivityHighlights(viewName) {
         ui.Update(btnName, "Foreground", fg)
         ui.Update(btnName, "BorderBrush", brd)
     }
+
+    ; Update and highlight bottom icons based on current theme and tab
+    isSettingsActive := (currentTab == "Settings")
+    ui.Update("BtnActSettings", "Foreground", isSettingsActive ? currentThemeMap["TextMain"] : currentThemeMap["TextSub"])
+    ui.Update("BtnActSettings", "BorderBrush", isSettingsActive ? currentThemeMap["TextMain"] : "Transparent")
+    ui.Update("BtnActAccounts", "Foreground", currentThemeMap["TextSub"])
 }
 
 global sidebarMode := "Fixed"
@@ -397,6 +403,7 @@ SelectTab(tabName) {
     if (type == "code") {
         ui.Update("MainTextBox", "Text", filesData[tabName].text)
     }
+    UpdateActivityHighlights(currentSidebarView)
 }
 
 CloseTab(tabName) {
@@ -431,6 +438,7 @@ CloseTab(tabName) {
             }
         }
     }
+    UpdateActivityHighlights(currentSidebarView)
 }
 
 ; Helper for Color Blending
@@ -479,21 +487,42 @@ ChangeTheme(state, ctrl, event) {
     try {
         iniPath := FileExist("themes.ini") ? "themes.ini" : "../themes.ini"
         themeData := IniRead(iniPath, theme)
-        tempMap := Map()
+        
+        themeKeys := Map()
         Loop Parse, themeData, "`n", "`r" {
             parts := StrSplit(A_LoopField, "=", " `t", 2)
             if (parts.Length == 2) {
-                key := parts[1]
-                val := parts[2]
-                if (InStr(key, "Resource_") == 1) {
-                    resName := SubStr(key, 10)
-                    tempMap[resName] := val
-                    ui.Update("Resource", resName, val)
-                    currentThemeMap[resName] := val
-                }
-                if (key == "Resource_TextSub") {
-                    ui.Update("Resource", "ErrorColor", val)
-                }
+                themeKeys[parts[1]] := parts[2]
+            }
+        }
+
+        if !themeKeys.Has("Resource_TitleBarColor")
+            themeKeys["Resource_TitleBarColor"] := "Transparent"
+        if !themeKeys.Has("Resource_TitleBarForeground") {
+            if themeKeys.Has("Resource_TextMain")
+                themeKeys["Resource_TitleBarForeground"] := themeKeys["Resource_TextMain"]
+            else
+                themeKeys["Resource_TitleBarForeground"] := "#000000"
+        }
+        if !themeKeys.Has("Resource_WindowBorderBrush")
+            themeKeys["Resource_WindowBorderBrush"] := "Transparent"
+        if !themeKeys.Has("Resource_WindowBorderThickness")
+            themeKeys["Resource_WindowBorderThickness"] := "0"
+        if !themeKeys.Has("Resource_TitleBarGradientOpacity")
+            themeKeys["Resource_TitleBarGradientOpacity"] := "0"
+
+        tempMap := Map()
+        for key, val in themeKeys {
+            if (key == "Window_DWM") {
+                ui.Update("Window", "DWM", val)
+            } else if (InStr(key, "Resource_") == 1) {
+                resName := SubStr(key, 10)
+                tempMap[resName] := val
+                ui.Update("Resource", resName, val)
+                currentThemeMap[resName] := val
+            }
+            if (key == "Resource_TextSub") {
+                ui.Update("Resource", "ErrorColor", val)
             }
         }
 
@@ -521,6 +550,8 @@ ChangeTheme(state, ctrl, event) {
         global currentTab
         if (currentTab != "")
             SelectTab(currentTab)
+        else
+            UpdateActivityHighlights(currentSidebarView)
     } catch {
         ; Do nothing
     }
