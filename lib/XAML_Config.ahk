@@ -26,7 +26,7 @@ global XAML_ENABLE_LOGGING := true
 global XAML_ENABLE_TRACING := true
 
 ; --- WebView2 ---
-global XAML_ENABLE_WEBVIEW := false
+global XAML_ENABLE_WEBVIEW := true
 
 ; --- WebView2 User Data Directory ---
 ; The directory where WebView2 stores its browser cache, cookies, and user data.

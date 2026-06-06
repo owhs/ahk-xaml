@@ -3177,7 +3177,7 @@ public class AhkWpfEngine
             var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(win);
             if (chrome != null)
             {
-                double val = double.Parse(parts[2]);
+                double val = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
                 win.Resources["GlassFrameThicknessVal"] = val;
                 chrome.GlassFrameThickness = new Thickness(val);
                 if (val == 0)
@@ -3333,7 +3333,7 @@ public class AhkWpfEngine
                         }
                     }
                 }
-                else if (type == "Double") win.Resources[parts[1]] = double.Parse(val);
+                else if (type == "Double") win.Resources[parts[1]] = double.Parse(val, System.Globalization.CultureInfo.InvariantCulture);
             }
             else
             {
@@ -3357,7 +3357,7 @@ public class AhkWpfEngine
                         {
                             try
                             {
-                                win.Resources[parts[1]] = double.Parse(parts[2]);
+                                win.Resources[parts[1]] = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
                             }
                             catch { }
                         }
@@ -3624,7 +3624,7 @@ public class AhkWpfEngine
                 }
                 else if (parts[1] == "StrokeThickness" && ctrl is System.Windows.Shapes.Shape)
                 {
-                    ((System.Windows.Shapes.Shape)ctrl).StrokeThickness = double.Parse(parts[2]);
+                    ((System.Windows.Shapes.Shape)ctrl).StrokeThickness = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
                 }
                 else if (parts[1] == "RemoveItem" && ctrl is ItemsControl)
                 {
@@ -5102,8 +5102,8 @@ public class AhkWpfEngine
                         var coords = parts[2].Split(',');
                         if (coords.Length >= 2)
                         {
-                            Canvas.SetLeft((UIElement)ctrl, double.Parse(coords[0]));
-                            Canvas.SetTop((UIElement)ctrl, double.Parse(coords[1]));
+                            Canvas.SetLeft((UIElement)ctrl, double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture));
+                            Canvas.SetTop((UIElement)ctrl, double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture));
                         }
                     }
                     else if (parts[1] == "SetCanvasMode" && ctrl is Canvas)
@@ -5129,7 +5129,7 @@ public class AhkWpfEngine
                     else if (parts[1] == "BeginStoryboard" && ctrl is FrameworkElement)
                     {
                         var sb = ((FrameworkElement)ctrl).FindResource(parts[2]) as System.Windows.Media.Animation.Storyboard;
-                        if (sb != null) sb.Begin();
+                        if (sb != null) sb.Begin((FrameworkElement)ctrl);
                     }
                     else if (parts[1] == "EnableListBoxDragDrop" && ctrl is ListBox)
                     {
@@ -5216,6 +5216,43 @@ public class AhkWpfEngine
                         sv.MouseWheel -= handler;
                         sv.MouseWheel += handler;
                     }
+                    else if (parts[1].StartsWith("Effect.") && ctrl is UIElement)
+                    {
+                        // Navigate through the Effect property to set sub-properties on ShaderEffect objects.
+                        // e.g. "MyBorder|Effect.BlurRadius|0.5" => get MyBorder.Effect, then set .BlurRadius = 0.5
+                        var effect = ((UIElement)ctrl).Effect;
+                        string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_effect_debug.log");
+                        try { System.IO.File.AppendAllText(debugPath, DateTime.Now.ToString("HH:mm:ss.fff") + " ctrl=" + parts[0] + " type=" + ctrl.GetType().Name + " effect=" + (effect != null ? effect.GetType().FullName : "NULL") + " prop=" + parts[1] + " val=" + parts[2] + "\n"); } catch { }
+                        if (effect != null)
+                        {
+                            string subPropName = parts[1].Substring(7); // strip "Effect."
+                            var subProp = effect.GetType().GetProperty(subPropName);
+                            if (subProp != null)
+                            {
+                                object val = null;
+                                string pt = subProp.PropertyType.Name;
+                                if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
+                                else if (pt == "Color") val = System.Windows.Media.ColorConverter.ConvertFromString(parts[2]);
+                                else if (pt == "Point")
+                                {
+                                    string[] coords = parts[2].Split(',');
+                                    if (coords.Length == 2)
+                                        val = new Point(double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture), double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture));
+                                    else
+                                        val = System.Windows.Point.Parse(parts[2]);
+                                }
+                                else if (subProp.PropertyType.IsEnum) val = Enum.Parse(subProp.PropertyType, parts[2], true);
+                                else if (pt == "Double") val = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
+                                else if (pt == "Boolean") val = Convert.ToBoolean(parts[2]);
+                                else val = Convert.ChangeType(parts[2], subProp.PropertyType);
+                                subProp.SetValue(effect, val, null);
+                            }
+                            else
+                            {
+                                try { System.IO.File.AppendAllText(debugPath, "  -> Property '" + subPropName + "' NOT FOUND on " + effect.GetType().Name + "\n"); } catch { }
+                            }
+                        }
+                    }
                     else
                     {
                         var prop = ctrl.GetType().GetProperty(parts[1]);
@@ -5225,8 +5262,23 @@ public class AhkWpfEngine
                             string pt = prop.PropertyType.Name;
                             if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
                             else if (pt == "Color") val = System.Windows.Media.ColorConverter.ConvertFromString(parts[2]);
+                            else if (pt == "Point")
+                            {
+                                string[] coords = parts[2].Split(',');
+                                if (coords.Length == 2)
+                                {
+                                    val = new Point(
+                                        double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture),
+                                        double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture)
+                                    );
+                                }
+                                else
+                                {
+                                    val = System.Windows.Point.Parse(parts[2]);
+                                }
+                            }
                             else if (prop.PropertyType.IsEnum) val = Enum.Parse(prop.PropertyType, parts[2], true);
-                            else if (pt == "Double") val = double.Parse(parts[2]);
+                            else if (pt == "Double") val = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
                             else if (pt == "Boolean" || pt == "Nullable`1") val = Convert.ToBoolean(parts[2]);
                             else if (pt == "Thickness") val = new System.Windows.ThicknessConverter().ConvertFromString(parts[2]);
                             else if (pt == "CornerRadius") val = new System.Windows.CornerRadiusConverter().ConvertFromString(parts[2]);
@@ -8406,4 +8458,364 @@ public interface ITaskbarList
 public class TaskbarList
 {
 }
+
+namespace AhkEffects
+{
+    public static class Bytecodes
+    {
+        public static readonly string Acrylic = "AAL///7/QQBDVEFCHAAAANcAAAAAAv//BAAAABwAAAAAAQAA0AAAAGwAAAACAAIAAQAKAHgAAAAAAAAAiAAAAAIAAQABAAYAeAAAAAAAAACUAAAAAgAAAAEAAgCgAAAAAAAAALAAAAADAAAAAQACAMAAAAAAAAAAQmx1clJhZGl1cwCrAAADAAEAAQABAAAAAAAAAE5vaXNlQW1vdW50AFRpbnRDb2xvcgCrqwEAAwABAAQAAQAAAAAAAABpbXBsaWNpdElucHV0AKurBAAMAAEAAQABAAAAAAAAAHBzXzJfMABNaWNyb3NvZnQgKFIpIEhMU0wgU2hhZGVyIENvbXBpbGVyIDEwLjEAq1EAAAUDAA+gAAAAP/yp8T0Sg8A9UI0XPlEAAAUEAA+gAAB6RDMz/kKa2ZtDAAAAAFEAAAUFAA+gg/kiPgAAAD/bD8lA2w9JwFEAAAUGAA+gjO4qRwAAAAAAAAAAAAAAAFEAAAUHAA+gAQ3QtWELtrerqio7iYiIOVEAAAUIAA+gq6qqvAAAAL4AAIA/AAAAPx8AAAIAAACAAAADsB8AAAIAAACQAAgPoAEAAAIAAAGAAAAAsAEAAAIBAAiAAwAAoAQAAAQAAAKAAgAAoAEA/4EAAFWwBAAABAEAA4ACAACgAQD/gQAA5LAEAAAEAgABgAIAAKABAP+AAAAAsAQAAAQCAAKAAgAAoAEA/4EAAFWwBAAABAMAAYACAACgAQD/gQAAALABAAACAwACgAAAVbAEAAAEBAABgAIAAKABAP+AAAAAsAEAAAIEAAKAAABVsAQAAAQFAAGAAgAAoAEA/4EAAACwBAAABAUAAoACAACgAQD/gAAAVbABAAACBgABgAAAALAEAAAEBgACgAIAAKABAP+AAABVsAQAAAQHAAOAAgAAoAEA/4AAAOSwQgAAAwAAD4AAAOSAAAjkoEIAAAMBAA+AAQDkgAAI5KBCAAADAgAPgAIA5IAACOSgQgAAAwMAD4ADAOSAAAjkoEIAAAMIAA+AAADksAAI5KBCAAADBAAPgAQA5IAACOSgQgAAAwUAD4AFAOSAAAjkoEIAAAMGAA+ABgDkgAAI5KBCAAADBwAPgAcA5IAACOSgBQAAAwAAD4AAAOSAAwBVoAQAAAQAAA+AAQDkgAMAqqAAAOSABAAABAAAD4ACAOSAAwCqoAAA5IAEAAAEAAAPgAMA5IADAFWgAADkgAQAAAQAAA+ACADkgAMA/6AAAOSABAAABAAAD4AEAOSAAwBVoAAA5IAEAAAEAAAPgAUA5IADAKqgAADkgAQAAAQAAA+ABgDkgAMAVaAAAOSABAAABAAAD4AHAOSAAwCqoAAA5IASAAAEAQAHgAAA/6AAAOSgAADkgAUAAAMCAAOAAADksAQAAKBaAAAEAQAIgAEA5IAEAMmgBAD/oAQAAAQBAAiAAQD/gAUAAKAFAFWgEwAAAgEACIABAP+ABAAABAEACIABAP+ABQCqoAUA/6AlAAAEAgACgAEA/4AHAOSgCADkoAUAAAMBAAiAAgBVgAYAAKATAAACAQAIgAEA/4ACAAADAQAIgAEA/4ADAAChBAAABAAAB4ABAP+AAQAAoAEA5IABAAACAAgPgAAA5ID//wAA";
+
+        public static readonly string Confetti = "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";
+
+        public static readonly string Glow = "AAL///7/SABDVEFCHAAAAPMAAAAAAv//BQAAABwAAAAAAQAA7AAAAIAAAAACAAAAAQACAIwAAAAAAAAAnAAAAAIAAQABAAYArAAAAAAAAAC8AAAAAgACAAEACgCsAAAAAAAAAMcAAAACAAMAAQAOAKwAAAAAAAAAzAAAAAMAAAABAAIA3AAAAAAAAABHbG93Q29sb3IAq6sBAAMAAQAEAAEAAAAAAAAAR2xvd1RoaWNrbmVzcwCrqwAAAwABAAEAAQAAAAAAAABQdWxzZVNwZWVkAFRpbWUAaW1wbGljaXRJbnB1dACrqwQADAABAAEAAQAAAAAAAABwc18yXzAATWljcm9zb2Z0IChSKSBITFNMIFNoYWRlciBDb21waWxlciAxMC4xAKtRAAAFBAAPoAAAAAAAAIC/AACAPwAAAD5RAAAFBQAPoJqZGT6amVk/AAAAAAAAAABRAAAFBgAPoIP5Ij4AAAA/2w/JQNsPScBRAAAFBwAPoAEN0LVhC7a3q6oqO4mIiDlRAAAFCAAPoKuqqrwAAAC+AACAPwAAAD8fAAACAAAAgAAAA7AfAAACAAAAkAAID6ABAAACAAABgAAAALACAAADAAACgAAAVbABAAChAgAAAwEAA4AAAOSwAQAAoQIAAAMCAAGAAAAAsAEAAKACAAADAgACgAAAVbABAAChAQAAAgMAAYABAAChAQAAAgMAAoAEAACgAgAAAwMAA4ADAOSAAADksAIAAAMEAAGAAAAAsAEAAKABAAACBAACgAAAVbABAAACBQAIgAEAAKAEAAAEBQADgAUA/4AEAMmgAADksAEAAAIGAAGAAAAAsAIAAAMGAAKAAABVsAEAAKACAAADBwADgAAA5LABAACgQgAAAwAAD4AAAOSAAAjkoEIAAAMBAA+AAQDkgAAI5KBCAAADAgAPgAIA5IAACOSgQgAAAwMAD4ADAOSAAAjkoEIAAAMIAA+AAADksAAI5KBCAAADBAAPgAQA5IAACOSgQgAAAwUAD4AFAOSAAAjkoEIAAAMGAA+ABgDkgAAI5KBCAAADBwAPgAcA5IAACOSgBQAAAwAAD4AAAOSAAwBVoAQAAAQAAA+AAQDkgAMAqqAAAOSABAAABAAAD4ACAOSAAwCqoAAA5IAEAAAEAAAPgAMA5IADAFWgAADkgAQAAAQAAA+ACADkgAMA/6AAAOSABAAABAAAD4AEAOSAAwBVoAAA5IAEAAAEAAAPgAUA5IADAKqgAADkgAQAAAQAAA+ABgDkgAMAVaAAAOSABAAABAAAD4AHAOSAAwCqoAAA5IASAAAEAQAHgAAA/6AAAOSgAADkgAUAAAMCAAOAAADksAQAAKBaAAAEAQAIgAIA5IAEAMmgBAD/oAQAAAQBAAiAAQD/gAUAAKAFAFWgEwAAAgEACIABAP+ABAAABAEACIABAP+ABQCqoAUA/6AlAAAEAgACgAEA/4AHAOSgCADkoAUAAAMBAAiAAgBVgAYAAKATAAACAQAIgAEA/4ACAAADAQAIgAEA/4ADAAChBAAABAAAB4ABAP+AAQAAoAEA5IABAAACAAgPgAAA5ID//wAA";
+
+        public static readonly string Gradient = "AAL///7/WQBDVEFCHAAAADcBAAAAAv//CAAAABwAAAAAAQAAMAEAALwAAAACAAMAAQAOAMQAAAAAAAAA1AAAAAIABgABABoAxAAAAAAAAADfAAAAAgAAAAEAAgDoAAAAAAAAAPgAAAACAAEAAQAGAOgAAAAAAAAA/wAAAAIAAgABAAoA6AAAAAAAAAAGAQAAAgAEAAEAEgDEAAAAAAAAAAwBAAACAAUAAQAWAMQAAAAAAAAAEQEAAAMAAAABAAIAIAEAAAAAAABBbmdsZQCrqwAAAwABAAEAAQAAAAAAAABCcmlnaHRuZXNzAENvbG9yMQCrqwEAAwABAAQAAQAAAAAAAABDb2xvcjIAQ29sb3IzAFNwZWVkAFRpbWUAaW1wbGljaXRJbnB1dACrBAAMAAEAAQABAAAAAAAAAHBzXzJfMABNaWNyb3NvZnQgKFIpIEhMU0wgU2hhZGVyIENvbXBpbGVyIDEwLjEAq1EAAAUHAA+gYQs2OwAAAD/bD8lA2w9JwFEAAAUIAA+g8v9/PwAAAD8AAIA/8v//PlEAAAUJAA+gAQ3QtWELtrerqio7iYiIOVEAAAUKAA+gq6qqvAAAAL4AAIA/AAAAPx8AAAIAAACAAAADsB8AAAIAAACQAAgPoEIAAAMAAA+AAADksAAI5KABAAACAAADgAcA5KAEAAAEAAABgAMAAKAAAACAAABVgBMAAAIAAAGAAAAAgAQAAAQAAAGAAAAAgAcAqqAHAP+gJQAABAEAA4AAAACACQDkoAoA5KAFAAADAAABgAEAVYAAAFWwBAAABAAAAYAAAACwAQAAgAAAAIEBAAACAQABgAUAAKAEAAAEAAABgAEAAIAEAAChAAAAgAQAAAQAAAKAAAAAgAgAAKAIAFWgBAAABAAAAYAAAACACAD/oAgAVaATAAACAAABgAAAAIAEAAAEAAABgAAAAIAHAKqgBwD/oCUAAAQBAAGAAAAAgAkA5KAKAOSgAgAAAwAAAYABAACACACqoBMAAAIAAAKAAABVgAQAAAQAAAKAAABVgAcAqqAHAP+gJQAABAEAAoAAAFWACQDkoAoA5KACAAADAAACgAEAVYAIAKqgBQAAAwAAA4AAAOSABwBVoAEAAAIBAA+AAADkoAIAAAMBAA+AAQDkgQEA5KAEAAAEAQAPgAAAVYABAOSAAADkoBIAAAQCAA+AAAAAgAIA5KABAOSABQAAAwEAB4ACAOSABgAAoAUAAAMBAAiAAAD/gAAA/4ABAAACAgAHgAAA/4AFAAADAAAPgAEA5IACAOSAAQAAAgAID4AAAOSA//8AAA==";
+
+        public static readonly string Ripple = "AAL///7/TABDVEFCHAAAAAMBAAAAAv//BgAAABwAAAAAAQAA/AAAAJQAAAACAAIAAQAKAKAAAAAAAAAAsAAAAAIAAAABAAIAuAAAAAAAAADIAAAAAgADAAEADgCgAAAAAAAAANIAAAACAAQAAQASAKAAAAAAAAAA2AAAAAIAAQABAAYAoAAAAAAAAADdAAAAAwAAAAEAAgDsAAAAAAAAAEFtcGxpdHVkZQCrqwAAAwABAAEAAQAAAAAAAABDZW50ZXIAqwEAAwABAAIAAQAAAAAAAABGcmVxdWVuY3kAU3BlZWQAVGltZQBpbXBsaWNpdElucHV0AKsEAAwAAQABAAEAAAAAAAAAcHNfMl8wAE1pY3Jvc29mdCAoUikgSExTTCBTaGFkZXIgQ29tcGlsZXIgMTAuMQCrUQAABQUAD6AAAAAAF7fROJqZGb4AAIA/UQAABQYAD6BVVdVAAACAP4P5Ij4AAAA/UQAABQcAD6DbD8lA2w9JwM3MzD4AAAAAUQAABQgAD6ABDdC1YQu2t6uqKjuJiIg5UQAABQkAD6Crqqq8AAAAvgAAgD8AAAA/HwAAAgAAAIAAAAOwHwAAAgAAAJAACA+gAgAAAwAAA4AAAOSwAADkoVoAAAQAAASAAADkgAAA5IAFAACgBwAAAgAABIAAAKqABgAAAgAABIAAAKqAAgAAAwAACIAAAKqABQBVoAEAAAIBAAiAAQAAoAQAAAQAAASAAQD/gAQAAKEAAKqABgAAAgAACIAAAP+ABQAAAwAAA4AAAP+AAADkgAUAAAMAAAiAAACqgAMAAKAEAAAEAAAIgAAA/4AGAKqgBgD/oBMAAAIAAAiAAAD/gAQAAAQAAAiAAAD/gAcAAKAHAFWgJQAABAIAAoAAAP+ACADkoAkA5KAFAAADAAAIgAIAVYACAACgBAAABAEAAYAAAKqABgAAoAYAVaACAAADAQACgAEA/4EFAP+gBQAAAwEAAYABAACAAQBVgAUAAAMAAAiAAAD/gAEAAIAEAAAEAAADgAAA5IAAAP+AAADksEIAAAMBAA+AAADkgAAI5KBCAAADAgAPgAAA5LAACOSgBAAABAEAB4AAAP+ABwCqoAEA5IACAAADAAABgAAAqoEFAKqgWAAABAAAAYAAAACABQAAoQUA/6FYAAAEAAABgAAAqoAFAACgAAAAgFgAAAQAAA+AAAAAgAIA5IABAOSAAQAAAgAID4AAAOSA//8AAA==";
+    }
+
+    public class ConfettiEffect : System.Windows.Media.Effects.ShaderEffect
+    {
+        private static readonly System.Windows.Media.Effects.PixelShader _pixelShader = new System.Windows.Media.Effects.PixelShader();
+
+        static ConfettiEffect()
+        {
+            string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkConfettiEffect.ps");
+            string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_confetti_init.log");
+            try
+            {
+                byte[] bytecode = Convert.FromBase64String(Bytecodes.Confetti);
+                System.IO.File.WriteAllBytes(tempPath, bytecode);
+                _pixelShader.UriSource = new Uri(tempPath);
+                try { System.IO.File.WriteAllText(debugPath, "OK: wrote " + bytecode.Length + " bytes to " + tempPath + " at " + DateTime.Now.ToString() + "\n"); } catch { }
+            }
+            catch (Exception ex)
+            {
+                try { System.IO.File.WriteAllText(debugPath, "ERROR: " + ex.ToString() + "\n"); } catch { }
+            }
+        }
+
+        public ConfettiEffect()
+        {
+            this.PixelShader = _pixelShader;
+            UpdateShaderValue(InputProperty);
+            UpdateShaderValue(CenterProperty);
+            UpdateShaderValue(ProgressProperty);
+            UpdateShaderValue(NumParticlesProperty);
+        }
+
+        public static readonly DependencyProperty InputProperty = System.Windows.Media.Effects.ShaderEffect.RegisterPixelShaderSamplerProperty("Input", typeof(ConfettiEffect), 0);
+        public Brush Input
+        {
+            get { return (Brush)GetValue(InputProperty); }
+            set { SetValue(InputProperty, value); }
+        }
+
+        public static readonly DependencyProperty CenterProperty = DependencyProperty.Register("Center", typeof(Point), typeof(ConfettiEffect), new PropertyMetadata(new Point(0.5, 0.5), PixelShaderConstantCallback(0)));
+        public Point Center
+        {
+            get { return (Point)GetValue(CenterProperty); }
+            set { SetValue(CenterProperty, value); }
+        }
+
+        public static readonly DependencyProperty ProgressProperty = DependencyProperty.Register("Progress", typeof(double), typeof(ConfettiEffect), new PropertyMetadata(0.0, PixelShaderConstantCallback(1)));
+        public double Progress
+        {
+            get { return (double)GetValue(ProgressProperty); }
+            set { SetValue(ProgressProperty, value); }
+        }
+
+        public static readonly DependencyProperty NumParticlesProperty = DependencyProperty.Register("NumParticles", typeof(double), typeof(ConfettiEffect), new PropertyMetadata(16.0, PixelShaderConstantCallback(2)));
+        public double NumParticles
+        {
+            get { return (double)GetValue(NumParticlesProperty); }
+            set { SetValue(NumParticlesProperty, value); }
+        }
+    }
+
+    public class AcrylicEffect : System.Windows.Media.Effects.ShaderEffect
+    {
+        private static readonly System.Windows.Media.Effects.PixelShader _pixelShader = new System.Windows.Media.Effects.PixelShader();
+
+        static AcrylicEffect()
+        {
+            string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkAcrylicEffect.ps");
+            try
+            {
+                if (!System.IO.File.Exists(tempPath))
+                {
+                    byte[] bytecode = Convert.FromBase64String(Bytecodes.Acrylic);
+                    System.IO.File.WriteAllBytes(tempPath, bytecode);
+                }
+                _pixelShader.UriSource = new Uri(tempPath);
+            }
+            catch { }
+        }
+
+        public AcrylicEffect()
+        {
+            this.PixelShader = _pixelShader;
+            UpdateShaderValue(InputProperty);
+            UpdateShaderValue(TintColorProperty);
+            UpdateShaderValue(NoiseAmountProperty);
+            UpdateShaderValue(BlurRadiusProperty);
+        }
+
+        public static readonly DependencyProperty InputProperty = System.Windows.Media.Effects.ShaderEffect.RegisterPixelShaderSamplerProperty("Input", typeof(AcrylicEffect), 0);
+        public Brush Input
+        {
+            get { return (Brush)GetValue(InputProperty); }
+            set { SetValue(InputProperty, value); }
+        }
+
+        public static readonly DependencyProperty TintColorProperty = DependencyProperty.Register("TintColor", typeof(Color), typeof(AcrylicEffect), new PropertyMetadata(Color.FromArgb(50, 255, 255, 255), PixelShaderConstantCallback(0)));
+        public Color TintColor
+        {
+            get { return (Color)GetValue(TintColorProperty); }
+            set { SetValue(TintColorProperty, value); }
+        }
+
+        public static readonly DependencyProperty NoiseAmountProperty = DependencyProperty.Register("NoiseAmount", typeof(double), typeof(AcrylicEffect), new PropertyMetadata(0.03, PixelShaderConstantCallback(1)));
+        public double NoiseAmount
+        {
+            get { return (double)GetValue(NoiseAmountProperty); }
+            set { SetValue(NoiseAmountProperty, value); }
+        }
+
+        public static readonly DependencyProperty BlurRadiusProperty = DependencyProperty.Register("BlurRadius", typeof(double), typeof(AcrylicEffect), new PropertyMetadata(0.01, PixelShaderConstantCallback(2)));
+        public double BlurRadius
+        {
+            get { return (double)GetValue(BlurRadiusProperty); }
+            set { SetValue(BlurRadiusProperty, value); }
+        }
+    }
+
+    public class GlowEffect : System.Windows.Media.Effects.ShaderEffect
+    {
+        private static readonly System.Windows.Media.Effects.PixelShader _pixelShader = new System.Windows.Media.Effects.PixelShader();
+
+        static GlowEffect()
+        {
+            string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkGlowEffect.ps");
+            try
+            {
+                if (!System.IO.File.Exists(tempPath))
+                {
+                    byte[] bytecode = Convert.FromBase64String(Bytecodes.Glow);
+                    System.IO.File.WriteAllBytes(tempPath, bytecode);
+                }
+                _pixelShader.UriSource = new Uri(tempPath);
+            }
+            catch { }
+        }
+
+        public GlowEffect()
+        {
+            this.PixelShader = _pixelShader;
+            UpdateShaderValue(InputProperty);
+            UpdateShaderValue(GlowColorProperty);
+            UpdateShaderValue(GlowThicknessProperty);
+            UpdateShaderValue(PulseSpeedProperty);
+            UpdateShaderValue(TimeProperty);
+        }
+
+        public static readonly DependencyProperty InputProperty = System.Windows.Media.Effects.ShaderEffect.RegisterPixelShaderSamplerProperty("Input", typeof(GlowEffect), 0);
+        public Brush Input
+        {
+            get { return (Brush)GetValue(InputProperty); }
+            set { SetValue(InputProperty, value); }
+        }
+
+        public static readonly DependencyProperty GlowColorProperty = DependencyProperty.Register("GlowColor", typeof(Color), typeof(GlowEffect), new PropertyMetadata(Color.FromRgb(0, 242, 254), PixelShaderConstantCallback(0)));
+        public Color GlowColor
+        {
+            get { return (Color)GetValue(GlowColorProperty); }
+            set { SetValue(GlowColorProperty, value); }
+        }
+
+        public static readonly DependencyProperty GlowThicknessProperty = DependencyProperty.Register("GlowThickness", typeof(double), typeof(GlowEffect), new PropertyMetadata(0.005, PixelShaderConstantCallback(1)));
+        public double GlowThickness
+        {
+            get { return (double)GetValue(GlowThicknessProperty); }
+            set { SetValue(GlowThicknessProperty, value); }
+        }
+
+        public static readonly DependencyProperty PulseSpeedProperty = DependencyProperty.Register("PulseSpeed", typeof(double), typeof(GlowEffect), new PropertyMetadata(2.0, PixelShaderConstantCallback(2)));
+        public double PulseSpeed
+        {
+            get { return (double)GetValue(PulseSpeedProperty); }
+            set { SetValue(PulseSpeedProperty, value); }
+        }
+
+        public static readonly DependencyProperty TimeProperty = DependencyProperty.Register("Time", typeof(double), typeof(GlowEffect), new PropertyMetadata(0.0, PixelShaderConstantCallback(3)));
+        public double Time
+        {
+            get { return (double)GetValue(TimeProperty); }
+            set { SetValue(TimeProperty, value); }
+        }
+    }
+
+    public class RippleEffect : System.Windows.Media.Effects.ShaderEffect
+    {
+        private static readonly System.Windows.Media.Effects.PixelShader _pixelShader = new System.Windows.Media.Effects.PixelShader();
+
+        static RippleEffect()
+        {
+            string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkRippleEffect.ps");
+            try
+            {
+                if (!System.IO.File.Exists(tempPath))
+                {
+                    byte[] bytecode = Convert.FromBase64String(Bytecodes.Ripple);
+                    System.IO.File.WriteAllBytes(tempPath, bytecode);
+                }
+                _pixelShader.UriSource = new Uri(tempPath);
+            }
+            catch { }
+        }
+
+        public RippleEffect()
+        {
+            this.PixelShader = _pixelShader;
+            UpdateShaderValue(InputProperty);
+            UpdateShaderValue(CenterProperty);
+            UpdateShaderValue(TimeProperty);
+            UpdateShaderValue(AmplitudeProperty);
+            UpdateShaderValue(FrequencyProperty);
+            UpdateShaderValue(SpeedProperty);
+        }
+
+        public static readonly DependencyProperty InputProperty = System.Windows.Media.Effects.ShaderEffect.RegisterPixelShaderSamplerProperty("Input", typeof(RippleEffect), 0);
+        public Brush Input
+        {
+            get { return (Brush)GetValue(InputProperty); }
+            set { SetValue(InputProperty, value); }
+        }
+
+        public static readonly DependencyProperty CenterProperty = DependencyProperty.Register("Center", typeof(Point), typeof(RippleEffect), new PropertyMetadata(new Point(0.5, 0.5), PixelShaderConstantCallback(0)));
+        public Point Center
+        {
+            get { return (Point)GetValue(CenterProperty); }
+            set { SetValue(CenterProperty, value); }
+        }
+
+        public static readonly DependencyProperty TimeProperty = DependencyProperty.Register("Time", typeof(double), typeof(RippleEffect), new PropertyMetadata(0.0, PixelShaderConstantCallback(1)));
+        public double Time
+        {
+            get { return (double)GetValue(TimeProperty); }
+            set { SetValue(TimeProperty, value); }
+        }
+
+        public static readonly DependencyProperty AmplitudeProperty = DependencyProperty.Register("Amplitude", typeof(double), typeof(RippleEffect), new PropertyMetadata(0.03, PixelShaderConstantCallback(2)));
+        public double Amplitude
+        {
+            get { return (double)GetValue(AmplitudeProperty); }
+            set { SetValue(AmplitudeProperty, value); }
+        }
+
+        public static readonly DependencyProperty FrequencyProperty = DependencyProperty.Register("Frequency", typeof(double), typeof(RippleEffect), new PropertyMetadata(30.0, PixelShaderConstantCallback(3)));
+        public double Frequency
+        {
+            get { return (double)GetValue(FrequencyProperty); }
+            set { SetValue(FrequencyProperty, value); }
+        }
+
+        public static readonly DependencyProperty SpeedProperty = DependencyProperty.Register("Speed", typeof(double), typeof(RippleEffect), new PropertyMetadata(1.2, PixelShaderConstantCallback(4)));
+        public double Speed
+        {
+            get { return (double)GetValue(SpeedProperty); }
+            set { SetValue(SpeedProperty, value); }
+        }
+    }
+
+    public class CyberpunkGradientEffect : System.Windows.Media.Effects.ShaderEffect
+    {
+        private static readonly System.Windows.Media.Effects.PixelShader _pixelShader = new System.Windows.Media.Effects.PixelShader();
+
+        static CyberpunkGradientEffect()
+        {
+            string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkCyberpunkGradientEffect.ps");
+            try
+            {
+                if (!System.IO.File.Exists(tempPath))
+                {
+                    byte[] bytecode = Convert.FromBase64String(Bytecodes.Gradient);
+                    System.IO.File.WriteAllBytes(tempPath, bytecode);
+                }
+                _pixelShader.UriSource = new Uri(tempPath);
+            }
+            catch { }
+        }
+
+        public CyberpunkGradientEffect()
+        {
+            this.PixelShader = _pixelShader;
+            UpdateShaderValue(InputProperty);
+            UpdateShaderValue(Color1Property);
+            UpdateShaderValue(Color2Property);
+            UpdateShaderValue(Color3Property);
+            UpdateShaderValue(AngleProperty);
+            UpdateShaderValue(SpeedProperty);
+            UpdateShaderValue(TimeProperty);
+            UpdateShaderValue(BrightnessProperty);
+        }
+
+        public static readonly DependencyProperty InputProperty = System.Windows.Media.Effects.ShaderEffect.RegisterPixelShaderSamplerProperty("Input", typeof(CyberpunkGradientEffect), 0);
+        public Brush Input
+        {
+            get { return (Brush)GetValue(InputProperty); }
+            set { SetValue(InputProperty, value); }
+        }
+
+        public static readonly DependencyProperty Color1Property = DependencyProperty.Register("Color1", typeof(Color), typeof(CyberpunkGradientEffect), new PropertyMetadata(Color.FromRgb(0, 242, 254), PixelShaderConstantCallback(0)));
+        public Color Color1
+        {
+            get { return (Color)GetValue(Color1Property); }
+            set { SetValue(Color1Property, value); }
+        }
+
+        public static readonly DependencyProperty Color2Property = DependencyProperty.Register("Color2", typeof(Color), typeof(CyberpunkGradientEffect), new PropertyMetadata(Color.FromRgb(253, 0, 140), PixelShaderConstantCallback(1)));
+        public Color Color2
+        {
+            get { return (Color)GetValue(Color2Property); }
+            set { SetValue(Color2Property, value); }
+        }
+
+        public static readonly DependencyProperty Color3Property = DependencyProperty.Register("Color3", typeof(Color), typeof(CyberpunkGradientEffect), new PropertyMetadata(Color.FromRgb(141, 0, 255), PixelShaderConstantCallback(2)));
+        public Color Color3
+        {
+            get { return (Color)GetValue(Color3Property); }
+            set { SetValue(Color3Property, value); }
+        }
+
+        public static readonly DependencyProperty AngleProperty = DependencyProperty.Register("Angle", typeof(double), typeof(CyberpunkGradientEffect), new PropertyMetadata(45.0, PixelShaderConstantCallback(3)));
+        public double Angle
+        {
+            get { return (double)GetValue(AngleProperty); }
+            set { SetValue(AngleProperty, value); }
+        }
+
+        public static readonly DependencyProperty SpeedProperty = DependencyProperty.Register("Speed", typeof(double), typeof(CyberpunkGradientEffect), new PropertyMetadata(0.5, PixelShaderConstantCallback(4)));
+        public double Speed
+        {
+            get { return (double)GetValue(SpeedProperty); }
+            set { SetValue(SpeedProperty, value); }
+        }
+
+        public static readonly DependencyProperty TimeProperty = DependencyProperty.Register("Time", typeof(double), typeof(CyberpunkGradientEffect), new PropertyMetadata(0.0, PixelShaderConstantCallback(5)));
+        public double Time
+        {
+            get { return (double)GetValue(TimeProperty); }
+            set { SetValue(TimeProperty, value); }
+        }
+
+        public static readonly DependencyProperty BrightnessProperty = DependencyProperty.Register("Brightness", typeof(double), typeof(CyberpunkGradientEffect), new PropertyMetadata(1.0, PixelShaderConstantCallback(6)));
+        public double Brightness
+        {
+            get { return (double)GetValue(BrightnessProperty); }
+            set { SetValue(BrightnessProperty, value); }
+        }
+    }
+}
+
 

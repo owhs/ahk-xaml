@@ -354,7 +354,7 @@ myEditor.Bind(ui)
 SplitPath(A_LineFile, , &showcaseDir)
 if (A_IsCompiled)
     showcaseDir := A_ScriptDir
-global snippetsMap := LoadSnippets(showcaseDir "\snippets.txt")
+global snippetsMap := LoadSnippets(showcaseDir "..\data\snippets.txt")
 
 LoadSnippets(filePath) {
     sMap := Map()
