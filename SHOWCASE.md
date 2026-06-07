@@ -85,7 +85,9 @@ WOW your users with state-of-the-art designs leveraging HSL color palettes, dark
 ### 🧪 Glassmorphism & Frosted Backdrops (PoC / DIY)
 Stunning UIs utilizing Acrylic or Mica backdrops, glassmorphism list boxes, rounded card borders, and smooth highlight micro-animations.
 
-![Acrylic Glassmorphism UI Components](images/frosted-listbox.png)
+| Glassmorphic Listbox | Acrylic Real-time Blur Effect |
+| :---: | :---: |
+| ![Acrylic Glassmorphism UI Components](images/frosted-listbox.png) | ![Acrylic Blur Effect](images/acrylic-effect.png) |
 
 ### 🧪 VS Code-inspired IDE Shell (PoC / DIY)
 A modern, dark-mode VS Code clone showing responsive side panels, file explorers, custom status bars, and custom scrollbar styles.
@@ -143,6 +145,57 @@ Dynamic snap points, glued multi-window dragging with relative offset tracking, 
 
 ---
 
+## 7. Classic OS Skins & Nostalgic Themes
+
+Demonstrates the adaptability of the layout system to render pixel-perfect replicas of classic operating system interfaces.
+
+### 🧪 Retro Windows Skins (PoC / DIY)
+Recreate nostalgic designs with retro borders, classic command buttons, and authentic color schemes.
+
+| Windows 95/98 Classic Theme | Windows XP Luna Theme |
+| :---: | :---: |
+| ![97 Theme](images/97theme.png) | ![Windows XP Theme](images/winxp-theme.png) |
+
+---
+
+## 8. Alternative Aesthetics & Creative UI Skins
+
+AHK-XAML lets you break free from standard Windows controls entirely. You can craft bespoke, themed interfaces targeting gaming, media players, hardware monitors, and unique branding.
+
+### 🧪 Cyberpunk Retro Dashboard (PoC / DIY)
+A dark, neon-themed terminal dashboard featuring radial analog gauges, live charts, and glowing vector status panels.
+
+![Cyberpunk Retro Dashboard](images/retro-interface.png)
+
+### 🧪 Neumorphism Music Player (PoC / DIY)
+Soft shadows and clean inset/outset drop-shadow highlights creating a premium, tactile neumorphic application interface.
+
+![Neumorphic Interface](images/neumorphism.png)
+
+### 🧪 Fantasy RPG Game UI (PoC / DIY)
+Immersive fantasy launcher or settings dialog featuring gold-trimmed borders, Gothic typography, and atmospheric dark paneling.
+
+![RPG Game UI](images/rpg-gui.png)
+
+### 🧪 Cozy / Cushy Utility UI (PoC / DIY)
+A warm, friendly green interface featuring soft rounded shapes, conversational options, and simplified sliders.
+
+![Cozy Cushy UI](images/cushy-gui.png)
+
+### 🧪 Circular Console & OBD Dial (PoC / DIY)
+A fully custom circular hardware monitor window with outer glowing status rings and radial dial markers.
+
+![Round OBD Console GUI](images/round-gui.png)
+
+### 🧪 Animated Neon Gradients & Custom Layouts (PoC / DIY)
+Smoothly animated multi-color gradients shifting in the background, showing off high-performance canvas rendering.
+
+| Animated Neon Gradient | Multi-Panel Sunset Layout |
+| :---: | :---: |
+| ![Animated Gradient Background](images/animated-gradient.png) | ![Sunset Custom GUIs](images/custom-guis.png) |
+
+---
+
 ## 🚀 And More...
 
 There is so much more you can build with AHK-XAML! 
@@ -152,5 +205,13 @@ To explore these features in action, download the repository and check out the i
 - [document_editor.ahk](examples/clones/document_editor.ahk): The themed Microsoft Word/Google Docs clone.
 - [pinned_docking.ahk](examples/showcase/pinned_docking.ahk): The panel docking alignment showcase.
 - [nodegraph.ahk](examples/showcase/nodegraph.ahk): The vector nodegraph editor canvas.
+- [win11_settings.ahk](examples/clones/win11_settings.ahk): Features a comprehensive settings interface and a theme switcher showing 21 different themes including classic `[Win97]` and `[Windows XP]`.
+- [shader_effects.ahk](examples/showcase/shader_effects.ahk): Showcases GPU-accelerated DirectX 9 pixel shaders (Acrylic Blur, Neon Glows, Water Ripples, and Animated Gradients).
+- [cozy_settings.ahk](examples/unique_guis/cozy_settings.ahk): Cozy options and setup dialog prototype.
+- [game_settings.ahk](examples/unique_guis/game_settings.ahk): Gold-trimmed Dark Fantasy RPG settings menu.
+- [neumorphism.ahk](examples/unique_guis/neumorphism.ahk): Tactile neumorphic music player dashboard.
+- [orb.ahk](examples/unique_guis/orb.ahk): Circular monitor hardware dial console.
+- [retro_transceiver.ahk](examples/unique_guis/retro_transceiver.ahk): Cyberpunk transceiver interface with neon radial gauges.
+- [pyramid.ahk](examples/unique_guis/pyramid.ahk): Sunset vector canvas dashboard layouts.
 
 Launch any example with AutoHotkey v2 to experience the speed, responsiveness, and beauty of AHK-XAML first-hand!
