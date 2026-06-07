@@ -182,17 +182,17 @@ A warm, friendly green interface featuring soft rounded shapes, conversational o
 
 ![Cozy Cushy UI](images/cushy-gui.png)
 
-### 🧪 Circular Console & OBD Dial (PoC / DIY)
-A fully custom circular hardware monitor window with outer glowing status rings and radial dial markers.
+### 🧪 Circular & Shaped Interfaces (PoC / DIY)
+Break free from standard rectangular window layouts with custom shape masks. Design radial hardware monitors or custom-joined triangular control panels.
 
-![Round OBD Console GUI](images/round-gui.png)
+| Circular OBD Console Dial | Joined Triangular Sunset Layout |
+| :---: | :---: |
+| ![Round OBD Console GUI](images/round-gui.png) | ![Sunset Custom GUIs](images/custom-guis.png) |
 
-### 🧪 Animated Neon Gradients & Custom Layouts (PoC / DIY)
+### 🧪 Animated Neon Gradients (PoC / DIY)
 Smoothly animated multi-color gradients shifting in the background, showing off high-performance canvas rendering.
 
-| Animated Neon Gradient | Multi-Panel Sunset Layout |
-| :---: | :---: |
-| ![Animated Gradient Background](images/animated-gradient.png) | ![Sunset Custom GUIs](images/custom-guis.png) |
+![Animated Gradient Background](images/animated-gradient.png)
 
 ---
 
