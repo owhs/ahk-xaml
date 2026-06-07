@@ -89,6 +89,8 @@ class CodeBox {
 }
 
 class XAMLHost {
+    static LastTheme := "Dark Mica (Win 11)"
+    static LastThemeIni := ""
     static _instances := Map()
     static _msgHooked := false
     static daemonHwnd := 0
@@ -102,6 +104,16 @@ class XAMLHost {
     static GetEngineDllName() {
         if (IsSet(CUSTOM_DLL_BUNDLE_NAME) && CUSTOM_DLL_BUNDLE_NAME != "")
             return CUSTOM_DLL_BUNDLE_NAME
+        if (A_Args.Length > 0 && A_Args[1] == "/build") {
+            if (A_Args.Length > 1 && A_Args[2] != "")
+                return A_Args[2]
+            SplitPath(A_ScriptName, , , , &nameNoExt)
+            return nameNoExt "_bundled.dll"
+        }
+        if (A_IsCompiled) {
+            SplitPath(A_ScriptName, , , , &nameNoExt)
+            return nameNoExt "_bundled.dll"
+        }
         suffix := ""
         if (IsSet(XAML_ENABLE_WEBVIEW) && XAML_ENABLE_WEBVIEW)
             suffix .= "-wv2"
@@ -109,6 +121,8 @@ class XAMLHost {
             suffix .= "-ava"
         if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT)
             suffix .= "-docs"
+        if (IsSet(XAML_ENABLE_SHADERS) && XAML_ENABLE_SHADERS)
+            suffix .= "-fx"
         return "ahk-xaml" suffix ".dll"
     }
 
@@ -271,14 +285,40 @@ class XAMLHost {
 
         if (A_IsCompiled && FileExist(A_ScriptDir "\" baseDllName)) {
             targetExe := A_ScriptDir "\" baseDllName
+        } else if (A_IsCompiled) {
+            return
         } else if (!A_IsCompiled) {
-            if !FileExist(sharedExe) {
-                if !XAMLHost.CompileEngine(libDir, sharedExe)
-                    return
+            buildLoc := IsSet(XAML_ENGINE_BUILD_LOCATION) ? XAML_ENGINE_BUILD_LOCATION : "temp"
+            if (exePath == "") {
+                if (buildLoc == "lib/dep") {
+                    targetExe := sharedExe
+                } else {
+                    targetExe := A_Temp "\AhkWpf\" baseDllName
+                }
             }
-            if !FileExist(targetExe)
-                FileCopy(sharedExe, targetExe, 1)
 
+            if (buildLoc == "temp") {
+                if !FileExist(targetExe) {
+                    if FileExist(sharedExe) {
+                        try FileCopy(sharedExe, targetExe, 1)
+                    } else if !XAMLHost.CompileEngine(libDir, targetExe) {
+                        return
+                    }
+                }
+            } else if (buildLoc == "lib/dep") {
+                if !FileExist(targetExe) {
+                    if !XAMLHost.CompileEngine(libDir, targetExe)
+                        return
+                }
+            } else { ; both
+                if !FileExist(sharedExe) {
+                    if !XAMLHost.CompileEngine(libDir, sharedExe)
+                        return
+                }
+                if (!FileExist(targetExe) || FileGetTime(sharedExe) != FileGetTime(targetExe)) {
+                    try FileCopy(sharedExe, targetExe, 1)
+                }
+            }
 
             XAMLHost.RestoreWebView2Dlls()
             XAMLHost.RestoreAvalonEditDlls()
@@ -374,9 +414,13 @@ class XAMLHost {
             return
         }
         if FileExist(this.errLog) {
+            try {
+                err := FileRead(this.errLog)
+                FileDelete(this.errLog)
+            } catch {
+                return
+            }
             SetTimer(ObjBindMethod(this, "CheckForCrashes"), 0)
-            err := FileRead(this.errLog)
-            FileDelete(this.errLog)
 
             ahkLine := "Unknown"
             snippet := ""
@@ -670,7 +714,12 @@ class XAMLHost {
             FileDelete(tempTxt)
     }
 
-    static CompileEngine(libDir, sharedExe, extraResources := []) {
+    static CompileEngine(libDir, sharedExe, extraResources := [], embedDeps := false) {
+        if (A_IsCompiled) {
+            MsgBox("AHK-XAML: Dynamic compilation is not available when the script is compiled. Please compile the engine separately.")
+            return
+        }
+
         XAMLHost.RestoreWebView2Dlls()
         errLog := A_Temp "\AhkWpf\AhkWpfError.log"
         sourceCs := libDir "\dep\XAML_AHK_Bridge.cs"
@@ -692,7 +741,10 @@ class XAMLHost {
             coreDll := libDir "\dep\WebView2\Microsoft.Web.WebView2.Core.dll"
             wpfDll := libDir "\dep\WebView2\Microsoft.Web.WebView2.Wpf.dll"
             if (FileExist(coreDll) && FileExist(wpfDll)) {
-                wvRefs := ' /reference:"' coreDll '" /resource:"' coreDll '",Microsoft.Web.WebView2.Core.dll /reference:"' wpfDll '" /resource:"' wpfDll '",Microsoft.Web.WebView2.Wpf.dll'
+                wvRefs := ' /reference:"' coreDll '" /reference:"' wpfDll '"'
+                if (embedDeps) {
+                    wvRefs .= ' /resource:"' coreDll '",Microsoft.Web.WebView2.Core.dll /resource:"' wpfDll '",Microsoft.Web.WebView2.Wpf.dll'
+                }
                 wvDef := ' /define:ENABLE_WEBVIEW'
             } else {
                 ToolTip("WebView2 DLLs not found in lib\dep\WebView2. Compiling without WebView2 support.")
@@ -706,7 +758,10 @@ class XAMLHost {
         if (IsSet(XAML_ENABLE_AVALONEDIT) && XAML_ENABLE_AVALONEDIT) {
             aeDll := libDir "\dep\AvalonEdit\ICSharpCode.AvalonEdit.dll"
             if (FileExist(aeDll)) {
-                aeRefs := ' /reference:"' aeDll '" /resource:"' aeDll '",ICSharpCode.AvalonEdit.dll /reference:System.Windows.Forms.dll /reference:WindowsFormsIntegration.dll'
+                aeRefs := ' /reference:"' aeDll '" /reference:System.Windows.Forms.dll /reference:WindowsFormsIntegration.dll'
+                if (embedDeps) {
+                    aeRefs .= ' /resource:"' aeDll '",ICSharpCode.AvalonEdit.dll'
+                }
                 aeDef := ' /define:ENABLE_AVALONEDIT'
             } else {
                 ToolTip("AvalonEdit DLL not found in lib\dep\AvalonEdit. Compiling without IDE support.")
@@ -720,23 +775,42 @@ class XAMLHost {
         if (IsSet(XAML_ENABLE_DOCUMENT) && XAML_ENABLE_DOCUMENT) {
             oxDll := libDir "\dep\OpenXml\DocumentFormat.OpenXml.dll"
             if (FileExist(oxDll)) {
-                docRefs := ' /reference:"' oxDll '" /resource:"' oxDll '",DocumentFormat.OpenXml.dll'
+                docRefs := ' /reference:"' oxDll '"'
+                if (embedDeps) {
+                    docRefs .= ' /resource:"' oxDll '",DocumentFormat.OpenXml.dll'
+                }
                 ; Also add NPOI if available for .doc support
                 npoiDll := libDir "\dep\OpenXml\NPOI.dll"
                 if (FileExist(npoiDll)) {
-                    docRefs .= ' /reference:"' npoiDll '" /resource:"' npoiDll '",NPOI.dll'
+                    docRefs .= ' /reference:"' npoiDll '"'
+                    if (embedDeps) {
+                        docRefs .= ' /resource:"' npoiDll '",NPOI.dll'
+                    }
                     npoiOoxmlDll := libDir "\dep\OpenXml\NPOI.OOXML.dll"
                     npoiOpenXml4NetDll := libDir "\dep\OpenXml\NPOI.OpenXml4Net.dll"
-                    if (FileExist(npoiOoxmlDll))
-                        docRefs .= ' /reference:"' npoiOoxmlDll '" /resource:"' npoiOoxmlDll '",NPOI.OOXML.dll'
-                    if (FileExist(npoiOpenXml4NetDll))
-                        docRefs .= ' /reference:"' npoiOpenXml4NetDll '" /resource:"' npoiOpenXml4NetDll '",NPOI.OpenXml4Net.dll'
+                    if (FileExist(npoiOoxmlDll)) {
+                        docRefs .= ' /reference:"' npoiOoxmlDll '"'
+                        if (embedDeps) {
+                            docRefs .= ' /resource:"' npoiOoxmlDll '",NPOI.OOXML.dll'
+                        }
+                    }
+                    if (FileExist(npoiOpenXml4NetDll)) {
+                        docRefs .= ' /reference:"' npoiOpenXml4NetDll '"'
+                        if (embedDeps) {
+                            docRefs .= ' /resource:"' npoiOpenXml4NetDll '",NPOI.OpenXml4Net.dll'
+                        }
+                    }
                 }
                 docDef := ' /define:ENABLE_DOCUMENT'
             } else {
                 ToolTip("OpenXml DLL not found in lib\dep\OpenXml. Compiling without Document Editor support.")
                 SetTimer(() => ToolTip(), -4000)
             }
+        }
+
+        shDef := ""
+        if (IsSet(XAML_ENABLE_SHADERS) && XAML_ENABLE_SHADERS) {
+            shDef := ' /define:ENABLE_SHADERS'
         }
 
         ; Embed component resources directly into the DLL for zero-disk-IO loading
@@ -763,7 +837,7 @@ class XAMLHost {
             return false
         }
 
-        cmd := A_ComSpec ' /c ""' cscPath '" /nologo /target:winexe /out:"' sharedExe '" /lib:"' wpfDir '" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:PresentationFramework.dll /reference:PresentationCore.dll /reference:WindowsBase.dll /reference:System.Xaml.dll /reference:UIAutomationProvider.dll /reference:UIAutomationTypes.dll' wvRefs wvDef aeRefs aeDef docRefs docDef embeddedRes ' "' sourceCs '" > "' errLog '" 2>&1"'
+        cmd := A_ComSpec ' /c ""' cscPath '" /nologo /target:winexe /out:"' sharedExe '" /lib:"' wpfDir '" /reference:System.dll /reference:System.Core.dll /reference:System.Xml.dll /reference:PresentationFramework.dll /reference:PresentationCore.dll /reference:WindowsBase.dll /reference:System.Xaml.dll /reference:UIAutomationProvider.dll /reference:UIAutomationTypes.dll' wvRefs wvDef aeRefs aeDef docRefs docDef shDef embeddedRes ' "' sourceCs '" > "' errLog '" 2>&1"'
         RunWait(cmd, "", "Hide")
 
         if !FileExist(sharedExe) {
@@ -809,6 +883,7 @@ class XAMLHost {
             XAMLHost.ShowErrorDialog("Engine Compile Error", "Failed to compile background engine.", snippet, errOut, false, reason)
             return false
         }
+        try FileDelete(errLog)
         return true
     }
 
@@ -839,6 +914,10 @@ class XAMLHost {
 
 
     BundleCustomEngine(targetExe) {
+        if (A_IsCompiled) {
+            MsgBox("AHK-XAML: Dynamic compilation is not available when the script is compiled. Please compile the engine separately.")
+            return
+        }
         ; If running in /build mode, write AXML metadata directly to the source script for standalone compiled execution
         if (A_Args.Length > 0 && A_Args[1] == "/build" && IsSet(AXML) && HasProp(AXML, "ParsedData") && AXML.ParsedData.Length > 0) {
             metadataStr := AXML.SerializeParsedData()
@@ -953,7 +1032,7 @@ class XAMLHost {
             return false
         }
 
-        success := XAMLHost.CompileEngine(libDir, targetExe, resList)
+        success := XAMLHost.CompileEngine(libDir, targetExe, resList, true)
 
         if (success) {
             SplitPath(targetExe, , &targetDir)
@@ -984,34 +1063,62 @@ class XAMLHost {
 
         if !DirExist(A_Temp "\AhkWpf")
             DirCreate(A_Temp "\AhkWpf")
-        if FileExist(this.errLog)
-            FileDelete(this.errLog)
+        if FileExist(this.errLog) {
+            try FileDelete(this.errLog)
+        }
 
         SplitPath(A_LineFile, , &libDir)
         sharedExe := libDir "\dep\" baseDllName
 
         if (A_IsCompiled && FileExist(A_ScriptDir "\" baseDllName)) {
             targetExe := A_ScriptDir "\" baseDllName
+        } else if (A_IsCompiled) {
+            MsgBox("Error: The companion DLL '" baseDllName "' was not found side-by-side with the executable.`n`nPlease ensure '" baseDllName "' is in the same directory as '" A_ScriptName "'.", "AHK-XAML", "Iconx AlwaysOnTop")
+            return ""
         } else if (!A_IsCompiled) {
             sourceCs := libDir "\dep\XAML_AHK_Bridge.cs"
-            if (FileExist(sourceCs) && FileExist(sharedExe) && FileGetTime(sourceCs) > FileGetTime(sharedExe)) {
-                try {
-                    while ProcessExist(baseDllName) {
-                        ProcessClose(baseDllName)
-                        Sleep(50)
+            configAhk := libDir "\XAML_Config.ahk"
+            configTime := FileExist(configAhk) ? FileGetTime(configAhk) : 0
+            forceCompile := IsSet(XAML_FORCE_DYNAMIC_COMPILE) && XAML_FORCE_DYNAMIC_COMPILE
+            buildLoc := IsSet(XAML_ENGINE_BUILD_LOCATION) ? XAML_ENGINE_BUILD_LOCATION : "temp"
+
+            if (buildLoc == "lib/dep") {
+                targetExe := sharedExe
+            } else {
+                targetExe := A_Temp "\AhkWpf\" baseDllName
+            }
+
+            if (forceCompile && FileExist(sourceCs)) {
+                compileTarget := (buildLoc == "temp") ? targetExe : sharedExe
+                if (!FileExist(compileTarget) || FileGetTime(sourceCs) > FileGetTime(compileTarget) || configTime > FileGetTime(compileTarget)) {
+                    try {
+                        while ProcessExist(baseDllName) {
+                            ProcessClose(baseDllName)
+                            Sleep(50)
+                        }
                     }
+                    try FileDelete(compileTarget)
+                    if !XAMLHost.CompileEngine(libDir, compileTarget)
+                        return ""
                 }
-                try FileDelete(sharedExe)
             }
-            if !FileExist(sharedExe) {
-                if !XAMLHost.CompileEngine(libDir, sharedExe)
-                    return ""
+
+            if (!FileExist(targetExe)) {
+                if (buildLoc == "temp" && FileExist(sharedExe)) {
+                    try FileCopy(sharedExe, targetExe, 1)
+                } else if (!forceCompile) {
+                    if !XAMLHost.CompileEngine(libDir, targetExe)
+                        return ""
+                }
             }
-            if (this.exePath == "") {
+
+            if (buildLoc == "both" && FileExist(sharedExe)) {
                 if (!FileExist(targetExe) || FileGetTime(sharedExe) != FileGetTime(targetExe)) {
                     try FileCopy(sharedExe, targetExe, 1)
                 }
-            } else if (!FileExist(targetExe)) {
+            }
+
+            if (this.exePath != "" && !FileExist(targetExe)) {
                 MsgBox("Custom Engine DLL not found: " targetExe, "AHK-XAML", "Iconx")
                 return ""
             }
@@ -1028,8 +1135,9 @@ class XAMLHost {
             ;@Ahk2Exe-IgnoreEnd
         }
 
-        if FileExist(this.errLog)
-            FileDelete(this.errLog)
+        if FileExist(this.errLog) {
+            try FileDelete(this.errLog)
+        }
 
         if !XAMLHost.daemonHwnd {
             if (IsSet(XAML_IN_PROCESS_PREVIEW) && XAML_IN_PROCESS_PREVIEW) {
@@ -1870,8 +1978,10 @@ class XAMLHost {
         fileObj.Close()
 
         bytes := ComObjArray(0x11, fileSize)
-        Loop fileSize
-            bytes[A_Index - 1] := NumGet(rawBuf, A_Index - 1, "UChar")
+        pvData := 0
+        DllCall("oleaut32\SafeArrayAccessData", "Ptr", ComObjValue(bytes), "Ptr*", &pvData)
+        DllCall("ntdll\RtlMoveMemory", "Ptr", pvData, "Ptr", rawBuf.Ptr, "Ptr", fileSize)
+        DllCall("oleaut32\SafeArrayUnaccessData", "Ptr", ComObjValue(bytes))
 
         static nullObj := ComValue(13, 0)
         loadArgs := ComObjArray(0xC, 1)

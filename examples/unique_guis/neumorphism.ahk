@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.0
+﻿#Requires AutoHotkey v2.0
 #SingleInstance Force
 #Include "..\..\lib\XAML_GUI.ahk"
 #Include "..\..\lib\XAML_Components.ahk"

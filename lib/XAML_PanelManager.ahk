@@ -181,6 +181,14 @@ class PanelManager {
         ; Register real-time WinEventHook location monitoring for pinned window follow
         this.SetupWinEventHook()
 
+        ; Start CheckPanelMoved timer for MainWindow if it's registered in Panels
+        for id, pInfo in this.Panels {
+            if (pInfo.GuiHwnd == this.MainWindow) {
+                SetTimer(ObjBindMethod(this, "CheckPanelMoved", id), 1000)
+                break
+            }
+        }
+
         ; Show panels that were open last time
         this.Trace("PanelManager.Init before ShowPanel loop")
         for id, p in this.Panels {
@@ -193,6 +201,12 @@ class PanelManager {
 
     static RegisterPanel(id, title, defaultX, defaultY, defaultW, defaultH) {
         pinnedVal := this.GetSavedState(id, "Pinned", "0") == "1"
+        offX := this.GetSavedState(id, "PinOffsetX", "0")
+        offY := this.GetSavedState(id, "PinOffsetY", "0")
+        if (offX == "" || !RegExMatch(offX, "^-?\d+$"))
+            offX := "0"
+        if (offY == "" || !RegExMatch(offY, "^-?\d+$"))
+            offY := "0"
         this.Panels[id] := {
             Title: title,
             X: defaultX, Y: defaultY, W: defaultW, H: defaultH,
@@ -200,8 +214,8 @@ class PanelManager {
             GuiHwnd: 0,
             Snapped: this.GetSavedState(id, "Snapped", "0") == "1",
             Pinned: pinnedVal,
-            PinOffsetX: Integer(this.GetSavedState(id, "PinOffsetX", "0")),
-            PinOffsetY: Integer(this.GetSavedState(id, "PinOffsetY", "0"))
+            PinOffsetX: Integer(offX),
+            PinOffsetY: Integer(offY)
         }
     }
 
@@ -702,6 +716,44 @@ class PanelManager {
                     ; Single window final snap lock
                     WinMove(aX, aY, aW, aH, "ahk_id " rootHwnd)
                 }
+
+                ; Save final positions of all windows immediately to INI
+                if (this.MainWindow && WinExist("ahk_id " this.MainWindow)) {
+                    WinGetPos(&mX, &mY, , , "ahk_id " this.MainWindow)
+                    if (mX > -10000 && mY > -10000) {
+                        mainId := ""
+                        for id, pInfo in this.Panels {
+                            if (pInfo.GuiHwnd == this.MainWindow) {
+                                mainId := id
+                                break
+                            }
+                        }
+                        if (mainId != "") {
+                            this.Panels[mainId].X := mX
+                            this.Panels[mainId].Y := mY
+                            this.SaveState(mainId, "X", mX)
+                            this.SaveState(mainId, "Y", mY)
+                        } else {
+                            IniWrite(mX, this.IniFile, "MainWindow", "X")
+                            IniWrite(mY, this.IniFile, "MainWindow", "Y")
+                        }
+                    }
+                }
+                for id, pInfo in this.Panels {
+                    if (pInfo.GuiHwnd && WinExist("ahk_id " pInfo.GuiHwnd)) {
+                        WinGetPos(&x, &y, &w, &h, "ahk_id " pInfo.GuiHwnd)
+                        if (x > -10000 && y > -10000) {
+                            pInfo.X := x
+                            pInfo.Y := y
+                            pInfo.W := w
+                            pInfo.H := h
+                            this.SaveState(id, "X", x)
+                            this.SaveState(id, "Y", y)
+                            this.SaveState(id, "W", w)
+                            this.SaveState(id, "H", h)
+                        }
+                    }
+                }
             }
 
             ; Clean up all drag tracking states cleanly
@@ -906,6 +958,15 @@ class PanelManager {
                 this.SaveState(id, "PinOffsetX", pInfo.PinOffsetX)
                 this.SaveState(id, "PinOffsetY", pInfo.PinOffsetY)
             }
+            if (pInfo.GuiHwnd && WinExist("ahk_id " pInfo.GuiHwnd)) {
+                WinSetStyle("-0x40000", "ahk_id " pInfo.GuiHwnd)
+                try pInfo.Instance.Update("Window", "ResizeMode", "NoResize")
+            }
+        } else {
+            if (pInfo.GuiHwnd && WinExist("ahk_id " pInfo.GuiHwnd)) {
+                WinSetStyle("+0x40000", "ahk_id " pInfo.GuiHwnd)
+                try pInfo.Instance.Update("Window", "ResizeMode", "CanResize")
+            }
         }
 
         ; Dynamic icon and color update in the local title bar
@@ -1077,7 +1138,8 @@ class PanelManager {
                 this.SaveState(id, "Snapped", isSnapped ? "1" : "0")
 
                 radius := isSnapped ? "0" : IniRead(this.IniFile, "Global", "PanelRadius", "0")
-                if (pInfo.GuiHwnd) {
+                isTransparent := (pInfo.Instance != "" && HasProp(pInfo.Instance, "xaml") && (InStr(pInfo.Instance.xaml, 'AllowsTransparency="True"') || InStr(pInfo.Instance.xaml, 'AllowsTransparency="true"')))
+                if (pInfo.GuiHwnd && !isTransparent) {
                     cornerPref := Buffer(4)
                     NumPut("Int", radius == "0" ? 1 : 0, cornerPref)
                     DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", pInfo.GuiHwnd, "UInt", 33, "Ptr", cornerPref.Ptr, "UInt", 4)
@@ -1095,7 +1157,8 @@ class PanelManager {
             mainRadius := isMainSnapped ? "0" : IniRead(this.IniFile, "Global", "PanelRadius", "0")
 
             ; Apply to DWM corner radius of the main window
-            if (this.MainWindow) {
+            isMainTransparent := (this.MainInstance != "" && HasProp(this.MainInstance, "xaml") && (InStr(this.MainInstance.xaml, 'AllowsTransparency="True"') || InStr(this.MainInstance.xaml, 'AllowsTransparency="true"')))
+            if (this.MainWindow && !isMainTransparent) {
                 cornerPref := Buffer(4)
                 NumPut("Int", mainRadius == "0" ? 1 : 0, cornerPref)
                 DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", this.MainWindow, "UInt", 33, "Ptr", cornerPref.Ptr, "UInt", 4)
@@ -1115,6 +1178,19 @@ class PanelManager {
 
     static ShowPanel(id) {
         if (this.Panels[id].Instance != "") {
+            pInfo := this.Panels[id]
+            if (pInfo.GuiHwnd) {
+                if (pInfo.Pinned && this.MainWindow && WinExist("ahk_id " this.MainWindow)) {
+                    WinGetPos(&mX, &mY, , , "ahk_id " this.MainWindow)
+                    x := mX + pInfo.PinOffsetX
+                    y := mY + pInfo.PinOffsetY
+                    WinMove(x, y, pInfo.W, pInfo.H, "ahk_id " pInfo.GuiHwnd)
+                } else {
+                    x := this.GetSavedState(id, "X", pInfo.X)
+                    y := this.GetSavedState(id, "Y", pInfo.Y)
+                    WinMove(x, y, pInfo.W, pInfo.H, "ahk_id " pInfo.GuiHwnd)
+                }
+            }
             WinActivate("ahk_id " this.Panels[id].GuiHwnd)
             return
         }
@@ -1197,12 +1273,14 @@ class PanelManager {
             n2.Add("TreeViewItem").Header("StackPanel")
         }
 
-        tmp := StrReplace(XAML_TEMPLATE, "%CaptionHeight%", titleHeight)
-        this.Trace("Creating XAMLHost for panel: " id)
-        ui := XAMLHost(StrReplace(tmp, "%app%", main.ToString()), "", "")
-
+        showInAltTab := IniRead(this.IniFile, "Global", "ShowInAltTab", "0") == "1"
+        expectedOwner := showInAltTab ? 0 : this.MainWindow
         showInTaskbar := IniRead(this.IniFile, "Global", "ShowInTaskbar", "0") == "1"
         initShowInTaskbar := showInTaskbar ? "True" : "False"
+
+        tmp := StrReplace(XAML_TEMPLATE, "%CaptionHeight%", titleHeight)
+        this.Trace("Creating XAMLHost for panel: " id)
+        ui := XAMLHost(StrReplace(tmp, "%app%", main.ToString()), "", expectedOwner)
 
         ui.xaml := StrReplace(ui.xaml, 'Width="940" Height="700"', 'Title="' pInfo.Title '" ShowInTaskbar="' initShowInTaskbar '" Width="' w '" Height="' h '" Left="' x '" Top="' y '"')
         ui.xaml := StrReplace(ui.xaml, 'WindowStartupLocation="CenterScreen"', 'WindowStartupLocation="Manual"')
@@ -1224,6 +1302,7 @@ class PanelManager {
                     key := SubStr(parts[1], 10)
                     val := parts[2]
                     if (InStr(val, "#") == 1) {
+                        ui.xaml := RegExReplace(ui.xaml, 'i)<SolidColorBrush\s+x:Key="' key '"[^>]*>')
                         resourceInject .= '<SolidColorBrush x:Key="' key '" Color="' val '"/>'
                     }
                 }
@@ -1295,7 +1374,8 @@ class PanelManager {
         }
 
         radius := pInfo.Snapped ? "0" : IniRead(this.IniFile, "Global", "PanelRadius", "0")
-        if (pInfo.GuiHwnd) {
+        isTransparent := (pInfo.Instance != "" && HasProp(pInfo.Instance, "xaml") && (InStr(pInfo.Instance.xaml, 'AllowsTransparency="True"') || InStr(pInfo.Instance.xaml, 'AllowsTransparency="true"')))
+        if (pInfo.GuiHwnd && !isTransparent) {
             cornerPref := Buffer(4)
             NumPut("Int", radius == "0" ? 1 : 0, cornerPref)
             DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", pInfo.GuiHwnd, "UInt", 33, "Ptr", cornerPref.Ptr, "UInt", 4)
@@ -1312,12 +1392,15 @@ class PanelManager {
     static UpdateRadius(radius) {
         for id, pInfo in this.Panels {
             if (pInfo.Instance != "" && pInfo.GuiHwnd) {
+                isTransparent := (HasProp(pInfo.Instance, "xaml") && (InStr(pInfo.Instance.xaml, 'AllowsTransparency="True"') || InStr(pInfo.Instance.xaml, 'AllowsTransparency="true"')))
                 effectiveRadius := pInfo.Snapped ? "0" : radius
                 pInfo.Instance.Update("Resource", "PanelRadius", "CornerRadius:" effectiveRadius)
                 pInfo.Instance.Update("Resource", "CloseBtnRadius", "CornerRadius:0," effectiveRadius ",0,0")
-                cornerPref := Buffer(4)
-                NumPut("Int", effectiveRadius == "0" ? 1 : 0, cornerPref)
-                DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", pInfo.GuiHwnd, "UInt", 33, "Ptr", cornerPref.Ptr, "UInt", 4)
+                if (!isTransparent) {
+                    cornerPref := Buffer(4)
+                    NumPut("Int", effectiveRadius == "0" ? 1 : 0, cornerPref)
+                    DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", pInfo.GuiHwnd, "UInt", 33, "Ptr", cornerPref.Ptr, "UInt", 4)
+                }
             }
         }
     }
@@ -1340,11 +1423,17 @@ class PanelManager {
     static UpdateShadows(enabled) {
         valStr := enabled ? "-1" : "0"
         if (this.MainInstance) {
-            try this.MainInstance.Update("Window", "GlassFrameThickness", valStr)
+            isTransparent := (HasProp(this.MainInstance, "xaml") && (InStr(this.MainInstance.xaml, 'AllowsTransparency="True"') || InStr(this.MainInstance.xaml, 'AllowsTransparency="true"')))
+            if (!isTransparent) {
+                try this.MainInstance.Update("Window", "GlassFrameThickness", valStr)
+            }
         }
         for id, pInfo in this.Panels {
             if (pInfo.Instance != "" && pInfo.GuiHwnd) {
-                try pInfo.Instance.Update("Window", "GlassFrameThickness", valStr)
+                isTransparent := (HasProp(pInfo.Instance, "xaml") && (InStr(pInfo.Instance.xaml, 'AllowsTransparency="True"') || InStr(pInfo.Instance.xaml, 'AllowsTransparency="true"')))
+                if (!isTransparent) {
+                    try pInfo.Instance.Update("Window", "GlassFrameThickness", valStr)
+                }
             }
         }
     }
@@ -1380,13 +1469,22 @@ class PanelManager {
             if (this.FollowMode) {
                 try {
                     WinWait("ahk_id " ui.wpfHwnd, , 2)
-                    WinSetStyle("-0x10000", "ahk_id " ui.wpfHwnd)
+                    isTransparent := (HasProp(ui, "xaml") && (InStr(ui.xaml, 'AllowsTransparency="True"') || InStr(ui.xaml, 'AllowsTransparency="true"')))
+                    if (!isTransparent) {
+                        WinSetStyle("-0x10000", "ahk_id " ui.wpfHwnd)
+                    }
+                    if (this.Panels[id].Pinned) {
+                        WinSetStyle("-0x40000", "ahk_id " ui.wpfHwnd)
+                        try ui.Update("Window", "ResizeMode", "NoResize")
+                    }
                 }
             }
 
             showInAltTab := IniRead(this.IniFile, "Global", "ShowInAltTab", "0") == "1"
             expectedOwner := showInAltTab ? 0 : this.MainWindow
-            try ui.Update("Window", "NativeOwner", String(expectedOwner))
+            if (ui.wpfHwnd != this.MainWindow) {
+                try ui.Update("Window", "NativeOwner", String(expectedOwner))
+            }
 
             try {
                 hIcon := DllCall("user32\SendMessage", "Ptr", this.MainWindow, "UInt", 0x007F, "Ptr", 1, "Ptr", 0, "Ptr") ; WM_GETICON (ICON_BIG)
@@ -1410,12 +1508,15 @@ class PanelManager {
                 this.Trace("Title set failed: " errTitle.Message)
             }
 
-            try {
-                noShadows := IniRead(this.IniFile, "Global", "NoShadows", "0") == "1"
-                valStr := noShadows ? "0" : "-1"
-                ui.Update("Window", "GlassFrameThickness", valStr)
-            } catch as errShadows {
-                this.Trace("Shadows update failed: " errShadows.Message)
+            isTransparent := (HasProp(ui, "xaml") && (InStr(ui.xaml, 'AllowsTransparency="True"') || InStr(ui.xaml, 'AllowsTransparency="true"')))
+            if (!isTransparent) {
+                try {
+                    noShadows := IniRead(this.IniFile, "Global", "NoShadows", "0") == "1"
+                    valStr := noShadows ? "0" : "-1"
+                    ui.Update("Window", "GlassFrameThickness", valStr)
+                } catch as errShadows {
+                    this.Trace("Shadows update failed: " errShadows.Message)
+                }
             }
 
             try {
@@ -1506,14 +1607,17 @@ class PanelManager {
                 }
 
                 if (pInfo.GuiHwnd && WinExist("ahk_id " pInfo.GuiHwnd)) {
-                    try {
-                        currentOwner := DllCall("user32\GetWindow", "Ptr", pInfo.GuiHwnd, "UInt", 4, "Ptr") ; GW_OWNER = 4
-                        if (currentOwner != expectedOwner) {
-                            this.Trace("Watchdog: Reconnecting panel " id)
-                            pInfo.Instance.Update("Window", "NativeOwner", String(expectedOwner))
-                            this.ApplyPanelVisibility(id)
+                    if (pInfo.GuiHwnd != this.MainWindow) {
+                        try {
+                            currentOwner := DllCall("user32\GetWindow", "Ptr", pInfo.GuiHwnd, "UInt", 4, "Ptr") ; GW_OWNER = 4
+                            if (currentOwner != expectedOwner) {
+                                this.Trace("Watchdog: Reconnecting panel " id)
+                                pInfo.Instance.Update("Window", "NativeOwner", String(expectedOwner))
+                                this.ApplyPanelVisibility(id)
+                            }
                         }
                     }
+                }
 
                     pTheme := IniRead(this.IniFile, id, "Theme", "Inherit")
                     resolvedTheme := (pTheme == "Inherit") ? this.CurrentTheme : pTheme
@@ -1525,7 +1629,6 @@ class PanelManager {
                 }
             }
         }
-    }
 
     static OnPanelClosing(id) {
         this.Panels[id].Instance := ""
@@ -1568,7 +1671,9 @@ class PanelManager {
 #Left:: return
 #Right:: return
 #Up:: return
+#Down:: return
 +#Left:: return
 +#Right:: return
 +#Up:: return
++#Down:: return
 #HotIf

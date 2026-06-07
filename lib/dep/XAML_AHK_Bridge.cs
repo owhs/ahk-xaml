@@ -30,6 +30,8 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 #endif
+using Color = System.Windows.Media.Color;
+
 
 [assembly: AssemblyTitle("ahk-xaml Engine")]
 [assembly: AssemblyDescription("WPF Rendering Engine for AutoHotkey")]
@@ -208,6 +210,13 @@ public class AhkWpfEngine
                     AppDomain.CurrentDomain.AssemblyResolve += (sender, resolveArgs) =>
                     {
                         string name = new AssemblyName(resolveArgs.Name).Name;
+                        foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
+                        {
+                            if (a.GetName().Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return a;
+                            }
+                        }
                         string resourceName = name + ".dll";
                         var asm = Assembly.GetExecutingAssembly();
                         string matchName = null;
@@ -231,6 +240,25 @@ public class AhkWpfEngine
                                 }
                             }
                         }
+                        try
+                        {
+                            string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf");
+                            string localDllPath = System.IO.Path.Combine(tempPath, resourceName);
+                            if (System.IO.File.Exists(localDllPath))
+                            {
+                                return Assembly.LoadFrom(localDllPath);
+                            }
+                            string exeDir = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                            if (!string.IsNullOrEmpty(exeDir))
+                            {
+                                string altPath = System.IO.Path.Combine(exeDir, resourceName);
+                                if (System.IO.File.Exists(altPath))
+                                {
+                                    return System.Reflection.Assembly.LoadFrom(altPath);
+                                }
+                            }
+                        }
+                        catch { }
                         return null;
                     };
 
@@ -568,6 +596,13 @@ public class AhkWpfEngine
         AppDomain.CurrentDomain.AssemblyResolve += (sender, resolveArgs) =>
         {
             string name = new AssemblyName(resolveArgs.Name).Name;
+            foreach (var a in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                if (a.GetName().Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return a;
+                }
+            }
             string resourceName = name + ".dll";
             var asm = Assembly.GetExecutingAssembly();
             string matchName = null;
@@ -591,6 +626,25 @@ public class AhkWpfEngine
                     }
                 }
             }
+            try
+            {
+                string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf");
+                string localDllPath = System.IO.Path.Combine(tempPath, resourceName);
+                if (System.IO.File.Exists(localDllPath))
+                {
+                    return System.Reflection.Assembly.LoadFrom(localDllPath);
+                }
+                string exeDir = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (!string.IsNullOrEmpty(exeDir))
+                {
+                    string altPath = System.IO.Path.Combine(exeDir, resourceName);
+                    if (System.IO.File.Exists(altPath))
+                    {
+                        return System.Reflection.Assembly.LoadFrom(altPath);
+                    }
+                }
+            }
+            catch { }
             return null;
         };
 
@@ -1220,7 +1274,10 @@ public class AhkWpfEngine
             }
         }
 
-        if (!isBin && !isBaml && xamlFilePath != "STREAM" && !string.IsNullOrEmpty(xamlFilePath) && System.IO.File.Exists(xamlFilePath))
+        if (!isBin && !isBaml && xamlFilePath != "STREAM" && !string.IsNullOrEmpty(xamlFilePath) &&
+            !xamlFilePath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+            !xamlFilePath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
+            System.IO.File.Exists(xamlFilePath))
         {
             try { System.IO.File.Delete(xamlFilePath); } catch { }
         }
@@ -1231,8 +1288,8 @@ public class AhkWpfEngine
             if (Application.Current == null) new Application();
             try
             {
-                using (var bamlStream = isCustomEngine ? 
-                       System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("app_payload.baml") : 
+                using (var bamlStream = isCustomEngine ?
+                       System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("app_payload.baml") :
                        System.IO.File.OpenRead(xamlFilePath))
                 {
                     var bamlReader = new System.Windows.Baml2006.Baml2006Reader(bamlStream);
@@ -1303,7 +1360,7 @@ public class AhkWpfEngine
                     Application.Current.Resources[entry.Key] = entry.Value;
                 }
                 // Re-apply WindowChrome (stripped during BAML compilation)
-                if (win.WindowStyle == WindowStyle.None)
+                if (win.WindowStyle == WindowStyle.None && !win.AllowsTransparency)
                 {
                     var chrome = new System.Windows.Shell.WindowChrome();
                     chrome.GlassFrameThickness = new Thickness(-1);
@@ -1930,6 +1987,16 @@ public class AhkWpfEngine
 
     private void UpdateSnapState(Window win)
     {
+        if (win.AllowsTransparency)
+        {
+            var btnMaximizeTxt2 = win.FindName("BtnMaximizeTxt") as TextBlock;
+            if (btnMaximizeTxt2 != null)
+            {
+                btnMaximizeTxt2.Text = win.WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
+            }
+            return;
+        }
+
         CornerRadius baseRad = new CornerRadius(0);
         if (win.Resources.Contains("PanelRadius"))
         {
@@ -3137,6 +3204,8 @@ public class AhkWpfEngine
             int backdrop = int.Parse(p[0]), dark = int.Parse(p[1]);
             win.Resources["DWM_Backdrop"] = backdrop;
             win.Resources["DWM_Dark"] = dark;
+            if (win.AllowsTransparency) return; // Do not apply DWM backdrop / colors that clobber transparency!
+
             DwmSetWindowAttribute(hwnd, 20, ref dark, 4);
             DwmSetWindowAttribute(hwnd, 38, ref backdrop, 4);
             int borderColor = -2; // DWMWA_COLOR_NONE (0xFFFFFFFE)
@@ -3153,6 +3222,43 @@ public class AhkWpfEngine
                 DwmExtendFrameIntoClientArea(hwnd, ref margins);
                 SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, 0x0037);
             }
+        }
+        else if (parts[0] == "Window" && parts[1] == "ResizeMode")
+        {
+            try
+            {
+                if (parts[2].ToLower() == "noresize" || parts[2] == "0")
+                {
+                    win.ResizeMode = System.Windows.ResizeMode.NoResize;
+                    var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(win);
+                    if (chrome != null)
+                    {
+                        chrome.ResizeBorderThickness = new Thickness(0);
+                    }
+                }
+                else
+                {
+                    win.ResizeMode = System.Windows.ResizeMode.CanResize;
+                    var chrome = System.Windows.Shell.WindowChrome.GetWindowChrome(win);
+                    if (chrome != null)
+                    {
+                        double val = 0;
+                        if (win.Resources.Contains("GlassFrameThicknessVal"))
+                        {
+                            val = (double)win.Resources["GlassFrameThicknessVal"];
+                        }
+                        if (val == 0)
+                        {
+                            chrome.ResizeBorderThickness = win.AllowsTransparency ? new Thickness(0) : new Thickness(6);
+                        }
+                        else
+                        {
+                            chrome.ResizeBorderThickness = new Thickness(0);
+                        }
+                    }
+                }
+            }
+            catch { }
         }
         else if (parts[0] == "Window" && parts[1] == "NativeOwner")
         {
@@ -3182,7 +3288,7 @@ public class AhkWpfEngine
                 chrome.GlassFrameThickness = new Thickness(val);
                 if (val == 0)
                 {
-                    chrome.ResizeBorderThickness = new Thickness(6);
+                    chrome.ResizeBorderThickness = win.AllowsTransparency ? new Thickness(0) : new Thickness(6);
                 }
                 else
                 {
@@ -3191,22 +3297,25 @@ public class AhkWpfEngine
                 IntPtr hwndVal = new WindowInteropHelper(win).Handle;
                 if (hwndVal != IntPtr.Zero)
                 {
-                    int policy = (val == 0) ? 1 : 2; // 1 = DWMNCRP_DISABLED (No Shadow), 2 = DWMNCRP_ENABLED (Shadow)
-                    DwmSetWindowAttribute(hwndVal, 2, ref policy, 4); // DWMWA_NCRENDERING_POLICY = 2
-
-                    MARGINS margins = (val == 0) ? new MARGINS(0, 0, 0, 0) : new MARGINS(-1, -1, -1, -1);
-                    DwmExtendFrameIntoClientArea(hwndVal, ref margins);
-
-                    SetWindowPos(hwndVal, IntPtr.Zero, 0, 0, 0, 0, 0x0037); // SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER
-
-                    if (win.Resources.Contains("DWM_Backdrop") && win.Resources.Contains("DWM_Dark"))
+                    if (!win.AllowsTransparency)
                     {
-                        int backdrop = (int)win.Resources["DWM_Backdrop"];
-                        int dark = (int)win.Resources["DWM_Dark"];
-                        DwmSetWindowAttribute(hwndVal, 20, ref dark, 4);
-                        DwmSetWindowAttribute(hwndVal, 38, ref backdrop, 4);
-                        int borderColor = -2; // DWMWA_COLOR_NONE
-                        DwmSetWindowAttribute(hwndVal, 34, ref borderColor, 4);
+                        int policy = (val == 0) ? 1 : 2; // 1 = DWMNCRP_DISABLED (No Shadow), 2 = DWMNCRP_ENABLED (Shadow)
+                        DwmSetWindowAttribute(hwndVal, 2, ref policy, 4); // DWMWA_NCRENDERING_POLICY = 2
+
+                        MARGINS margins = (val == 0) ? new MARGINS(0, 0, 0, 0) : new MARGINS(-1, -1, -1, -1);
+                        DwmExtendFrameIntoClientArea(hwndVal, ref margins);
+
+                        SetWindowPos(hwndVal, IntPtr.Zero, 0, 0, 0, 0, 0x0037); // SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER
+
+                        if (win.Resources.Contains("DWM_Backdrop") && win.Resources.Contains("DWM_Dark"))
+                        {
+                            int backdrop = (int)win.Resources["DWM_Backdrop"];
+                            int dark = (int)win.Resources["DWM_Dark"];
+                            DwmSetWindowAttribute(hwndVal, 20, ref dark, 4);
+                            DwmSetWindowAttribute(hwndVal, 38, ref backdrop, 4);
+                            int borderColor = -2; // DWMWA_COLOR_NONE
+                            DwmSetWindowAttribute(hwndVal, 34, ref borderColor, 4);
+                        }
                     }
                     UpdateSnapState(win);
                 }
@@ -3278,7 +3387,7 @@ public class AhkWpfEngine
                     }
 
                     // Re-apply DWM attributes after recreate
-                    if (win.Resources.Contains("DWM_Backdrop") && win.Resources.Contains("DWM_Dark"))
+                    if (!win.AllowsTransparency && win.Resources.Contains("DWM_Backdrop") && win.Resources.Contains("DWM_Dark"))
                     {
                         int backdrop = (int)win.Resources["DWM_Backdrop"];
                         int dark = (int)win.Resources["DWM_Dark"];
@@ -3288,7 +3397,7 @@ public class AhkWpfEngine
                         DwmSetWindowAttribute(hwndVal, 34, ref borderColor, 4);
                     }
 
-                    if (win.Resources.Contains("GlassFrameThicknessVal"))
+                    if (!win.AllowsTransparency && win.Resources.Contains("GlassFrameThicknessVal"))
                     {
                         double val = (double)win.Resources["GlassFrameThicknessVal"];
                         int policy = (val == 0) ? 1 : 2;
@@ -3418,8 +3527,8 @@ public class AhkWpfEngine
                         {
                             string itemName = parts[2].Substring(openParen + 1, closeParen - openParen - 1);
                             newItem.Name = itemName;
-                            try { win.UnregisterName(itemName); } catch {}
-                            try { win.RegisterName(itemName, newItem); } catch {}
+                            try { win.UnregisterName(itemName); } catch { }
+                            try { win.RegisterName(itemName, newItem); } catch { }
                         }
                         ((TreeView)ctrl).Items.Add(newItem);
                     }
@@ -3432,8 +3541,8 @@ public class AhkWpfEngine
                         {
                             string itemName = parts[2].Substring(openParen + 1, closeParen - openParen - 1);
                             newItem.Name = itemName;
-                            try { win.UnregisterName(itemName); } catch {}
-                            try { win.RegisterName(itemName, newItem); } catch {}
+                            try { win.UnregisterName(itemName); } catch { }
+                            try { win.RegisterName(itemName, newItem); } catch { }
                         }
                         ((TreeViewItem)ctrl).Items.Add(newItem);
                     }
@@ -3506,12 +3615,14 @@ public class AhkWpfEngine
                     }
                     catch (Exception ex)
                     {
-                        try {
+                        try
+                        {
                             System.IO.File.AppendAllText(
                                 System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfError.log"),
                                 "XamlParse Error in AddXamlItem:\n" + ex.ToString() + "\n\n"
                             );
-                        } catch {}
+                        }
+                        catch { }
                         Console.WriteLine("XamlParse Error: " + ex.Message);
                     }
                 }
@@ -5049,268 +5160,268 @@ public class AhkWpfEngine
                 }
 #endif
                 else if (parts[1] == "StartPositionTimer" && ctrl is MediaElement)
+                {
+                    // Handle all position tracking and seeking in C# to avoid IPC feedback loops
+                    var me = (MediaElement)ctrl;
+                    string sliderName = parts.Length > 2 ? parts[2] : "";
+                    if (!string.IsNullOrEmpty(sliderName))
                     {
-                        // Handle all position tracking and seeking in C# to avoid IPC feedback loops
-                        var me = (MediaElement)ctrl;
-                        string sliderName = parts.Length > 2 ? parts[2] : "";
-                        if (!string.IsNullOrEmpty(sliderName))
+                        var slider = win.FindName(sliderName) as Slider;
+                        if (slider != null)
                         {
-                            var slider = win.FindName(sliderName) as Slider;
-                            if (slider != null)
-                            {
-                                bool isSeeking = false;
-                                bool isUpdating = false;
+                            bool isSeeking = false;
+                            bool isUpdating = false;
 
-                                // Detect user drag start/end via Thumb routed events
-                                slider.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((ds, de) =>
-                                {
-                                    isSeeking = true;
-                                }));
-                                slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((dc, dce) =>
+                            // Detect user drag start/end via Thumb routed events
+                            slider.AddHandler(Thumb.DragStartedEvent, new DragStartedEventHandler((ds, de) =>
+                            {
+                                isSeeking = true;
+                            }));
+                            slider.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((dc, dce) =>
+                            {
+                                me.Position = TimeSpan.FromSeconds(slider.Value);
+                                isSeeking = false;
+                            }));
+
+                            // Also handle click-on-track seeking
+                            slider.PreviewMouseLeftButtonUp += (mu, mue) =>
+                            {
+                                if (!isSeeking)
                                 {
                                     me.Position = TimeSpan.FromSeconds(slider.Value);
-                                    isSeeking = false;
-                                }));
-
-                                // Also handle click-on-track seeking
-                                slider.PreviewMouseLeftButtonUp += (mu, mue) =>
-                                {
-                                    if (!isSeeking)
-                                    {
-                                        me.Position = TimeSpan.FromSeconds(slider.Value);
-                                    }
-                                };
-
-                                // Timer syncs slider position (only when user isn't seeking)
-                                var posTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-                                posTimer.Tick += (s, e) =>
-                                {
-                                    if (me.NaturalDuration.HasTimeSpan && !isSeeking)
-                                    {
-                                        isUpdating = true;
-                                        slider.Maximum = me.NaturalDuration.TimeSpan.TotalSeconds;
-                                        slider.Value = me.Position.TotalSeconds;
-                                        isUpdating = false;
-                                    }
-                                };
-                                posTimer.Start();
-                            }
-                        }
-                    }
-                    else if (parts[1] == "SetPosition" && ctrl is UIElement)
-                    {
-                        var coords = parts[2].Split(',');
-                        if (coords.Length >= 2)
-                        {
-                            Canvas.SetLeft((UIElement)ctrl, double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture));
-                            Canvas.SetTop((UIElement)ctrl, double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture));
-                        }
-                    }
-                    else if (parts[1] == "SetCanvasMode" && ctrl is Canvas)
-                    {
-                        canvasModes[parts[0]] = parts[2];
-                    }
-                    else if (parts[1] == "EnableZoomPan" && ctrl is Canvas)
-                    {
-                        EnableCanvasZoomPan((Canvas)ctrl);
-                    }
-                    else if (parts[1] == "ZoomAll" && ctrl is Canvas)
-                    {
-                        ZoomAllCanvas((Canvas)ctrl);
-                    }
-                    else if (parts[1] == "Zoom" && ctrl is Canvas)
-                    {
-                        ZoomCanvas((Canvas)ctrl, double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture));
-                    }
-                    else if (parts[1] == "EnableDrag" && ctrl is FrameworkElement)
-                    {
-                        EnableCanvasDrag((FrameworkElement)ctrl, parts[0], parts.Length > 2 ? parts[2] : "");
-                    }
-                    else if (parts[1] == "BeginStoryboard" && ctrl is FrameworkElement)
-                    {
-                        var sb = ((FrameworkElement)ctrl).FindResource(parts[2]) as System.Windows.Media.Animation.Storyboard;
-                        if (sb != null) sb.Begin((FrameworkElement)ctrl);
-                    }
-                    else if (parts[1] == "EnableListBoxDragDrop" && ctrl is ListBox)
-                    {
-                        EnableListBoxDragDrop((ListBox)ctrl, parts[0]);
-                    }
-                    else if (parts[1] == "EnableListBoxDragSource" && ctrl is ListBox)
-                    {
-                        string dragFormat = parts.Length > 2 ? parts[2] : "ListBoxItem";
-                        EnableListBoxDragSource((ListBox)ctrl, parts[0], dragFormat);
-                    }
-                    else if (parts[1] == "EnableDragSource" && ctrl is UIElement)
-                    {
-                        string dragFormat = parts.Length > 2 ? parts[2] : "DragItem";
-                        EnableGenericDragSource((UIElement)ctrl, parts[0], dragFormat);
-                    }
-                    else if (parts[1] == "EnableDropTarget" && ctrl is UIElement)
-                    {
-                        string dropFormat = parts.Length > 2 ? parts[2] : "DragItem";
-                        EnableGenericDropTarget((UIElement)ctrl, parts[0], dropFormat);
-                    }
-                    else if (parts[1] == "Close" && ctrl is Window)
-                    {
-                        var ownerHwnd = new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner;
-                        if (ownerHwnd != IntPtr.Zero)
-                        {
-                            SetForegroundWindow(ownerHwnd);
-                        }
-                        win.Dispatcher.BeginInvoke(new Action(() => ((Window)ctrl).Close()));
-                    }
-                    else if (parts[1] == "AppendText" && ctrl is System.Windows.Controls.TextBox)
-                    {
-                        var tb = (System.Windows.Controls.TextBox)ctrl;
-                        tb.AppendText(parts[2]);
-                        tb.ScrollToEnd();
-                    }
-                    else if (parts[1] == "InsertText" && ctrl is System.Windows.Controls.TextBox)
-                    {
-                        var tb = (System.Windows.Controls.TextBox)ctrl;
-                        int idx = tb.CaretIndex;
-                        string pre = tb.Text.Substring(0, idx);
-                        string post = tb.Text.Substring(idx);
-                        tb.Text = pre + parts[2] + post;
-                        tb.CaretIndex = idx + parts[2].Length;
-                    }
-                    else if (parts[1] == "NativeOwner" && ctrl is Window)
-                    {
-                        new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner = new IntPtr(long.Parse(parts[2]));
-                        InheritWindowIconAndTitle((Window)ctrl, parts[2]);
-                    }
-                    else if (parts[1] == "Focus" && ctrl is UIElement)
-                    {
-                        if (parts[2].ToLower() == "true" || parts[2] == "1") ((UIElement)ctrl).Focus();
-                        else System.Windows.Input.Keyboard.ClearFocus();
-                    }
-                    else if (parts[1] == "BringIntoView" && ctrl is FrameworkElement)
-                    {
-                        ((FrameworkElement)ctrl).BringIntoView();
-                    }
-                    else if (parts[1] == "Invoke" && ctrl is System.Windows.Controls.Primitives.ButtonBase)
-                    {
-                        if (ctrl is System.Windows.Controls.Primitives.ToggleButton)
-                        {
-                            var tPeer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer((System.Windows.Controls.Primitives.ToggleButton)ctrl);
-                            var toggleProv = tPeer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle) as System.Windows.Automation.Provider.IToggleProvider;
-                            if (toggleProv != null) toggleProv.Toggle();
-                        }
-                        else if (ctrl is System.Windows.Controls.Button)
-                        {
-                            var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer((System.Windows.Controls.Button)ctrl);
-                            var invokeProv = peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke) as System.Windows.Automation.Provider.IInvokeProvider;
-                            if (invokeProv != null) invokeProv.Invoke();
-                        }
-                    }
-                    else if (parts[1] == "TrapScroll" && ctrl is ScrollViewer)
-                    {
-                        var sv = (ScrollViewer)ctrl;
-                        System.Windows.Input.MouseWheelEventHandler handler = (s, e) =>
-                        {
-                            sv.ScrollToVerticalOffset(sv.VerticalOffset - e.Delta / 3.0);
-                            e.Handled = true;
-                        };
-                        sv.PreviewMouseWheel -= handler;
-                        sv.PreviewMouseWheel += handler;
-                        sv.MouseWheel -= handler;
-                        sv.MouseWheel += handler;
-                    }
-                    else if (parts[1].StartsWith("Effect.") && ctrl is UIElement)
-                    {
-                        // Navigate through the Effect property to set sub-properties on ShaderEffect objects.
-                        // e.g. "MyBorder|Effect.BlurRadius|0.5" => get MyBorder.Effect, then set .BlurRadius = 0.5
-                        var effect = ((UIElement)ctrl).Effect;
-                        string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_effect_debug.log");
-                        try { System.IO.File.AppendAllText(debugPath, DateTime.Now.ToString("HH:mm:ss.fff") + " ctrl=" + parts[0] + " type=" + ctrl.GetType().Name + " effect=" + (effect != null ? effect.GetType().FullName : "NULL") + " prop=" + parts[1] + " val=" + parts[2] + "\n"); } catch { }
-                        if (effect != null)
-                        {
-                            string subPropName = parts[1].Substring(7); // strip "Effect."
-                            var subProp = effect.GetType().GetProperty(subPropName);
-                            if (subProp != null)
-                            {
-                                object val = null;
-                                string pt = subProp.PropertyType.Name;
-                                if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
-                                else if (pt == "Color") val = System.Windows.Media.ColorConverter.ConvertFromString(parts[2]);
-                                else if (pt == "Point")
-                                {
-                                    string[] coords = parts[2].Split(',');
-                                    if (coords.Length == 2)
-                                        val = new Point(double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture), double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture));
-                                    else
-                                        val = System.Windows.Point.Parse(parts[2]);
                                 }
-                                else if (subProp.PropertyType.IsEnum) val = Enum.Parse(subProp.PropertyType, parts[2], true);
-                                else if (pt == "Double") val = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
-                                else if (pt == "Boolean") val = Convert.ToBoolean(parts[2]);
-                                else val = Convert.ChangeType(parts[2], subProp.PropertyType);
-                                subProp.SetValue(effect, val, null);
-                            }
-                            else
+                            };
+
+                            // Timer syncs slider position (only when user isn't seeking)
+                            var posTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+                            posTimer.Tick += (s, e) =>
                             {
-                                try { System.IO.File.AppendAllText(debugPath, "  -> Property '" + subPropName + "' NOT FOUND on " + effect.GetType().Name + "\n"); } catch { }
-                            }
+                                if (me.NaturalDuration.HasTimeSpan && !isSeeking)
+                                {
+                                    isUpdating = true;
+                                    slider.Maximum = me.NaturalDuration.TimeSpan.TotalSeconds;
+                                    slider.Value = me.Position.TotalSeconds;
+                                    isUpdating = false;
+                                }
+                            };
+                            posTimer.Start();
                         }
                     }
-                    else
+                }
+                else if (parts[1] == "SetPosition" && ctrl is UIElement)
+                {
+                    var coords = parts[2].Split(',');
+                    if (coords.Length >= 2)
                     {
-                        var prop = ctrl.GetType().GetProperty(parts[1]);
-                        if (prop != null)
+                        Canvas.SetLeft((UIElement)ctrl, double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture));
+                        Canvas.SetTop((UIElement)ctrl, double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                }
+                else if (parts[1] == "SetCanvasMode" && ctrl is Canvas)
+                {
+                    canvasModes[parts[0]] = parts[2];
+                }
+                else if (parts[1] == "EnableZoomPan" && ctrl is Canvas)
+                {
+                    EnableCanvasZoomPan((Canvas)ctrl);
+                }
+                else if (parts[1] == "ZoomAll" && ctrl is Canvas)
+                {
+                    ZoomAllCanvas((Canvas)ctrl);
+                }
+                else if (parts[1] == "Zoom" && ctrl is Canvas)
+                {
+                    ZoomCanvas((Canvas)ctrl, double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture));
+                }
+                else if (parts[1] == "EnableDrag" && ctrl is FrameworkElement)
+                {
+                    EnableCanvasDrag((FrameworkElement)ctrl, parts[0], parts.Length > 2 ? parts[2] : "");
+                }
+                else if (parts[1] == "BeginStoryboard" && ctrl is FrameworkElement)
+                {
+                    var sb = ((FrameworkElement)ctrl).FindResource(parts[2]) as System.Windows.Media.Animation.Storyboard;
+                    if (sb != null) sb.Begin((FrameworkElement)ctrl);
+                }
+                else if (parts[1] == "EnableListBoxDragDrop" && ctrl is ListBox)
+                {
+                    EnableListBoxDragDrop((ListBox)ctrl, parts[0]);
+                }
+                else if (parts[1] == "EnableListBoxDragSource" && ctrl is ListBox)
+                {
+                    string dragFormat = parts.Length > 2 ? parts[2] : "ListBoxItem";
+                    EnableListBoxDragSource((ListBox)ctrl, parts[0], dragFormat);
+                }
+                else if (parts[1] == "EnableDragSource" && ctrl is UIElement)
+                {
+                    string dragFormat = parts.Length > 2 ? parts[2] : "DragItem";
+                    EnableGenericDragSource((UIElement)ctrl, parts[0], dragFormat);
+                }
+                else if (parts[1] == "EnableDropTarget" && ctrl is UIElement)
+                {
+                    string dropFormat = parts.Length > 2 ? parts[2] : "DragItem";
+                    EnableGenericDropTarget((UIElement)ctrl, parts[0], dropFormat);
+                }
+                else if (parts[1] == "Close" && ctrl is Window)
+                {
+                    var ownerHwnd = new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner;
+                    if (ownerHwnd != IntPtr.Zero)
+                    {
+                        SetForegroundWindow(ownerHwnd);
+                    }
+                    win.Dispatcher.BeginInvoke(new Action(() => ((Window)ctrl).Close()));
+                }
+                else if (parts[1] == "AppendText" && ctrl is System.Windows.Controls.TextBox)
+                {
+                    var tb = (System.Windows.Controls.TextBox)ctrl;
+                    tb.AppendText(parts[2]);
+                    tb.ScrollToEnd();
+                }
+                else if (parts[1] == "InsertText" && ctrl is System.Windows.Controls.TextBox)
+                {
+                    var tb = (System.Windows.Controls.TextBox)ctrl;
+                    int idx = tb.CaretIndex;
+                    string pre = tb.Text.Substring(0, idx);
+                    string post = tb.Text.Substring(idx);
+                    tb.Text = pre + parts[2] + post;
+                    tb.CaretIndex = idx + parts[2].Length;
+                }
+                else if (parts[1] == "NativeOwner" && ctrl is Window)
+                {
+                    new System.Windows.Interop.WindowInteropHelper((Window)ctrl).Owner = new IntPtr(long.Parse(parts[2]));
+                    InheritWindowIconAndTitle((Window)ctrl, parts[2]);
+                }
+                else if (parts[1] == "Focus" && ctrl is UIElement)
+                {
+                    if (parts[2].ToLower() == "true" || parts[2] == "1") ((UIElement)ctrl).Focus();
+                    else System.Windows.Input.Keyboard.ClearFocus();
+                }
+                else if (parts[1] == "BringIntoView" && ctrl is FrameworkElement)
+                {
+                    ((FrameworkElement)ctrl).BringIntoView();
+                }
+                else if (parts[1] == "Invoke" && ctrl is System.Windows.Controls.Primitives.ButtonBase)
+                {
+                    if (ctrl is System.Windows.Controls.Primitives.ToggleButton)
+                    {
+                        var tPeer = new System.Windows.Automation.Peers.ToggleButtonAutomationPeer((System.Windows.Controls.Primitives.ToggleButton)ctrl);
+                        var toggleProv = tPeer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Toggle) as System.Windows.Automation.Provider.IToggleProvider;
+                        if (toggleProv != null) toggleProv.Toggle();
+                    }
+                    else if (ctrl is System.Windows.Controls.Button)
+                    {
+                        var peer = new System.Windows.Automation.Peers.ButtonAutomationPeer((System.Windows.Controls.Button)ctrl);
+                        var invokeProv = peer.GetPattern(System.Windows.Automation.Peers.PatternInterface.Invoke) as System.Windows.Automation.Provider.IInvokeProvider;
+                        if (invokeProv != null) invokeProv.Invoke();
+                    }
+                }
+                else if (parts[1] == "TrapScroll" && ctrl is ScrollViewer)
+                {
+                    var sv = (ScrollViewer)ctrl;
+                    System.Windows.Input.MouseWheelEventHandler handler = (s, e) =>
+                    {
+                        sv.ScrollToVerticalOffset(sv.VerticalOffset - e.Delta / 3.0);
+                        e.Handled = true;
+                    };
+                    sv.PreviewMouseWheel -= handler;
+                    sv.PreviewMouseWheel += handler;
+                    sv.MouseWheel -= handler;
+                    sv.MouseWheel += handler;
+                }
+                else if (parts[1].StartsWith("Effect.") && ctrl is UIElement)
+                {
+                    // Navigate through the Effect property to set sub-properties on ShaderEffect objects.
+                    // e.g. "MyBorder|Effect.BlurRadius|0.5" => get MyBorder.Effect, then set .BlurRadius = 0.5
+                    var effect = ((UIElement)ctrl).Effect;
+                    string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_effect_debug.log");
+                    try { System.IO.File.AppendAllText(debugPath, DateTime.Now.ToString("HH:mm:ss.fff") + " ctrl=" + parts[0] + " type=" + ctrl.GetType().Name + " effect=" + (effect != null ? effect.GetType().FullName : "NULL") + " prop=" + parts[1] + " val=" + parts[2] + "\n"); } catch { }
+                    if (effect != null)
+                    {
+                        string subPropName = parts[1].Substring(7); // strip "Effect."
+                        var subProp = effect.GetType().GetProperty(subPropName);
+                        if (subProp != null)
                         {
                             object val = null;
-                            string pt = prop.PropertyType.Name;
+                            string pt = subProp.PropertyType.Name;
                             if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
                             else if (pt == "Color") val = System.Windows.Media.ColorConverter.ConvertFromString(parts[2]);
                             else if (pt == "Point")
                             {
                                 string[] coords = parts[2].Split(',');
                                 if (coords.Length == 2)
-                                {
-                                    val = new Point(
-                                        double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture),
-                                        double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture)
-                                    );
-                                }
+                                    val = new Point(double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture), double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture));
                                 else
-                                {
                                     val = System.Windows.Point.Parse(parts[2]);
-                                }
                             }
-                            else if (prop.PropertyType.IsEnum) val = Enum.Parse(prop.PropertyType, parts[2], true);
+                            else if (subProp.PropertyType.IsEnum) val = Enum.Parse(subProp.PropertyType, parts[2], true);
                             else if (pt == "Double") val = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
-                            else if (pt == "Boolean" || pt == "Nullable`1") val = Convert.ToBoolean(parts[2]);
-                            else if (pt == "Thickness") val = new System.Windows.ThicknessConverter().ConvertFromString(parts[2]);
-                            else if (pt == "CornerRadius") val = new System.Windows.CornerRadiusConverter().ConvertFromString(parts[2]);
-                            else if (pt == "ImageSource")
-                            {
-                                if (parts[2].StartsWith("HICON:"))
-                                {
-                                    IntPtr hIcon = new IntPtr(long.Parse(parts[2].Substring(6)));
-                                    val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(hIcon, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-                                }
-                                else if (parts[2].StartsWith("HBITMAP:"))
-                                {
-                                    IntPtr hBmp = new IntPtr(long.Parse(parts[2].Substring(8)));
-                                    val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
-                                }
-                                else
-                                {
-                                    val = new System.Windows.Media.ImageSourceConverter().ConvertFromString(parts[2]);
-                                }
-                            }
-                            else if (pt == "GridLength") val = new System.Windows.GridLengthConverter().ConvertFromString(parts[2]);
-                            else if (pt == "Object" || pt == "String") val = parts[2];
-                            else if (pt == "Uri") val = new Uri(parts[2], UriKind.RelativeOrAbsolute);
-                            else if (pt == "Rect") val = System.Windows.Rect.Parse(parts[2]);
-                            else if (pt == "Geometry") val = System.Windows.Media.Geometry.Parse(parts[2]);
-                            else val = Convert.ChangeType(parts[2], prop.PropertyType);
-                            prop.SetValue(ctrl, val, null);
+                            else if (pt == "Boolean") val = Convert.ToBoolean(parts[2]);
+                            else val = Convert.ChangeType(parts[2], subProp.PropertyType);
+                            subProp.SetValue(effect, val, null);
                         }
+                        else
+                        {
+                            try { System.IO.File.AppendAllText(debugPath, "  -> Property '" + subPropName + "' NOT FOUND on " + effect.GetType().Name + "\n"); } catch { }
+                        }
+                    }
+                }
+                else
+                {
+                    var prop = ctrl.GetType().GetProperty(parts[1]);
+                    if (prop != null)
+                    {
+                        object val = null;
+                        string pt = prop.PropertyType.Name;
+                        if (pt == "Brush") val = new System.Windows.Media.BrushConverter().ConvertFromString(parts[2]);
+                        else if (pt == "Color") val = System.Windows.Media.ColorConverter.ConvertFromString(parts[2]);
+                        else if (pt == "Point")
+                        {
+                            string[] coords = parts[2].Split(',');
+                            if (coords.Length == 2)
+                            {
+                                val = new Point(
+                                    double.Parse(coords[0], System.Globalization.CultureInfo.InvariantCulture),
+                                    double.Parse(coords[1], System.Globalization.CultureInfo.InvariantCulture)
+                                );
+                            }
+                            else
+                            {
+                                val = System.Windows.Point.Parse(parts[2]);
+                            }
+                        }
+                        else if (prop.PropertyType.IsEnum) val = Enum.Parse(prop.PropertyType, parts[2], true);
+                        else if (pt == "Double") val = double.Parse(parts[2], System.Globalization.CultureInfo.InvariantCulture);
+                        else if (pt == "Boolean" || pt == "Nullable`1") val = Convert.ToBoolean(parts[2]);
+                        else if (pt == "Thickness") val = new System.Windows.ThicknessConverter().ConvertFromString(parts[2]);
+                        else if (pt == "CornerRadius") val = new System.Windows.CornerRadiusConverter().ConvertFromString(parts[2]);
+                        else if (pt == "ImageSource")
+                        {
+                            if (parts[2].StartsWith("HICON:"))
+                            {
+                                IntPtr hIcon = new IntPtr(long.Parse(parts[2].Substring(6)));
+                                val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(hIcon, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                            }
+                            else if (parts[2].StartsWith("HBITMAP:"))
+                            {
+                                IntPtr hBmp = new IntPtr(long.Parse(parts[2].Substring(8)));
+                                val = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(hBmp, IntPtr.Zero, System.Windows.Int32Rect.Empty, System.Windows.Media.Imaging.BitmapSizeOptions.FromEmptyOptions());
+                            }
+                            else
+                            {
+                                val = new System.Windows.Media.ImageSourceConverter().ConvertFromString(parts[2]);
+                            }
+                        }
+                        else if (pt == "GridLength") val = new System.Windows.GridLengthConverter().ConvertFromString(parts[2]);
+                        else if (pt == "Object" || pt == "String") val = parts[2];
+                        else if (pt == "Uri") val = new Uri(parts[2], UriKind.RelativeOrAbsolute);
+                        else if (pt == "Rect") val = System.Windows.Rect.Parse(parts[2]);
+                        else if (pt == "Geometry") val = System.Windows.Media.Geometry.Parse(parts[2]);
+                        else val = Convert.ChangeType(parts[2], prop.PropertyType);
+                        prop.SetValue(ctrl, val, null);
                     }
                 }
             }
         }
+    }
 
     private void UnregisterNamesRecursive(DependencyObject d)
     {
@@ -8459,6 +8570,7 @@ public class TaskbarList
 {
 }
 
+#if ENABLE_SHADERS
 namespace AhkEffects
 {
     public static class Bytecodes
@@ -8472,65 +8584,6 @@ namespace AhkEffects
         public static readonly string Gradient = "AAL///7/WQBDVEFCHAAAADcBAAAAAv//CAAAABwAAAAAAQAAMAEAALwAAAACAAMAAQAOAMQAAAAAAAAA1AAAAAIABgABABoAxAAAAAAAAADfAAAAAgAAAAEAAgDoAAAAAAAAAPgAAAACAAEAAQAGAOgAAAAAAAAA/wAAAAIAAgABAAoA6AAAAAAAAAAGAQAAAgAEAAEAEgDEAAAAAAAAAAwBAAACAAUAAQAWAMQAAAAAAAAAEQEAAAMAAAABAAIAIAEAAAAAAABBbmdsZQCrqwAAAwABAAEAAQAAAAAAAABCcmlnaHRuZXNzAENvbG9yMQCrqwEAAwABAAQAAQAAAAAAAABDb2xvcjIAQ29sb3IzAFNwZWVkAFRpbWUAaW1wbGljaXRJbnB1dACrBAAMAAEAAQABAAAAAAAAAHBzXzJfMABNaWNyb3NvZnQgKFIpIEhMU0wgU2hhZGVyIENvbXBpbGVyIDEwLjEAq1EAAAUHAA+gYQs2OwAAAD/bD8lA2w9JwFEAAAUIAA+g8v9/PwAAAD8AAIA/8v//PlEAAAUJAA+gAQ3QtWELtrerqio7iYiIOVEAAAUKAA+gq6qqvAAAAL4AAIA/AAAAPx8AAAIAAACAAAADsB8AAAIAAACQAAgPoEIAAAMAAA+AAADksAAI5KABAAACAAADgAcA5KAEAAAEAAABgAMAAKAAAACAAABVgBMAAAIAAAGAAAAAgAQAAAQAAAGAAAAAgAcAqqAHAP+gJQAABAEAA4AAAACACQDkoAoA5KAFAAADAAABgAEAVYAAAFWwBAAABAAAAYAAAACwAQAAgAAAAIEBAAACAQABgAUAAKAEAAAEAAABgAEAAIAEAAChAAAAgAQAAAQAAAKAAAAAgAgAAKAIAFWgBAAABAAAAYAAAACACAD/oAgAVaATAAACAAABgAAAAIAEAAAEAAABgAAAAIAHAKqgBwD/oCUAAAQBAAGAAAAAgAkA5KAKAOSgAgAAAwAAAYABAACACACqoBMAAAIAAAKAAABVgAQAAAQAAAKAAABVgAcAqqAHAP+gJQAABAEAAoAAAFWACQDkoAoA5KACAAADAAACgAEAVYAIAKqgBQAAAwAAA4AAAOSABwBVoAEAAAIBAA+AAADkoAIAAAMBAA+AAQDkgQEA5KAEAAAEAQAPgAAAVYABAOSAAADkoBIAAAQCAA+AAAAAgAIA5KABAOSABQAAAwEAB4ACAOSABgAAoAUAAAMBAAiAAAD/gAAA/4ABAAACAgAHgAAA/4AFAAADAAAPgAEA5IACAOSAAQAAAgAID4AAAOSA//8AAA==";
 
         public static readonly string Ripple = "AAL///7/TABDVEFCHAAAAAMBAAAAAv//BgAAABwAAAAAAQAA/AAAAJQAAAACAAIAAQAKAKAAAAAAAAAAsAAAAAIAAAABAAIAuAAAAAAAAADIAAAAAgADAAEADgCgAAAAAAAAANIAAAACAAQAAQASAKAAAAAAAAAA2AAAAAIAAQABAAYAoAAAAAAAAADdAAAAAwAAAAEAAgDsAAAAAAAAAEFtcGxpdHVkZQCrqwAAAwABAAEAAQAAAAAAAABDZW50ZXIAqwEAAwABAAIAAQAAAAAAAABGcmVxdWVuY3kAU3BlZWQAVGltZQBpbXBsaWNpdElucHV0AKsEAAwAAQABAAEAAAAAAAAAcHNfMl8wAE1pY3Jvc29mdCAoUikgSExTTCBTaGFkZXIgQ29tcGlsZXIgMTAuMQCrUQAABQUAD6AAAAAAF7fROJqZGb4AAIA/UQAABQYAD6BVVdVAAACAP4P5Ij4AAAA/UQAABQcAD6DbD8lA2w9JwM3MzD4AAAAAUQAABQgAD6ABDdC1YQu2t6uqKjuJiIg5UQAABQkAD6Crqqq8AAAAvgAAgD8AAAA/HwAAAgAAAIAAAAOwHwAAAgAAAJAACA+gAgAAAwAAA4AAAOSwAADkoVoAAAQAAASAAADkgAAA5IAFAACgBwAAAgAABIAAAKqABgAAAgAABIAAAKqAAgAAAwAACIAAAKqABQBVoAEAAAIBAAiAAQAAoAQAAAQAAASAAQD/gAQAAKEAAKqABgAAAgAACIAAAP+ABQAAAwAAA4AAAP+AAADkgAUAAAMAAAiAAACqgAMAAKAEAAAEAAAIgAAA/4AGAKqgBgD/oBMAAAIAAAiAAAD/gAQAAAQAAAiAAAD/gAcAAKAHAFWgJQAABAIAAoAAAP+ACADkoAkA5KAFAAADAAAIgAIAVYACAACgBAAABAEAAYAAAKqABgAAoAYAVaACAAADAQACgAEA/4EFAP+gBQAAAwEAAYABAACAAQBVgAUAAAMAAAiAAAD/gAEAAIAEAAAEAAADgAAA5IAAAP+AAADksEIAAAMBAA+AAADkgAAI5KBCAAADAgAPgAAA5LAACOSgBAAABAEAB4AAAP+ABwCqoAEA5IACAAADAAABgAAAqoEFAKqgWAAABAAAAYAAAACABQAAoQUA/6FYAAAEAAABgAAAqoAFAACgAAAAgFgAAAQAAA+AAAAAgAIA5IABAOSAAQAAAgAID4AAAOSA//8AAA==";
-    }
-
-    public class ConfettiEffect : System.Windows.Media.Effects.ShaderEffect
-    {
-        private static readonly System.Windows.Media.Effects.PixelShader _pixelShader = new System.Windows.Media.Effects.PixelShader();
-
-        static ConfettiEffect()
-        {
-            string tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkConfettiEffect.ps");
-            string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_confetti_init.log");
-            try
-            {
-                byte[] bytecode = Convert.FromBase64String(Bytecodes.Confetti);
-                System.IO.File.WriteAllBytes(tempPath, bytecode);
-                _pixelShader.UriSource = new Uri(tempPath);
-                try { System.IO.File.WriteAllText(debugPath, "OK: wrote " + bytecode.Length + " bytes to " + tempPath + " at " + DateTime.Now.ToString() + "\n"); } catch { }
-            }
-            catch (Exception ex)
-            {
-                try { System.IO.File.WriteAllText(debugPath, "ERROR: " + ex.ToString() + "\n"); } catch { }
-            }
-        }
-
-        public ConfettiEffect()
-        {
-            this.PixelShader = _pixelShader;
-            UpdateShaderValue(InputProperty);
-            UpdateShaderValue(CenterProperty);
-            UpdateShaderValue(ProgressProperty);
-            UpdateShaderValue(NumParticlesProperty);
-        }
-
-        public static readonly DependencyProperty InputProperty = System.Windows.Media.Effects.ShaderEffect.RegisterPixelShaderSamplerProperty("Input", typeof(ConfettiEffect), 0);
-        public Brush Input
-        {
-            get { return (Brush)GetValue(InputProperty); }
-            set { SetValue(InputProperty, value); }
-        }
-
-        public static readonly DependencyProperty CenterProperty = DependencyProperty.Register("Center", typeof(Point), typeof(ConfettiEffect), new PropertyMetadata(new Point(0.5, 0.5), PixelShaderConstantCallback(0)));
-        public Point Center
-        {
-            get { return (Point)GetValue(CenterProperty); }
-            set { SetValue(CenterProperty, value); }
-        }
-
-        public static readonly DependencyProperty ProgressProperty = DependencyProperty.Register("Progress", typeof(double), typeof(ConfettiEffect), new PropertyMetadata(0.0, PixelShaderConstantCallback(1)));
-        public double Progress
-        {
-            get { return (double)GetValue(ProgressProperty); }
-            set { SetValue(ProgressProperty, value); }
-        }
-
-        public static readonly DependencyProperty NumParticlesProperty = DependencyProperty.Register("NumParticles", typeof(double), typeof(ConfettiEffect), new PropertyMetadata(16.0, PixelShaderConstantCallback(2)));
-        public double NumParticles
-        {
-            get { return (double)GetValue(NumParticlesProperty); }
-            set { SetValue(NumParticlesProperty, value); }
-        }
     }
 
     public class AcrylicEffect : System.Windows.Media.Effects.ShaderEffect
@@ -8817,5 +8870,6 @@ namespace AhkEffects
         }
     }
 }
+#endif
 
 

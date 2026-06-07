@@ -1,4 +1,4 @@
-#Requires AutoHotkey v2.0
+﻿#Requires AutoHotkey v2.0
 #Include "..\..\lib\XAML_Config.ahk"
 global XAML_ENABLE_AVALONEDIT := true
 
@@ -354,7 +354,7 @@ myEditor.Bind(ui)
 SplitPath(A_LineFile, , &showcaseDir)
 if (A_IsCompiled)
     showcaseDir := A_ScriptDir
-global snippetsMap := LoadSnippets(showcaseDir "..\data\snippets.txt")
+global snippetsMap := LoadSnippets(showcaseDir "\..\data\snippets.txt")
 
 LoadSnippets(filePath) {
     sMap := Map()

@@ -1,11 +1,19 @@
-﻿; ==============================================================================
+; ==============================================================================
 ; AHK-XAML Global Configuration
+; Note -- these can be overriden in a script; look at webview, docviewer examples
 ; ==============================================================================
 
 ; --- Engine Compilation ---
 ; When true, the C# engine (.dll) is recompiled from XAML_AHK_Bridge.cs on every run.
 ; When false, uses the pre-compiled ahk-xaml.dll from the lib/dep directory.
 global XAML_FORCE_DYNAMIC_COMPILE := true
+
+; --- Engine Build Location ---
+; Controls where the C# engine (.dll) is compiled or placed during development runs:
+;   "temp"    - Only compile/copy to %TEMP%\AhkWpf (keeps lib/dep clean, default)
+;   "lib/dep" - Compile to lib/dep and run from there directly
+;   "both"    - Compile to lib/dep and also copy to %TEMP%\AhkWpf (old behavior)
+global XAML_ENGINE_BUILD_LOCATION := "temp"
 
 ; --- Developer Diagnostics ---
 ; When true, crash dialogs show interactive "Skip Property" / "Skip Element" buttons
@@ -26,7 +34,7 @@ global XAML_ENABLE_LOGGING := true
 global XAML_ENABLE_TRACING := true
 
 ; --- WebView2 ---
-global XAML_ENABLE_WEBVIEW := true
+global XAML_ENABLE_WEBVIEW := false
 
 ; --- WebView2 User Data Directory ---
 ; The directory where WebView2 stores its browser cache, cookies, and user data.
@@ -45,6 +53,11 @@ global XAML_ENABLE_AVALONEDIT := false
 ; Requires DLLs in lib/dep/OpenXml/ (auto-downloaded from NuGet if missing).
 global XAML_ENABLE_DOCUMENT := false
 
+; --- DirectX 9 Pixel Shader Effects ---
+; When true, compiles custom DirectX 9 pixel shaders (Glow, Acrylic, Ripple, Cyberpunk Gradient)
+; into the background engine. Requires no external dependencies, but increases engine size.
+global XAML_ENABLE_SHADERS := false
+
 ; --- Auto-Prewarm Engine ---
 ; When true, automatically spins up the background WPF engine as soon as the script launches.
 ; This completely eliminates the ~300ms cold-start delay when the dialog is shown!
@@ -59,9 +72,3 @@ global XAML_ENABLE_DEVTOOLS := true
 ; When true, boots the WPF engine in-process inside the parent AHK thread using CLR hosting.
 ; When false, spawns a separate background daemon process (default, robust).
 global XAML_IN_PROCESS_PREVIEW := true
-
-; --- Designer Auto-Backups ---
-; When true, the designer automatically saves a backup of your layout to a `.backups/`
-; directory relative to the project root every 5 seconds (debounced).
-global XAML_DESIGNER_BACKUPS_ENABLED := true
-global XAML_DESIGNER_MAX_BACKUPS := 50

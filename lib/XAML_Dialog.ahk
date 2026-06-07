@@ -25,8 +25,8 @@ class XDialog {
         owner := options.HasProp("Owner") ? options.Owner : 0
         alwaysOnTop := options.HasProp("AlwaysOnTop") ? options.AlwaysOnTop : false
         waitForResponse := options.HasProp("WaitForResponse") ? options.WaitForResponse : true
-        themeName := options.HasProp("Theme") ? options.Theme : "Dark Mica (Win 11)"
-        iniPath := options.HasProp("IniPath") ? options.IniPath : (FileExist("themes.ini") ? "themes.ini" : "../themes.ini")
+        themeName := options.HasProp("Theme") ? options.Theme : XAMLHost.LastTheme
+        iniPath := options.HasProp("IniPath") ? options.IniPath : (XAMLHost.LastThemeIni != "" ? XAMLHost.LastThemeIni : (FileExist("themes.ini") ? "themes.ini" : "../themes.ini"))
         soundFx := options.HasProp("Sound") ? options.Sound : ""
         disableAltF4 := options.HasProp("DisableAltF4") ? options.DisableAltF4 : false
         movable := options.HasProp("Movable") ? options.Movable : true
@@ -34,19 +34,6 @@ class XDialog {
         darkenOwner := options.HasProp("DarkenOwner") ? options.DarkenOwner : false
 
         bgRes := "DropdownBg"
-        if FileExist(iniPath) {
-            try {
-                themeData := IniRead(iniPath, themeName)
-                Loop Parse, themeData, "`n", "`r" {
-                    parts := StrSplit(A_LoopField, "=", " `t", 2)
-                    if (parts.Length == 2 && parts[1] == "Window_DWM") {
-                        if (SubStr(parts[2], 1, 1) == "2" || SubStr(parts[2], 1, 1) == "3")
-                            bgRes := "BgColor"
-                        break
-                    }
-                }
-            }
-        }
 
         ; --- BUILD LAYOUT ---
         main := XAML_Generator("Grid")
@@ -55,7 +42,7 @@ class XDialog {
             fn := options.CustomBackground
             fn(main)
         } else {
-            main.Background("{DynamicResource " bgRes "}")
+            main.Background("Transparent")
         }
         if (options.HasProp("Resources")) {
             dialogResources .= "`n" options.Resources
@@ -141,7 +128,7 @@ class XDialog {
 
         ; Buttons Footer
         footerBg := options.HasProp("FooterBackground") ? options.FooterBackground : "{DynamicResource ControlBg}"
-        footer := main.Add("Border").Grid_Row(2).Background(footerBg).Padding("15").CornerRadius("0,0,8,8")
+        footer := main.Add("Border").Grid_Row(2).Background(footerBg).Padding("15").CornerRadius("0,0,10,10")
         btnSp := footer.Add("StackPanel").Orientation("Horizontal").HorizontalAlignment("Center")
 
         ; Inject default button styles if not already provided in resources
@@ -199,7 +186,7 @@ class XDialog {
             ui := XAMLHost("", exePath, actualOwner)
         } else {
             ; Use a lightweight template without the 75KB component library for speed
-            captionH := movable ? "30" : "0"
+            captionH := movable ? "45" : "0"
             startupLoc := owner ? "CenterOwner" : "CenterScreen"
             fontF := options.HasProp("FontFamily") ? options.FontFamily : "Segoe UI Variable Display, Segoe UI, sans-serif"
             dialogTemplate := '
@@ -216,12 +203,18 @@ class XDialog {
                         <WindowChrome GlassFrameThickness="-1" CaptionHeight="%captionH%" CornerRadius="{DynamicResource WindowRadius}" />
                     </WindowChrome.WindowChrome>
                 
-                    %app%
+                    <Border Margin="15" BorderBrush="{DynamicResource ControlBorder}" BorderThickness="1" CornerRadius="{DynamicResource WindowRadius}" Background="{DynamicResource %bgRes%}">
+                        <Border.Effect>
+                            <DropShadowEffect BlurRadius="15" Direction="270" RenderingBias="Performance" ShadowDepth="2" Opacity="0.3" Color="Black" />
+                        </Border.Effect>
+                        %app%
+                    </Border>
                 </Window>
             )'
             dialogTemplate := StrReplace(dialogTemplate, "%startupLoc%", startupLoc)
             dialogTemplate := StrReplace(dialogTemplate, "%captionH%", captionH)
             dialogTemplate := StrReplace(dialogTemplate, "%fontFamily%", fontF)
+            dialogTemplate := StrReplace(dialogTemplate, "%bgRes%", bgRes)
             ui := XAMLHost(StrReplace(dialogTemplate, "%app%", main.ToString()), exePath, actualOwner)
         }
 
@@ -241,7 +234,7 @@ class XDialog {
         hIcon := ""
         try hIcon := LoadPicture("shell32.dll", "Icon26", &ImageType := 1)
 
-        ui.xaml := StrReplace(ui.xaml, 'Width="940" Height="700"', 'Title="' safeTitle '" Width="' width '" ' heightAttr ' ' resizeAttr ' ' focusAttr (alwaysOnTop ? ' Topmost="True"' : ''))
+        ui.xaml := StrReplace(ui.xaml, 'Width="940" Height="700"', 'Title="' safeTitle '" Width="' (width + 30) '" ' heightAttr ' ' resizeAttr ' ' focusAttr (alwaysOnTop ? ' Topmost="True"' : ''))
 
         resultObj := { Button: "", Input: "", Instance: ui }
 

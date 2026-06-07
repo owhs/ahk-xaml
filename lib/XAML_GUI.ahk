@@ -722,6 +722,8 @@ class XAML_GUI {
             iniPath := FindThemesIni()
             this.currentThemeName := theme
             this.currentIniPath := iniPath
+            XAMLHost.LastTheme := theme
+            XAMLHost.LastThemeIni := iniPath
             themeData := IniRead(iniPath, theme)
             
             themeKeys := Map()
@@ -796,7 +798,8 @@ class XAML_GUI {
         this.host.Update("Resource", "CloseBtnRadius", "CornerRadius:0," radius ",0,0")
 
         ; Apply to DWM for Win11 styling
-        if (this.host.wpfHwnd) {
+        isTransparent := (HasProp(this.host, "xaml") && (InStr(this.host.xaml, 'AllowsTransparency="True"') || InStr(this.host.xaml, 'AllowsTransparency="true"')))
+        if (this.host.wpfHwnd && !isTransparent) {
             cornerPref := Buffer(4)
             NumPut("Int", radius == "0" ? 1 : 0, cornerPref)
             DllCall("dwmapi\DwmSetWindowAttribute", "Ptr", this.host.wpfHwnd, "UInt", 33, "Ptr", cornerPref.Ptr, "UInt", 4)
