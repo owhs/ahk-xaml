@@ -8,15 +8,15 @@
 ; CUSTOM DIALOG STYLING & HELPER
 ; ==============================================================================
 global CustomDialogOptions := {
-    FontFamily: "Georgia, Segoe UI, sans-serif",
-    TitleForeground: "#D4AF37",
-    TitleFontFamily: "Georgia",
+    FontFamily: "Segoe UI, Trebuchet MS, sans-serif",
+    TitleForeground: "#00E5FF",
+    TitleFontFamily: "Segoe UI",
     TitleFontWeight: "Bold",
     TitleFontSize: 13,
-    MessageForeground: "#CDD6F4",
-    MessageFontFamily: "Georgia",
+    MessageForeground: "#E0F7FA",
+    MessageFontFamily: "Segoe UI",
     MessageFontSize: 13,
-    FooterBackground: "#0D0E10",
+    FooterBackground: "#060A12",
     CloseBtnWidth: 20,
     CloseBtnHeight: 20,
     CloseBtnMargin: "0,0,12,0",
@@ -28,14 +28,14 @@ global CustomDialogOptions := {
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Ellipse x:Name="Ring" Stroke="#AA7C11" StrokeThickness="1.2" Fill="#111317"/>
-                            <Ellipse x:Name="Gem" Margin="3" Fill="#A02A10" Stroke="#500" StrokeThickness="0.8"/>
-                            <Path Data="M 0,0 L 6,6 M 6,0 L 0,6" Stroke="#FFF" StrokeThickness="1.8" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            <Rectangle x:Name="Box" Stroke="#00838F" StrokeThickness="1.2" Fill="#060A12" RadiusX="2" RadiusY="2"/>
+                            <Path x:Name="Symbol" Data="M 0,0 L 8,8 M 8,0 L 0,8" Width="8" Height="8" Stretch="Uniform" Stroke="#FF6D00" StrokeThickness="2.0" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Gem" Property="Fill" Value="#E52B10"/>
-                                <Setter TargetName="Ring" Property="Stroke" Value="#D4AF37"/>
+                                <Setter TargetName="Box" Property="Stroke" Value="#00E5FF"/>
+                                <Setter TargetName="Box" Property="Fill" Value="#1000E5FF"/>
+                                <Setter TargetName="Symbol" Property="Stroke" Value="#FF9E00"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -47,45 +47,45 @@ global CustomDialogOptions := {
     Resources: '
     (
         <RadialGradientBrush x:Key="CustomRadialGlow" Center="0.5,0.5" RadiusX="0.75" RadiusY="0.75">
-            <GradientStop Color="#25253D59" Offset="0"/>
+            <GradientStop Color="#3000E5FF" Offset="0"/>
             <GradientStop Color="#00000000" Offset="1"/>
         </RadialGradientBrush>
-        <LinearGradientBrush x:Key="GoldMetalBrush" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Color="#8C7853" Offset="0.0"/>
-            <GradientStop Color="#FFE57F" Offset="0.2"/>
-            <GradientStop Color="#D4AF37" Offset="0.4"/>
-            <GradientStop Color="#AA7C11" Offset="0.7"/>
-            <GradientStop Color="#FFE57F" Offset="0.9"/>
-            <GradientStop Color="#8C7853" Offset="1.0"/>
+        <LinearGradientBrush x:Key="CyberCyanBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#004D40" Offset="0.0"/>
+            <GradientStop Color="#00B0FF" Offset="0.3"/>
+            <GradientStop Color="#00E5FF" Offset="0.5"/>
+            <GradientStop Color="#00838F" Offset="0.7"/>
+            <GradientStop Color="#00E5FF" Offset="0.9"/>
+            <GradientStop Color="#004D40" Offset="1.0"/>
         </LinearGradientBrush>
-        <SolidColorBrush x:Key="TextMain" Color="#CDD6F4" />
-        <SolidColorBrush x:Key="TextSub" Color="#8A94A6" />
-        <SolidColorBrush x:Key="Accent" Color="#00A3FF" />
-        <SolidColorBrush x:Key="ControlBg" Color="#111317" />
-        <SolidColorBrush x:Key="ControlBorder" Color="#2A2C30" />
+        <SolidColorBrush x:Key="TextMain" Color="#E0F7FA" />
+        <SolidColorBrush x:Key="TextSub" Color="#64B5F6" />
+        <SolidColorBrush x:Key="Accent" Color="#00E5FF" />
+        <SolidColorBrush x:Key="ControlBg" Color="#0C101B" />
+        <SolidColorBrush x:Key="ControlBorder" Color="#1B3B52" />
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#0C0D10"/>
+            <Setter Property="Background" Value="#03050A"/>
             <Setter Property="Foreground" Value="#FFF"/>
-            <Setter Property="BorderBrush" Value="#2A2C30"/>
+            <Setter Property="BorderBrush" Value="#1B3B52"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="border" CornerRadius="4" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                        <Border x:Name="border" CornerRadius="0" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
                             <ScrollViewer x:Name="PART_ContentHost" Focusable="false" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsFocused" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="#D4AF37"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#00E5FF"/>
                                 <Setter TargetName="border" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect Color="#D4AF37" BlurRadius="6" ShadowDepth="0"/>
+                                        <DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="#4A4E57"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="#00838F"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -93,26 +93,26 @@ global CustomDialogOptions := {
             </Setter>
         </Style>
         <Style x:Key="DialogBtn" TargetType="Button">
-            <Setter Property="Background" Value="#092533"/>
-            <Setter Property="Foreground" Value="#D4AF37"/>
-            <Setter Property="BorderBrush" Value="#AA7C11"/>
+            <Setter Property="Background" Value="#101A30"/>
+            <Setter Property="Foreground" Value="#00E5FF"/>
+            <Setter Property="BorderBrush" Value="#00838F"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="FontFamily" Value="Georgia"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Border x:Name="Body" CornerRadius="4" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}"/>
-                            <Border x:Name="InnerBorder" CornerRadius="3" Margin="2" BorderBrush="#30D4AF37" BorderThickness="1" IsHitTestVisible="False"/>
+                            <Border x:Name="Body" CornerRadius="0" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Background="{TemplateBinding Background}"/>
+                            <Border x:Name="InnerBorder" CornerRadius="0" Margin="2" BorderBrush="#3000E5FF" BorderThickness="1" IsHitTestVisible="False"/>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="15,6"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Body" Property="Background" Value="#0E394E"/>
-                                <Setter Property="BorderBrush" Value="#D4AF37"/>
-                                <Setter Property="Foreground" Value="#F3E5AB"/>
+                                <Setter TargetName="Body" Property="Background" Value="#152E4A"/>
+                                <Setter Property="BorderBrush" Value="#00E5FF"/>
+                                <Setter Property="Foreground" Value="#E0F7FA"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -120,26 +120,26 @@ global CustomDialogOptions := {
             </Setter>
         </Style>
         <Style x:Key="DialogPrimaryBtn" TargetType="Button">
-            <Setter Property="Background" Value="#103F54"/>
+            <Setter Property="Background" Value="#004D5A"/>
             <Setter Property="Foreground" Value="#FFF"/>
-            <Setter Property="BorderBrush" Value="#D4AF37"/>
+            <Setter Property="BorderBrush" Value="#00E5FF"/>
             <Setter Property="BorderThickness" Value="1.2"/>
-            <Setter Property="FontFamily" Value="Georgia"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Border x:Name="Body" CornerRadius="4" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <Border x:Name="Body" CornerRadius="0" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
                                 <Border.Background>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                        <GradientStop Color="#1A5975" Offset="0"/>
-                                        <GradientStop Color="#0E394E" Offset="1"/>
+                                        <GradientStop Color="#007E91" Offset="0"/>
+                                        <GradientStop Color="#004D5A" Offset="1"/>
                                     </LinearGradientBrush>
                                 </Border.Background>
                             </Border>
-                            <Border x:Name="InnerBorder" CornerRadius="3" Margin="2" BorderBrush="#50D4AF37" BorderThickness="1" IsHitTestVisible="False"/>
+                            <Border x:Name="InnerBorder" CornerRadius="0" Margin="2" BorderBrush="#5000E5FF" BorderThickness="1" IsHitTestVisible="False"/>
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="15,6"/>
                         </Grid>
                         <ControlTemplate.Triggers>
@@ -147,12 +147,12 @@ global CustomDialogOptions := {
                                 <Setter TargetName="Body" Property="Background">
                                     <Setter.Value>
                                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                            <GradientStop Color="#257E9E" Offset="0"/>
-                                            <GradientStop Color="#124D68" Offset="1"/>
+                                            <GradientStop Color="#00A5BD" Offset="0"/>
+                                            <GradientStop Color="#006C7E" Offset="1"/>
                                         </LinearGradientBrush>
                                     </Setter.Value>
                                 </Setter>
-                                <Setter Property="BorderBrush" Value="#FFE57F"/>
+                                <Setter Property="BorderBrush" Value="#E0F7FA"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -163,18 +163,16 @@ global CustomDialogOptions := {
 }
 
 CustomDialogCustomBackground(main) {
-    ; Background fill (behind content)
     bgGrid := main.Add("Grid").Grid_Row(0).Grid_RowSpan(3)
     bgGrid.SetProp("Panel.ZIndex", "-1")
-    bgGrid.Add("Border").CornerRadius("8").Background("#16191D")
+    bgGrid.Add("Border").CornerRadius("0").Background("#080C14")
     bgGrid.Add("Border").SetProp("IsHitTestVisible", "False").Background("{StaticResource CustomRadialGlow}")
     
-    ; Gold frame border (on top of content)
     fgGrid := main.Add("Grid").Grid_Row(0).Grid_RowSpan(3)
     fgGrid.SetProp("Panel.ZIndex", "10")
     fgGrid.SetProp("IsHitTestVisible", "False")
-    frame := fgGrid.Add("Border").CornerRadius("8").BorderThickness("1.5").Background("Transparent")
-    frame.BorderBrush("{StaticResource GoldMetalBrush}")
+    frame := fgGrid.Add("Border").CornerRadius("0").BorderThickness("1.5").Background("Transparent")
+    frame.BorderBrush("{StaticResource CyberCyanBrush}")
 }
 
 ShowCustomDialog(opts) {
@@ -188,98 +186,21 @@ ShowCustomDialog(opts) {
     return XDialog.Show(mergedOpts)
 }
 
-GenerateBackgroundScratches(bgGrid, count := 50) {
-    ; Create a few cluster centers for organic grouping of fractures
-    centers := []
-    Loop Random(3, 5) {
-        centers.Push({
-            x: Random(50, 890),
-            y: Random(50, 600)
-        })
+GenerateSciFiGrid(bgGrid) {
+    ; Horizontal grid lines (subtle cyan #0500E5FF)
+    y := 40
+    Loop 12 {
+        bgGrid.Add("Path").Data("M 10," y " L 930," y).Stroke("#0500E5FF").StrokeThickness("1").SetProp("IsHitTestVisible", "False")
+        y += 50
     }
-
-    Loop count {
-        ; Pick a random cluster center
-        center := centers[Random(1, centers.Length)]
-
-        ; Apply Gaussian-like offset to cluster the scratches organically
-        offsetX := (Random(-180, 180) + Random(-180, 180)) / 2
-        offsetY := (Random(-140, 140) + Random(-140, 140)) / 2
-
-        x0 := center.x + offsetX
-        y0 := center.y + offsetY
-
-        ; Power-law distribution of scratch lengths and thicknesses
-        r := Random(1, 100)
-        if (r < 75) {
-            ; 75% micro-scratches
-            length := Random(15, 45)
-            thickness := Random(5, 9) / 10.0
-            opacityMult := 0.6
-        } else if (r < 90) {
-            ; 21% medium scratches
-            length := Random(45, 120)
-            thickness := Random(9, 13) / 10.0
-            opacityMult := 0.9
-        } else {
-            ; 4% major fractures
-            length := Random(120, 320)
-            thickness := Random(13, 18) / 10.0
-            opacityMult := 1.2
-        }
-
-        ; Geological jointing sets: either horizontal-ish or vertical-ish
-        if (Random(1, 100) > 40) {
-            angle := Random(-20, 20) * 0.01745329
-        } else {
-            angle := (Random(0, 1) ? Random(75, 105) : Random(-105, -75)) * 0.01745329
-        }
-
-        x3 := x0 + Cos(angle) * length
-        y3 := y0 + Sin(angle) * length
-
-        ; Draw a jagged polyline instead of a smooth curve
-        segments := Random(2, 4)
-        pathData := "M " . Format("{1:.1f},{2:.1f}", x0, y0)
-
-        dx := (x3 - x0) / segments
-        dy := (y3 - y0) / segments
-
-        ; Perpendicular vector for offset
-        nx := -dy / (length = 0 ? 1 : length)
-        ny := dx / (length = 0 ? 1 : length)
-
-        Loop segments - 1 {
-            mx := x0 + dx * A_Index
-            my := y0 + dy * A_Index
-            offset := Random(-15, 15) / 10.0 ; -1.5 to +1.5 pixels jagged offset
-            pathData .= " L " . Format("{1:.1f},{2:.1f}", mx + nx * offset, my + ny * offset)
-        }
-        pathData .= " L " . Format("{1:.1f},{2:.1f}", x3, y3)
-
-        ; Sometimes add a small jagged branch off longer cracks
-        if (r >= 75 && Random(1, 100) > 50) {
-            bx0 := x0 + dx * (segments // 2)
-            by0 := y0 + dy * (segments // 2)
-            blen := Random(10, length // 3)
-            bangle := angle + (Random(0, 1) ? Random(40, 70) : Random(-70, -40)) * 0.01745329
-            bx1 := bx0 + Cos(bangle) * blen
-            by1 := by0 + Sin(bangle) * blen
-            pathData .= Format(" M {1:.1f},{2:.1f} L {3:.1f},{4:.1f}", bx0, by0, bx1, by1)
-        }
-
-        shadowOpacity := Integer(Random(15, 30) * opacityMult)
-        if (shadowOpacity > 50)
-            shadowOpacity := 50
-        shadowBrush := "#" . Format("{1:02X}", shadowOpacity) . "000000"
-        bgGrid.Add("Path").Data(pathData).Stroke(shadowBrush).StrokeThickness(String(thickness)).SetProp("IsHitTestVisible", "False")
-
-        highlightOpacity := Integer(Random(8, 16) * opacityMult)
-        if (highlightOpacity > 30)
-            highlightOpacity := 30
-        highlightBrush := "#" . Format("{1:02X}", highlightOpacity) . "00A3FF"
-        bgGrid.Add("Path").Data(pathData).Stroke(highlightBrush).StrokeThickness(String(thickness * 0.5)).Margin("1,1,0,0").SetProp("IsHitTestVisible", "False")
+    ; Vertical grid lines
+    x := 50
+    Loop 18 {
+        bgGrid.Add("Path").Data("M " x ",40 L " x ",610").Stroke("#0500E5FF").StrokeThickness("1").SetProp("IsHitTestVisible", "False")
+        x += 50
     }
+    ; Tech corner markers
+    bgGrid.Add("Path").Data("M 40,30 L 30,30 L 30,40 M 900,30 L 910,30 L 910,40 M 30,610 L 30,620 L 40,620 M 910,610 L 910,620 L 900,620").Stroke("#2000E5FF").StrokeThickness("1.5").SetProp("IsHitTestVisible", "False")
 }
 
 ; ==============================================================================
@@ -367,37 +288,37 @@ app.main.Background("Transparent")
 
 customStyles := '
 (
-    <!-- Custom Styles for RPG Settings UI -->
-    <LinearGradientBrush x:Key="GoldMetalBrush" StartPoint="0,0" EndPoint="1,1">
-        <GradientStop Color="#8C7853" Offset="0.0"/>
-        <GradientStop Color="#FFE57F" Offset="0.2"/>
-        <GradientStop Color="#D4AF37" Offset="0.4"/>
-        <GradientStop Color="#AA7C11" Offset="0.7"/>
-        <GradientStop Color="#FFE57F" Offset="0.9"/>
-        <GradientStop Color="#8C7853" Offset="1.0"/>
+    <!-- Custom Styles for Sci-Fi Settings UI -->
+    <LinearGradientBrush x:Key="CyberCyanBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#004D40" Offset="0.0"/>
+        <GradientStop Color="#00B0FF" Offset="0.3"/>
+        <GradientStop Color="#00E5FF" Offset="0.5"/>
+        <GradientStop Color="#00838F" Offset="0.7"/>
+        <GradientStop Color="#00E5FF" Offset="0.9"/>
+        <GradientStop Color="#004D40" Offset="1.0"/>
     </LinearGradientBrush>
 
-    <SolidColorBrush x:Key="TextMain" Color="#CDD6F4" />
-    <SolidColorBrush x:Key="TextSub" Color="#8A94A6" />
-    <SolidColorBrush x:Key="Accent" Color="#00A3FF" />
-    <SolidColorBrush x:Key="ControlBg" Color="#111317" />
-    <SolidColorBrush x:Key="ControlBorder" Color="#2A2C30" />
-    <CornerRadius x:Key="CloseBtnRadius">0,12,0,0</CornerRadius>
-    <CornerRadius x:Key="WindowRadius">12</CornerRadius>
+    <SolidColorBrush x:Key="TextMain" Color="#E0F7FA" />
+    <SolidColorBrush x:Key="TextSub" Color="#64B5F6" />
+    <SolidColorBrush x:Key="Accent" Color="#00E5FF" />
+    <SolidColorBrush x:Key="ControlBg" Color="#0C101B" />
+    <SolidColorBrush x:Key="ControlBorder" Color="#1B3B52" />
+    <CornerRadius x:Key="CloseBtnRadius">0</CornerRadius>
+    <CornerRadius x:Key="WindowRadius">0</CornerRadius>
     
     <!-- Themed Scrollbar Styles -->
     <Style x:Key="ThemedScrollBarThumb" TargetType="Thumb">
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
-                    <Border x:Name="border" Background="#AA7C11" CornerRadius="3" Margin="1" Opacity="0.6"/>
+                    <Border x:Name="border" Background="#00838F" CornerRadius="0" Margin="1" Opacity="0.7"/>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#FFE57F"/>
+                            <Setter TargetName="border" Property="Background" Value="#00E5FF"/>
                             <Setter TargetName="border" Property="Opacity" Value="0.9"/>
                         </Trigger>
                         <Trigger Property="IsDragging" Value="True">
-                            <Setter TargetName="border" Property="Background" Value="#D4AF37"/>
+                            <Setter TargetName="border" Property="Background" Value="#E0F7FA"/>
                             <Setter TargetName="border" Property="Opacity" Value="1.0"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -414,7 +335,7 @@ customStyles := '
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
-                    <Grid Background="#0A0D10">
+                    <Grid Background="#03050A">
                         <Track x:Name="PART_Track" IsDirectionReversed="true">
                             <Track.Thumb>
                                 <Thumb Style="{StaticResource ThemedScrollBarThumb}"/>
@@ -431,7 +352,7 @@ customStyles := '
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ScrollBar">
-                            <Grid Background="#0A0D10">
+                            <Grid Background="#03050A">
                                 <Track x:Name="PART_Track" IsDirectionReversed="false">
                                     <Track.Thumb>
                                         <Thumb Style="{StaticResource ThemedScrollBarThumb}"/>
@@ -445,24 +366,25 @@ customStyles := '
         </Style.Triggers>
     </Style>
 
+    <DrawingBrush x:Key="ScanlineBrush" TileMode="Tile" Viewport="0,0,4,4" ViewportUnits="Absolute">
+        <DrawingBrush.Drawing>
+            <GeometryDrawing Brush="#1500E5FF">
+                <GeometryDrawing.Geometry>
+                    <RectangleGeometry Rect="0,0,4,1"/>
+                </GeometryDrawing.Geometry>
+            </GeometryDrawing>
+        </DrawingBrush.Drawing>
+    </DrawingBrush>
+
     <Style x:Key="WindowFrameStyle" TargetType="Border">
-        <Setter Property="CornerRadius" Value="12"/>
-        <Setter Property="BorderThickness" Value="3.5"/>
-        <Setter Property="BorderBrush">
-            <Setter.Value>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#8C7853" Offset="0.0"/>
-                    <GradientStop Color="#D4AF37" Offset="0.3"/>
-                    <GradientStop Color="#AA7C11" Offset="0.7"/>
-                    <GradientStop Color="#D4AF37" Offset="1.0"/>
-                </LinearGradientBrush>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="CornerRadius" Value="0"/>
+        <Setter Property="BorderThickness" Value="2"/>
+        <Setter Property="BorderBrush" Value="{StaticResource CyberCyanBrush}"/>
         <Setter Property="Background">
             <Setter.Value>
                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                    <GradientStop Color="#16191D" Offset="0.0"/>
-                    <GradientStop Color="#0D0E10" Offset="1.0"/>
+                    <GradientStop Color="#080C14" Offset="0.0"/>
+                    <GradientStop Color="#03050A" Offset="1.0"/>
                 </LinearGradientBrush>
             </Setter.Value>
         </Setter>
@@ -473,7 +395,7 @@ customStyles := '
         <Setter Property="Background">
             <Setter.Value>
                 <RadialGradientBrush Center="0.5,0.5" RadiusX="0.75" RadiusY="0.75">
-                    <GradientStop Color="#253D59" Offset="0"/>
+                    <GradientStop Color="#1A00E5FF" Offset="0"/>
                     <GradientStop Color="#00000000" Offset="1"/>
                 </RadialGradientBrush>
             </Setter.Value>
@@ -485,7 +407,7 @@ customStyles := '
         <Setter Property="Background">
             <Setter.Value>
                 <RadialGradientBrush Center="0.25,0.85" RadiusX="0.65" RadiusY="0.65">
-                    <GradientStop Color="#1A2A1E0D" Offset="0"/>
+                    <GradientStop Color="#1000A3FF" Offset="0"/>
                     <GradientStop Color="#00000000" Offset="1"/>
                 </RadialGradientBrush>
             </Setter.Value>
@@ -497,7 +419,7 @@ customStyles := '
         <Setter Property="Background">
             <Setter.Value>
                 <RadialGradientBrush Center="0.15,0.15" RadiusX="0.6" RadiusY="0.6">
-                    <GradientStop Color="#0BFFFFFF" Offset="0"/>
+                    <GradientStop Color="#0500E5FF" Offset="0"/>
                     <GradientStop Color="#00000000" Offset="1"/>
                 </RadialGradientBrush>
             </Setter.Value>
@@ -509,7 +431,7 @@ customStyles := '
         <Setter Property="Background">
             <Setter.Value>
                 <RadialGradientBrush Center="0.85,0.85" RadiusX="0.7" RadiusY="0.7">
-                    <GradientStop Color="#1A000000" Offset="0"/>
+                    <GradientStop Color="#08000000" Offset="0"/>
                     <GradientStop Color="#00000000" Offset="1"/>
                 </RadialGradientBrush>
             </Setter.Value>
@@ -522,7 +444,7 @@ customStyles := '
             <Setter.Value>
                 <DrawingBrush TileMode="Tile" Viewport="0,0,4,4" ViewportUnits="Absolute">
                     <DrawingBrush.Drawing>
-                        <GeometryDrawing Brush="#03FFFFFF">
+                        <GeometryDrawing Brush="#02FFFFFF">
                             <GeometryDrawing.Geometry>
                                 <GeometryGroup>
                                     <RectangleGeometry Rect="0,0,2,2"/>
@@ -537,29 +459,29 @@ customStyles := '
     </Style>
     
     <Style x:Key="StoneCard" TargetType="Border">
-        <Setter Property="Background" Value="#B20C0D10"/>
-        <Setter Property="BorderBrush" Value="#2A2E38"/>
+        <Setter Property="Background" Value="#E5070B12"/>
+        <Setter Property="BorderBrush" Value="#1B3B52"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="CornerRadius" Value="0"/>
         <Setter Property="Padding" Value="18,15,18,15"/>
         <Setter Property="Margin" Value="0,0,0,15"/>
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect Color="#000000" BlurRadius="12" ShadowDepth="4" Opacity="0.5"/>
+                <DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0" Opacity="0.15"/>
             </Setter.Value>
         </Setter>
     </Style>
     
     <Style x:Key="SectionHeader" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="Georgia"/>
+        <Setter Property="FontFamily" Value="Segoe UI, Trebuchet MS, sans-serif"/>
         <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="FontSize" Value="16"/>
-        <Setter Property="Foreground" Value="#E2C175"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="#00E5FF"/>
         <Setter Property="Margin" Value="0,0,0,15"/>
     </Style>
     
     <Style x:Key="CustomCheckBox" TargetType="CheckBox">
-        <Setter Property="Foreground" Value="#CBD5E1"/>
+        <Setter Property="Foreground" Value="#E0F7FA"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
@@ -567,32 +489,23 @@ customStyles := '
                 <ControlTemplate TargetType="CheckBox">
                     <BulletDecorator Background="Transparent">
                         <BulletDecorator.Bullet>
-                            <Grid Width="20" Height="20">
-                                <Border x:Name="Box" CornerRadius="3" Background="#0C0D10" BorderBrush="#55442B" BorderThickness="1.2">
-                                    <Border x:Name="InnerBox" Margin="1" CornerRadius="1.5" BorderBrush="#15D4AF37" BorderThickness="1">
-                                        <Path x:Name="Check" Width="10" Height="8" Stretch="Fill"
-                                              Data="M 1.5,4.5 L 4.5,7.5 L 10.5,1.5" 
-                                              Stroke="#FFE57F" StrokeThickness="2.2"
-                                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                              Visibility="Collapsed">
-                                            <Path.Effect>
-                                                <DropShadowEffect Color="#D4AF37" BlurRadius="5" ShadowDepth="0" Opacity="0.8"/>
-                                            </Path.Effect>
-                                        </Path>
-                                    </Border>
+                            <Grid Width="18" Height="18">
+                                <Border x:Name="Box" CornerRadius="0" Background="#03050A" BorderBrush="#1B3B52" BorderThickness="1.2">
+                                    <Grid x:Name="Check" Visibility="Collapsed">
+                                        <Rectangle Fill="#00E5FF" Margin="3"/>
+                                    </Grid>
                                 </Border>
-                                <Path x:Name="CornerTL" Data="M 0,3 L 0,0 L 3,0" Stroke="#AA7C11" StrokeThickness="1" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False"/>
-                                <Path x:Name="CornerTR" Data="M 0,0 L 3,0 L 3,3" Stroke="#AA7C11" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False"/>
-                                <Path x:Name="CornerBL" Data="M 0,0 L 0,3 L 3,3" Stroke="#AA7C11" StrokeThickness="1" HorizontalAlignment="Left" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False"/>
-                                <Path x:Name="CornerBR" Data="M 3,0 L 3,3 L 0,3" Stroke="#AA7C11" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False"/>
+                                <Path x:Name="CornerTL" Data="M 0,2 L 0,0 L 2,0" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False"/>
+                                <Path x:Name="CornerTR" Data="M 0,0 L 2,0 L 2,2" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top" Visibility="Collapsed" IsHitTestVisible="False"/>
+                                <Path x:Name="CornerBL" Data="M 0,0 L 0,2 L 2,2" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Left" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False"/>
+                                <Path x:Name="CornerBR" Data="M 2,0 L 2,2 L 0,2" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" Visibility="Collapsed" IsHitTestVisible="False"/>
                             </Grid>
                         </BulletDecorator.Bullet>
                         <ContentPresenter Margin="8,0,0,0" VerticalAlignment="Center"/>
                     </BulletDecorator>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource GoldMetalBrush}"/>
-                            <Setter TargetName="InnerBox" Property="BorderBrush" Value="#40D4AF37"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="#00E5FF"/>
                             <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
                             <Setter TargetName="CornerTL" Property="Visibility" Value="Visible"/>
                             <Setter TargetName="CornerTR" Property="Visibility" Value="Visible"/>
@@ -600,16 +513,12 @@ customStyles := '
                             <Setter TargetName="CornerBR" Property="Visibility" Value="Visible"/>
                             <Setter TargetName="Box" Property="Effect">
                                 <Setter.Value>
-                                    <DropShadowEffect Color="#D4AF37" BlurRadius="5" ShadowDepth="0" Opacity="0.4"/>
+                                    <DropShadowEffect Color="#00E5FF" BlurRadius="5" ShadowDepth="0" Opacity="0.5"/>
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Box" Property="BorderBrush" Value="#D4AF37"/>
-                            <Setter TargetName="CornerTL" Property="Visibility" Value="Visible"/>
-                            <Setter TargetName="CornerTR" Property="Visibility" Value="Visible"/>
-                            <Setter TargetName="CornerBL" Property="Visibility" Value="Visible"/>
-                            <Setter TargetName="CornerBR" Property="Visibility" Value="Visible"/>
+                            <Setter TargetName="Box" Property="BorderBrush" Value="#00E5FF"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -618,20 +527,20 @@ customStyles := '
     </Style>
     
     <Style x:Key="KeybindBox" TargetType="TextBox">
-        <Setter Property="Background" Value="#0C0D10"/>
+        <Setter Property="Background" Value="#03050A"/>
         <Setter Property="Foreground" Value="#FFF"/>
-        <Setter Property="BorderBrush" Value="#2A2C30"/>
+        <Setter Property="BorderBrush" Value="#1B3B52"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="HorizontalContentAlignment" Value="Center"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Setter Property="FontFamily" Value="Consolas, Courier New, monospace"/>
         <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="FontSize" Value="13.5"/>
+        <Setter Property="FontSize" Value="13"/>
         <Setter Property="CaretBrush" Value="Transparent"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="border" CornerRadius="4" 
+                    <Border x:Name="border" CornerRadius="0" 
                             Background="{TemplateBinding Background}" 
                             BorderBrush="{TemplateBinding BorderBrush}" 
                             BorderThickness="{TemplateBinding BorderThickness}">
@@ -641,15 +550,15 @@ customStyles := '
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsFocused" Value="True">
-                            <Setter TargetName="border" Property="BorderBrush" Value="#D4AF37"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="#00E5FF"/>
                             <Setter TargetName="border" Property="Effect">
                                 <Setter.Value>
-                                    <DropShadowEffect Color="#D4AF37" BlurRadius="6" ShadowDepth="0"/>
+                                    <DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0"/>
                                 </Setter.Value>
                             </Setter>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="border" Property="BorderBrush" Value="#4A4E57"/>
+                            <Setter TargetName="border" Property="BorderBrush" Value="#00838F"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -660,10 +569,10 @@ customStyles := '
     <Style x:Key="InfoButton" TargetType="Button">
         <Setter Property="Width" Value="18"/>
         <Setter Property="Height" Value="18"/>
-        <Setter Property="Background" Value="#2D323B"/>
-        <Setter Property="Foreground" Value="#A0AAB8"/>
-        <Setter Property="FontFamily" Value="Georgia"/>
-        <Setter Property="FontStyle" Value="Italic"/>
+        <Setter Property="Background" Value="#101A30"/>
+        <Setter Property="Foreground" Value="#64B5F6"/>
+        <Setter Property="FontFamily" Value="Segoe UI, sans-serif"/>
+        <Setter Property="FontStyle" Value="Normal"/>
         <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="FontSize" Value="10"/>
         <Setter Property="Cursor" Value="Hand"/>
@@ -671,13 +580,13 @@ customStyles := '
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Grid>
-                        <Ellipse x:Name="Bg" Fill="{TemplateBinding Background}" Stroke="#1F232B" StrokeThickness="1"/>
+                        <Ellipse x:Name="Bg" Fill="{TemplateBinding Background}" Stroke="#1B3B52" StrokeThickness="1"/>
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,1,1"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bg" Property="Fill" Value="#D4AF37"/>
-                            <Setter Property="Foreground" Value="#000"/>
+                            <Setter TargetName="Bg" Property="Fill" Value="#00E5FF"/>
+                            <Setter Property="Foreground" Value="#03050A"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -686,69 +595,43 @@ customStyles := '
     </Style>
     
     <Style x:Key="OrnateButton" TargetType="Button">
-        <Setter Property="Background" Value="#E50F3346"/>
-        <Setter Property="Foreground" Value="#D4AF37"/>
-        <Setter Property="BorderBrush" Value="#AA7C11"/>
+        <Setter Property="Background" Value="#101A30"/>
+        <Setter Property="Foreground" Value="#00E5FF"/>
+        <Setter Property="BorderBrush" Value="#00838F"/>
         <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="FontFamily" Value="Georgia"/>
+        <Setter Property="FontFamily" Value="Segoe UI, sans-serif"/>
         <Setter Property="FontWeight" Value="Bold"/>
-        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="FontSize" Value="14"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Grid>
-                        <Border x:Name="Body" CornerRadius="4" 
+                        <Border x:Name="Body" CornerRadius="0" 
                                 BorderBrush="{TemplateBinding BorderBrush}" 
-                                BorderThickness="{TemplateBinding BorderThickness}">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Color="#103F54" Offset="0"/>
-                                    <GradientStop Color="#092533" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Background="{TemplateBinding Background}"/>
                         
-                        <Border x:Name="InnerBorder" CornerRadius="3" Margin="2" 
-                                BorderBrush="#40D4AF37" BorderThickness="1" IsHitTestVisible="False"/>
+                        <Border x:Name="InnerBorder" CornerRadius="0" Margin="2" 
+                                BorderBrush="#3000E5FF" BorderThickness="1" IsHitTestVisible="False"/>
                         
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10,8,10,8"/>
                         
-                        <Path Data="M 1,8 L 1,1 L 8,1" Stroke="#AA7C11" StrokeThickness="1.5" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"/>
-                        <Ellipse Width="3" Height="3" Fill="#AA7C11" Margin="3,3,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"/>
-                        
-                        <Path Data="M 1,1 L 8,1 L 8,8" Stroke="#AA7C11" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Top" IsHitTestVisible="False"/>
-                        <Ellipse Width="3" Height="3" Fill="#AA7C11" Margin="0,3,3,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsHitTestVisible="False"/>
-                        
-                        <Path Data="M 1,1 L 1,8 L 8,8" Stroke="#AA7C11" StrokeThickness="1.5" HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
-                        <Ellipse Width="3" Height="3" Fill="#AA7C11" Margin="3,0,0,3" HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
-                        
-                        <Path Data="M 8,1 L 8,8 L 1,8" Stroke="#AA7C11" StrokeThickness="1.5" HorizontalAlignment="Right" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
-                        <Ellipse Width="3" Height="3" Fill="#AA7C11" Margin="0,0,3,3" HorizontalAlignment="Right" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
+                        <!-- Diagonal corner tech notches -->
+                        <Path Data="M 0,3 L 3,0" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"/>
+                        <Path Data="M 0,-3 L 3,0" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Left" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
+                        <Path Data="M 0,3 L -3,0" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top" IsHitTestVisible="False"/>
+                        <Path Data="M 0,-3 L -3,0" Stroke="#00E5FF" StrokeThickness="1" HorizontalAlignment="Right" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Body" Property="Background">
-                                <Setter.Value>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                        <GradientStop Color="#1A5975" Offset="0"/>
-                                        <GradientStop Color="#0E394E" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Setter.Value>
-                            </Setter>
-                            <Setter Property="BorderBrush" Value="#D4AF37"/>
-                            <Setter Property="Foreground" Value="#F3E5AB"/>
-                            <Setter TargetName="InnerBorder" Property="BorderBrush" Value="#90D4AF37"/>
+                            <Setter TargetName="Body" Property="Background" Value="#152E4A"/>
+                            <Setter Property="BorderBrush" Value="#00E5FF"/>
+                            <Setter Property="Foreground" Value="#E0F7FA"/>
+                            <Setter TargetName="InnerBorder" Property="BorderBrush" Value="#6000E5FF"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Body" Property="Background">
-                                <Setter.Value>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                        <GradientStop Color="#071E2B" Offset="0"/>
-                                        <GradientStop Color="#0E394E" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Setter.Value>
-                            </Setter>
+                            <Setter TargetName="Body" Property="Background" Value="#0A1E33"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -757,9 +640,9 @@ customStyles := '
     </Style>
     
     <Style TargetType="ComboBox">
-        <Setter Property="Foreground" Value="#CDD6F4"/>
-        <Setter Property="Background" Value="#0C0D10"/>
-        <Setter Property="BorderBrush" Value="#AA7C11"/>
+        <Setter Property="Foreground" Value="#E0F7FA"/>
+        <Setter Property="Background" Value="#03050A"/>
+        <Setter Property="BorderBrush" Value="#00838F"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding" Value="6,3,5,3"/>
         <Setter Property="Template">
@@ -774,7 +657,7 @@ customStyles := '
                                       IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
-                                    <Border x:Name="Border" CornerRadius="4" 
+                                    <Border x:Name="Border" CornerRadius="0" 
                                              Background="{TemplateBinding Background}" 
                                              BorderBrush="{TemplateBinding BorderBrush}" 
                                              BorderThickness="{TemplateBinding BorderThickness}">
@@ -784,17 +667,17 @@ customStyles := '
                                                 <ColumnDefinition Width="30" />
                                             </Grid.ColumnDefinitions>
                                             <Path x:Name="Arrow" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" 
-                                                   Stroke="#AA7C11" StrokeThickness="1.5" Data="M 0,1 L 4,5 L 8,1"/>
+                                                   Stroke="#00838F" StrokeThickness="1.5" Data="M 0,1 L 4,5 L 8,1"/>
                                         </Grid>
                                     </Border>
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Border" Property="Background" Value="#15181C"/>
-                                            <Setter TargetName="Border" Property="BorderBrush" Value="#D4AF37"/>
-                                            <Setter TargetName="Arrow" Property="Stroke" Value="#D4AF37"/>
+                                            <Setter TargetName="Border" Property="Background" Value="#101A30"/>
+                                            <Setter TargetName="Border" Property="BorderBrush" Value="#00E5FF"/>
+                                            <Setter TargetName="Arrow" Property="Stroke" Value="#00E5FF"/>
                                             <Setter TargetName="Arrow" Property="Effect">
                                                 <Setter.Value>
-                                                    <DropShadowEffect Color="#D4AF37" BlurRadius="4" ShadowDepth="0"/>
+                                                    <DropShadowEffect Color="#00E5FF" BlurRadius="4" ShadowDepth="0"/>
                                                 </Setter.Value>
                                             </Setter>
                                         </Trigger>
@@ -809,7 +692,7 @@ customStyles := '
                                           Margin="10,3,30,3" VerticalAlignment="Center" HorizontalAlignment="Left" />
                         <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
                             <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                                <Border Name="DropDownBorder" Background="#0C0D10" BorderBrush="#AA7C11" BorderThickness="1" CornerRadius="0,0,4,4" />
+                                <Border Name="DropDownBorder" Background="#03050A" BorderBrush="#00838F" BorderThickness="1" CornerRadius="0" />
                                 <ScrollViewer Margin="4" SnapsToDevicePixels="True">
                                     <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>
@@ -822,8 +705,8 @@ customStyles := '
     </Style>
     
     <Style TargetType="ComboBoxItem">
-        <Setter Property="Background" Value="#0C0D10"/>
-        <Setter Property="Foreground" Value="#CDD6F4"/>
+        <Setter Property="Background" Value="#03050A"/>
+        <Setter Property="Foreground" Value="#E0F7FA"/>
         <Setter Property="Padding" Value="8,6,8,6"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Template">
@@ -834,11 +717,11 @@ customStyles := '
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="#AA7C11"/>
+                            <Setter TargetName="Bg" Property="Background" Value="#00838F"/>
                             <Setter Property="Foreground" Value="White"/>
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Bg" Property="Background" Value="#785B0D"/>
+                            <Setter TargetName="Bg" Property="Background" Value="#004D5A"/>
                             <Setter Property="Foreground" Value="White"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -847,7 +730,7 @@ customStyles := '
         </Setter>
     </Style>
     
-    <!-- Phase 2 Gold Metal, God Rays, Rivet, and Bracket Styles -->
+    <!-- Phase 2 Sci-Fi God Rays, Rivet (LED), and Bracket Styles -->
     
     <Style x:Key="GodRay1" TargetType="Path">
         <Setter Property="IsHitTestVisible" Value="False"/>
@@ -876,51 +759,51 @@ customStyles := '
     </Style>
     
     <Style x:Key="RivetStyle" TargetType="Ellipse">
-        <Setter Property="Width" Value="4"/>
-        <Setter Property="Height" Value="4"/>
-        <Setter Property="Fill" Value="{StaticResource GoldMetalBrush}"/>
-        <Setter Property="Stroke" Value="#55000000"/>
-        <Setter Property="StrokeThickness" Value="0.8"/>
+        <Setter Property="Width" Value="5"/>
+        <Setter Property="Height" Value="5"/>
+        <Setter Property="Fill" Value="#00E5FF"/>
+        <Setter Property="Stroke" Value="#004D40"/>
+        <Setter Property="StrokeThickness" Value="0.5"/>
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect Color="#000" BlurRadius="2" ShadowDepth="1" Opacity="0.5"/>
+                <DropShadowEffect Color="#00E5FF" BlurRadius="8" ShadowDepth="0" Opacity="1.0"/>
             </Setter.Value>
         </Setter>
     </Style>
     
     <Style x:Key="BracketStyle" TargetType="Path">
-        <Setter Property="Fill" Value="{StaticResource GoldMetalBrush}"/>
-        <Setter Property="Stroke" Value="#AA7C11"/>
-        <Setter Property="StrokeThickness" Value="0.8"/>
+        <Setter Property="Fill" Value="{StaticResource CyberCyanBrush}"/>
+        <Setter Property="Stroke" Value="#00838F"/>
+        <Setter Property="StrokeThickness" Value="1"/>
         <Setter Property="Effect">
             <Setter.Value>
-                <DropShadowEffect Color="#000" BlurRadius="4" ShadowDepth="1.5" Opacity="0.6"/>
+                <DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0" Opacity="0.7"/>
             </Setter.Value>
         </Setter>
     </Style>
     
     <Style x:Key="GoldSlider" TargetType="Slider">
-        <Setter Property="Background" Value="#111317"/>
-        <Setter Property="BorderBrush" Value="#2A2C30"/>
+        <Setter Property="Background" Value="#0C101B"/>
+        <Setter Property="BorderBrush" Value="#1B3B52"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
                     <Grid Margin="0,5">
-                        <Border x:Name="TrackBackground" Height="6" CornerRadius="3" Background="#0C0D10" BorderBrush="#AA7C11" BorderThickness="1"/>
+                        <Border x:Name="TrackBackground" Height="4" CornerRadius="0" Background="#03050A" BorderBrush="#00838F" BorderThickness="1"/>
                         <Track x:Name="PART_Track">
-                            <Track.Thumb>
-                                <Thumb Width="14" Height="14" Cursor="Hand">
-                                    <Thumb.Template>
-                                        <ControlTemplate TargetType="Thumb">
-                                            <Grid>
-                                                <Ellipse Fill="#AA7C11" Stroke="#FFE57F" StrokeThickness="1"/>
-                                                <Ellipse Margin="3.5" Fill="#D4AF37"/>
-                                            </Grid>
-                                        </ControlTemplate>
-                                    </Thumb.Template>
-                                </Thumb>
-                            </Track.Thumb>
+                           <Track.Thumb>
+                               <Thumb Width="12" Height="12" Cursor="Hand">
+                                   <Thumb.Template>
+                                       <ControlTemplate TargetType="Thumb">
+                                           <Grid>
+                                               <Rectangle Fill="#0C101B" Stroke="#00E5FF" StrokeThickness="1.5"/>
+                                               <Rectangle Fill="#00E5FF" Margin="2.5"/>
+                                           </Grid>
+                                       </ControlTemplate>
+                                   </Thumb.Template>
+                               </Thumb>
+                           </Track.Thumb>
                         </Track>
                     </Grid>
                 </ControlTemplate>
@@ -946,29 +829,28 @@ if btnClose {
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Ellipse x:Name="Ring" Stroke="#AA7C11" StrokeThickness="1.5" Fill="#111317"/>
-                            <Ellipse x:Name="Gem" Margin="3.5" Fill="#A02A10" Stroke="#500" StrokeThickness="1"/>
-                            <Ellipse Margin="5,5,8,8" Fill="#40FFFFFF"/>
-                            <Path Data="M 0,0 L 6,6 M 6,0 L 0,6" Stroke="#FFF" StrokeThickness="1.8" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+                            <Rectangle x:Name="Box" Stroke="#00838F" StrokeThickness="1.5" Fill="#03050A" RadiusX="2" RadiusY="2"/>
+                            <Path x:Name="Symbol" Data="M 0,0 L 8,8 M 8,0 L 0,8" Width="8" Height="8" Stretch="Uniform" Stroke="#FF6D00" StrokeThickness="2.2" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Gem" Property="Fill" Value="#E52B10"/>
-                                <Setter TargetName="Ring" Property="Stroke" Value="#D4AF37"/>
-                                <Setter TargetName="Ring" Property="Effect">
+                                <Setter TargetName="Box" Property="Stroke" Value="#00E5FF"/>
+                                <Setter TargetName="Box" Property="Fill" Value="#1000E5FF"/>
+                                <Setter TargetName="Symbol" Property="Stroke" Value="#FF9E00"/>
+                                <Setter TargetName="Box" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect Color="#D4AF37" BlurRadius="6" ShadowDepth="0"/>
+                                        <DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0" Opacity="0.8"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Gem" Property="Fill" Value="#701205"/>
+                                <Setter TargetName="Box" Property="Fill" Value="#2000E5FF"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
-        </Style>
+         </Style>
     )')
 }
 
@@ -986,23 +868,22 @@ if btnMin {
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid>
-                            <Ellipse x:Name="Ring" Stroke="#AA7C11" StrokeThickness="1.5" Fill="#111317"/>
-                            <Ellipse x:Name="Gem" Margin="3.5" Fill="#1A4A60" Stroke="#0A2A3A" StrokeThickness="1"/>
-                            <Ellipse Margin="5,5,8,8" Fill="#40FFFFFF"/>
-                            <Path Data="M 0,0 L 6,0" Stroke="#FFF" StrokeThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,3,0,0" IsHitTestVisible="False"/>
+                            <Rectangle x:Name="Box" Stroke="#00838F" StrokeThickness="1.5" Fill="#03050A" RadiusX="2" RadiusY="2"/>
+                            <Path x:Name="Symbol" Data="M 0,0 L 8,0" Width="8" Height="2" Stretch="Uniform" Stroke="#00E5FF" StrokeThickness="2.2" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Gem" Property="Fill" Value="#2A7A9A"/>
-                                <Setter TargetName="Ring" Property="Stroke" Value="#D4AF37"/>
-                                <Setter TargetName="Ring" Property="Effect">
+                                <Setter TargetName="Box" Property="Stroke" Value="#00E5FF"/>
+                                <Setter TargetName="Box" Property="Fill" Value="#1000E5FF"/>
+                                <Setter TargetName="Symbol" Property="Stroke" Value="#00E5FF"/>
+                                <Setter TargetName="Box" Property="Effect">
                                     <Setter.Value>
-                                        <DropShadowEffect Color="#D4AF37" BlurRadius="6" ShadowDepth="0"/>
+                                        <DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0" Opacity="0.8"/>
                                     </Setter.Value>
                                 </Setter>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Gem" Property="Fill" Value="#0A2A3A"/>
+                                <Setter TargetName="Box" Property="Fill" Value="#2000E5FF"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -1029,19 +910,19 @@ if (titleBlock) {
 windowFrame := app.main.Add("Border").Grid_Row(0).Grid_RowSpan(3).Name("WindowFrame").Style("{StaticResource WindowFrameStyle}")
 windowFrame.SetProp("Panel.ZIndex", "-1")
 
-; Inner accent border for double-gold pinstripe
-innerGoldBdr := windowFrame.Add("Border").Margin("2").BorderThickness("1").BorderBrush("#25D4AF37").CornerRadius("9")
+; Inner accent border for double-cyan tech pinstripe
+innerCyanBdr := windowFrame.Add("Border").Margin("2").BorderThickness("1.5").BorderBrush("#4000E5FF").CornerRadius("0")
 
 ; Inner background grid (canvas for atmospheric glow + vector veins)
-bgGrid := innerGoldBdr.Add("Grid")
+bgGrid := innerCyanBdr.Add("Grid")
 bgGrid.Add("Border").Style("{StaticResource CentralGlow}")
 bgGrid.Add("Border").Style("{StaticResource WarmGlow}")
 
-; Add large soft radial splotches for organic rock tone variations
+; Add large soft radial splotches for organic tech variations
 bgGrid.Add("Border").Style("{StaticResource LightSplotch}")
 bgGrid.Add("Border").Style("{StaticResource DarkSplotch}")
 
-; Grain overlay for tactile rock pores
+; Grain overlay for screen noise/tactile texture
 bgGrid.Add("Border").Style("{StaticResource GrainOverlay}")
 
 ; Volumetric light rays (God Rays)
@@ -1049,75 +930,76 @@ bgGrid.Add("Path").Data("M 50,-50 L 150,-50 L 800,650 L 650,650 Z").Style("{Stat
 bgGrid.Add("Path").Data("M 200,-50 L 380,-50 L 990,550 L 780,600 Z").Style("{StaticResource GodRay2}")
 bgGrid.Add("Path").Data("M -50,50 L -50,180 L 580,650 L 420,650 Z").Style("{StaticResource GodRay2}")
 
-; Ornate Gold Celtic Inlay Border Path (octagonal chamfered with diamond center notches)
-bgGrid.Add("Path").Data("M 30,16 L 455,16 L 470,31 L 485,16 L 910,16 L 924,30 L 924,285 L 909,300 L 924,315 L 924,570 L 910,584 L 485,584 L 470,569 L 455,584 L 30,584 L 16,570 L 16,315 L 31,300 L 16,285 L 16,30 Z").Stroke("{StaticResource GoldMetalBrush}").StrokeThickness("1.2").SetProp("IsHitTestVisible", "False").Opacity("0.35")
+; Scanline overlay layer with Flicker binding name
+bgGrid.Add("Border").Name("bgFlickerLayer").Background("{StaticResource ScanlineBrush}").SetProp("IsHitTestVisible", "False").Opacity("0.95")
 
-; Glowing abstract circles in the empty bottom-left background area
+; Futuristic Tech Inlay Border Path (octagonal chamfered)
+bgGrid.Add("Path").Data("M 30,16 L 455,16 L 470,31 L 485,16 L 910,16 L 924,30 L 924,285 L 909,300 L 924,315 L 924,570 L 910,584 L 485,584 L 470,569 L 455,584 L 30,584 L 16,570 L 16,315 L 31,300 L 16,285 L 16,30 Z").Stroke("#2000E5FF").StrokeThickness("1.0").SetProp("IsHitTestVisible", "False").Opacity("0.3")
+
+; Glowing radar/HUD circles in the bottom-left background area
 bgCircleLeft := bgGrid.Add("Grid").Width(340).Height(340).HorizontalAlignment("Left").VerticalAlignment("Bottom").Margin("50,0,0,50")
 bgCircleLeft.SetProp("IsHitTestVisible", "False")
-bgCircleLeft.Add("Ellipse").Stroke("#05D4AF37").StrokeThickness("1.5").SetProp("StrokeDashArray", "8 6")
-bgCircleLeft.Add("Ellipse").Margin("15").Stroke("#03D4AF37").StrokeThickness("1")
-bgCircleLeft.Add("Ellipse").Margin("25").Stroke("#02D4AF37").StrokeThickness("1.5").SetProp("StrokeDashArray", "2 4")
-bgCircleLeft.Add("Ellipse").Margin("45").Stroke("#048C7853").StrokeThickness("1")
-bgCircleLeft.Add("Path").Data("M 170,15 L 170,325 M 15,170 L 325,170").Stroke("#02D4AF37").StrokeThickness("1")
-bgCircleLeft.Add("Path").Data("M 58,58 L 282,282 M 58,282 L 282,58").Stroke("#01D4AF37").StrokeThickness("1")
-bgCircleLeft.Add("Ellipse").Margin("136").Fill("#01D4AF37")
-bgCircleLeft.Add("Polygon").SetProp("Points", "170,150 185,170 170,190 155,170").Fill("#03D4AF37")
+bgCircleLeft.Add("Ellipse").Stroke("#1000E5FF").StrokeThickness("1.5").SetProp("StrokeDashArray", "8 6")
+bgCircleLeft.Add("Ellipse").Margin("15").Stroke("#0800E5FF").StrokeThickness("1")
+bgCircleLeft.Add("Ellipse").Margin("25").Stroke("#1200E5FF").StrokeThickness("1.5").SetProp("StrokeDashArray", "2 4")
+bgCircleLeft.Add("Ellipse").Margin("45").Stroke("#0600838F").StrokeThickness("1")
+bgCircleLeft.Add("Path").Data("M 170,15 L 170,325 M 15,170 L 325,170").Stroke("#0800E5FF").StrokeThickness("1")
+bgCircleLeft.Add("Path").Data("M 58,58 L 282,282 M 58,282 L 282,58").Stroke("#0600E5FF").StrokeThickness("1")
+bgCircleLeft.Add("Ellipse").Margin("136").Fill("#0400E5FF")
+bgCircleLeft.Add("Polygon").SetProp("Points", "170,150 185,170 170,190 155,170").Fill("#1000E5FF")
 
-; Secondary larger abstract circles/geometry in upper-right to balance layout
+; Secondary larger tactical HUD circles/geometry in upper-right
 bgCircleRight := bgGrid.Add("Grid").Width(460).Height(460).HorizontalAlignment("Right").VerticalAlignment("Top").Margin("0,20,-120,0")
 bgCircleRight.SetProp("IsHitTestVisible", "False")
-bgCircleRight.Add("Ellipse").Stroke("#03D4AF37").StrokeThickness("1.5").SetProp("StrokeDashArray", "10 8")
-bgCircleRight.Add("Ellipse").Margin("25").Stroke("#02D4AF37").StrokeThickness("1")
-bgCircleRight.Add("Ellipse").Margin("50").Stroke("#02D4AF37").StrokeThickness("1").SetProp("StrokeDashArray", "4 4")
-bgCircleRight.Add("Path").Data("M 230,10 L 230,450 M 10,230 L 450,230").Stroke("#02D4AF37").StrokeThickness("1")
-bgCircleRight.Add("Path").Data("M 77,77 L 383,383 M 77,383 L 383,77").Stroke("#01D4AF37").StrokeThickness("1")
-bgCircleRight.Add("Polygon").SetProp("Points", "230,25 435,230 230,435 25,230").Stroke("#02D4AF37").StrokeThickness("1")
-bgCircleRight.Add("Polygon").SetProp("Points", "85,85 375,85 375,375 85,375").Stroke("#02D4AF37").StrokeThickness("1")
+bgCircleRight.Add("Ellipse").Stroke("#0A00E5FF").StrokeThickness("1.5").SetProp("StrokeDashArray", "10 8")
+bgCircleRight.Add("Ellipse").Margin("25").Stroke("#0600E5FF").StrokeThickness("1")
+bgCircleRight.Add("Ellipse").Margin("50").Stroke("#0600E5FF").StrokeThickness("1").SetProp("StrokeDashArray", "4 4")
+bgCircleRight.Add("Path").Data("M 230,10 L 230,450 M 10,230 L 450,230").Stroke("#0600E5FF").StrokeThickness("1")
+bgCircleRight.Add("Path").Data("M 77,77 L 383,383 M 77,383 L 383,77").Stroke("#0400E5FF").StrokeThickness("1")
+bgCircleRight.Add("Polygon").SetProp("Points", "230,25 435,230 230,435 25,230").Stroke("#0600E5FF").StrokeThickness("1")
+bgCircleRight.Add("Polygon").SetProp("Points", "85,85 375,85 375,375 85,375").Stroke("#0600E5FF").StrokeThickness("1")
 
-; Ornate Heavy Gold Window Corner Brackets & Rivets
+; Sleek Sci-Fi chamfered corner brackets (instead of RPG ornaments)
 ; Top-Left Corner
-bgGrid.Add("Path").Data("M 0,0 L 50,0 L 50,10 L 40,10 L 40,16 C 30,16 16,30 16,40 L 10,40 L 10,50 L 0,50 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Left").VerticalAlignment("Top").Margin("4,4,0,0").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Top").Margin("29,7,0,0").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Top").Margin("7,29,0,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 0,40 L 0,0 L 40,0 L 40,8 L 12,8 L 8,12 L 8,40 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Left").VerticalAlignment("Top").Margin("4,4,0,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Top").Margin("25,6,0,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Top").Margin("6,25,0,0").SetProp("IsHitTestVisible", "False")
 
 ; Top-Right Corner
-bgGrid.Add("Path").Data("M 50,0 L 0,0 L 0,10 L 10,10 L 10,16 C 20,16 34,30 34,40 L 40,40 L 40,50 L 50,50 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Right").VerticalAlignment("Top").Margin("0,4,4,0").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Top").Margin("0,7,29,0").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Top").Margin("0,29,7,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 40,40 L 40,0 L 0,0 L 0,8 L 28,8 L 32,12 L 32,40 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Right").VerticalAlignment("Top").Margin("0,4,4,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Top").Margin("0,6,25,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Top").Margin("0,25,6,0").SetProp("IsHitTestVisible", "False")
 
 ; Bottom-Left Corner
-bgGrid.Add("Path").Data("M 0,50 L 50,50 L 50,40 L 40,40 L 40,34 C 30,34 16,20 16,10 L 10,10 L 10,0 L 0,0 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Left").VerticalAlignment("Bottom").Margin("4,0,0,4").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Bottom").Margin("29,0,0,7").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Bottom").Margin("7,0,0,29").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 0,0 L 0,40 L 40,40 L 40,32 L 12,32 L 8,28 L 8,0 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Left").VerticalAlignment("Bottom").Margin("4,0,0,4").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Bottom").Margin("25,0,0,6").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Left").VerticalAlignment("Bottom").Margin("6,0,0,25").SetProp("IsHitTestVisible", "False")
 
 ; Bottom-Right Corner
-bgGrid.Add("Path").Data("M 50,50 L 0,50 L 0,40 L 10,40 L 10,34 C 20,34 34,20 34,10 L 40,10 L 40,0 L 50,0 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Right").VerticalAlignment("Bottom").Margin("0,0,4,4").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Bottom").Margin("0,0,29,7").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Bottom").Margin("0,0,7,29").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 40,0 L 40,40 L 0,40 L 0,32 L 28,32 L 32,28 L 32,0 Z").Style("{StaticResource BracketStyle}").HorizontalAlignment("Right").VerticalAlignment("Bottom").Margin("0,0,4,4").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Bottom").Margin("0,0,25,6").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Ellipse").Style("{StaticResource RivetStyle}").HorizontalAlignment("Right").VerticalAlignment("Bottom").Margin("0,0,6,25").SetProp("IsHitTestVisible", "False")
 
-; 3D Slate Veins / Fractures (groove shadow + lit cyan edge highlight)
-; Vein 1
-bgGrid.Add("Path").Data("M -50,120 C 120,90 180,240 330,190 C 420,160 480,300 620,230 C 720,210 820,330 990,290 M 330,190 C 290,270 250,320 220,400 M 620,230 C 650,130 690,90 720,20").Stroke("#35000000").StrokeThickness("1.6").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Path").Data("M -50,120 C 120,90 180,240 330,190 C 420,160 480,300 620,230 C 720,210 820,330 990,290 M 330,190 C 290,270 250,320 220,400 M 620,230 C 650,130 690,90 720,20").Stroke("#1F00A3FF").StrokeThickness("0.8").Margin("1,1,0,0").SetProp("IsHitTestVisible", "False")
+; Glowing Rectilinear Circuit Tracks (Futuristic cyber traces)
+bgGrid.Add("Path").Data("M -50,150 L 200,150 L 250,200 L 400,200 L 450,150 L 600,150 L 650,200 L 990,200").Stroke("#1500E5FF").StrokeThickness("4").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M -50,150 L 200,150 L 250,200 L 400,200 L 450,150 L 600,150 L 650,200 L 990,200").Stroke("#8000E5FF").StrokeThickness("1").SetProp("IsHitTestVisible", "False")
 
-; Vein 2
-bgGrid.Add("Path").Data("M 280,-50 C 240,160 350,270 300,420 C 270,530 380,580 320,650 M 300,420 C 210,440 160,500 90,540 M 320,650 C 340,560 410,520 480,480").Stroke("#30000000").StrokeThickness("1.4").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Path").Data("M 280,-50 C 240,160 350,270 300,420 C 270,530 380,580 320,650 M 300,420 C 210,440 160,500 90,540 M 320,650 C 340,560 410,520 480,480").Stroke("#1A00A3FF").StrokeThickness("0.7").Margin("1,1,0,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 150,-50 L 150,100 L 200,150 L 200,450 L 250,500 L 250,650").Stroke("#1500E5FF").StrokeThickness("3").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 150,-50 L 150,100 L 200,150 L 200,450 L 250,500 L 250,650").Stroke("#8000E5FF").StrokeThickness("0.8").SetProp("IsHitTestVisible", "False")
 
-; Vein 3
-bgGrid.Add("Path").Data("M 990,80 C 840,130 790,50 630,130 C 520,170 420,85 320,160 C 190,230 130,190 -50,260 M 630,130 C 570,240 540,340 500,480").Stroke("#32000000").StrokeThickness("1.5").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Path").Data("M 990,80 C 840,130 790,50 630,130 C 520,170 420,85 320,160 C 190,230 130,190 -50,260 M 630,130 C 570,240 540,340 500,480").Stroke("#1C00A3FF").StrokeThickness("0.8").Margin("1,1,0,0").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 990,100 L 750,100 L 700,150 L 700,400 L 650,450 L -50,450").Stroke("#1500E5FF").StrokeThickness("3").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 990,100 L 750,100 L 700,150 L 700,400 L 650,450 L -50,450").Stroke("#8000E5FF").StrokeThickness("0.8").SetProp("IsHitTestVisible", "False")
 
-; Organic Gold Ore Vein (New thematic element!)
-bgGrid.Add("Path").Data("M 150,-50 C 180,80 120,180 250,280 C 300,320 220,480 350,650").Stroke("#30000000").StrokeThickness("1.5").SetProp("IsHitTestVisible", "False")
-bgGrid.Add("Path").Data("M 150,-50 C 180,80 120,180 250,280 C 300,320 220,480 350,650").Stroke("#1C00A3FF").StrokeThickness("0.8").Margin("1,1,0,0").SetProp("IsHitTestVisible", "False")
+; Glowing Circuit Junction Nodes (Diamond markers)
+bgGrid.Add("Path").Data("M 197,150 L 200,147 L 203,150 L 200,153 Z").Fill("#00E5FF").Stroke("#004D40").StrokeThickness("0.5").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 397,200 L 400,197 L 403,200 L 400,203 Z").Fill("#00E5FF").Stroke("#004D40").StrokeThickness("0.5").SetProp("IsHitTestVisible", "False")
+bgGrid.Add("Path").Data("M 697,400 L 700,397 L 703,400 L 700,403 Z").Fill("#00E5FF").Stroke("#004D40").StrokeThickness("0.5").SetProp("IsHitTestVisible", "False")
 
-; Generate procedural minor background scratches/fractures (75 scratches all over)
-GenerateBackgroundScratches(bgGrid, 300)
+; Generate Sci-Fi Grid overlay
+GenerateSciFiGrid(bgGrid)
 
-; Ornate Gold separator line below the title bar with a center diamond ornament
-app.main.Add("Path").Grid_Row(0).VerticalAlignment("Bottom").Height("12").Margin("6,0,0,0").Data("M 0,2 L 440,2 L 448,5 L 458,5 L 470,11 L 482,5 L 492,5 L 500,2 L 940,2").Stroke("#40D4AF37").StrokeThickness("1.5").SetProp("IsHitTestVisible", "False")
+; Tech cyan separator line below the title bar with a center diamond notch and glow
+app.main.Add("Path").Grid_Row(0).VerticalAlignment("Bottom").Height("12").Margin("6,0,0,0").Data("M 0,2 L 440,2 L 448,5 L 458,5 L 470,11 L 482,5 L 492,5 L 500,2 L 940,2").Stroke("#8000E5FF").StrokeThickness("1.5").SetProp("IsHitTestVisible", "False")
 
 ; ==============================================================================
 ; CONTENT AREAS AND COLUMN PRE-SETTING
@@ -1127,8 +1009,8 @@ contentGrid := app.main.Add("Grid").Grid_Row(1).Margin("25,10,25,10")
 contentGrid.Cols("190", "20", "*")
 contentGrid.Rows("Auto", "*", "Auto", "Auto")
 
-; Clean centered gothic title block
-contentGrid.Add("TextBlock").Grid_Row(0).Grid_Column(0).Grid_ColumnSpan(3).Text("GAME SETTINGS").FontFamily("Georgia").FontSize(24).FontWeight("Bold").Foreground("#D4AF37").HorizontalAlignment("Center").Margin("0,10,0,15")
+; Clean centered futuristic title block
+contentGrid.Add("TextBlock").Grid_Row(0).Grid_Column(0).Grid_ColumnSpan(3).Text("SYSTEM CONFIGURATION").FontFamily("Segoe UI").FontSize(22).FontWeight("SemiBold").Foreground("#00E5FF").HorizontalAlignment("Center").Margin("0,10,0,15")
 
 ; Sidebar StackPanel on Column 0, Row 1
 sidebarSp := contentGrid.Add("StackPanel").Grid_Column(0).Grid_Row(1)
@@ -1139,8 +1021,8 @@ AddSidebarButton(sp, name, label, isFirst := false) {
     btnGrid := btn.Add("Grid")
     btnGrid.Cols("Auto", "*")
     
-    indText := isFirst ? "✦" : "  "
-    indColor := isFirst ? "#D4AF37" : "#8A94A6"
+    indText := isFirst ? "▶" : "  "
+    indColor := isFirst ? "#00E5FF" : "#64B5F6"
     btnGrid.Add("TextBlock").Name("Ind" name).Text(indText).Foreground(indColor).FontWeight("Bold").Margin("0,0,8,0").VerticalAlignment("Center").Grid_Column(0)
     btnGrid.Add("TextBlock").Text(label).VerticalAlignment("Center").Grid_Column(1)
 }
@@ -1197,7 +1079,7 @@ AddCheckboxRow(parent, name, label, isCheckedVal, infoName, infoDesc) {
     rowGrid.Cols("*", "Auto")
 
     lbl := rowGrid.Add("TextBlock").Text(label).FontSize(13).VerticalAlignment("Center").Grid_Column(0)
-    lbl.InjectResources('<Style TargetType="TextBlock"><Setter Property="Foreground" Value="#CBD5E1"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=' name '}" Value="True"><Setter Property="Foreground" Value="#F0F9FF"/><Setter Property="Effect"><Setter.Value><DropShadowEffect Color="#D4AF37" BlurRadius="6" ShadowDepth="0" Opacity="0.9"/></Setter.Value></Setter></DataTrigger></Style.Triggers></Style>')
+    lbl.InjectResources('<Style TargetType="TextBlock"><Setter Property="Foreground" Value="#CBD5E1"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=' name '}" Value="True"><Setter Property="Foreground" Value="#F0F9FF"/><Setter Property="Effect"><Setter.Value><DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0" Opacity="0.9"/></Setter.Value></Setter></DataTrigger></Style.Triggers></Style>')
 
     rightSp := rowGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(1).VerticalAlignment("Center")
     rightSp.Add("CheckBox").Name(name).Style("{StaticResource CustomCheckBox}").IsChecked(isCheckedVal ? "True" : "False").Cursor("Hand").Margin("0,0,8,0")
@@ -1228,11 +1110,11 @@ AddAutoRunRow(parent) {
     rowGrid.Cols("*", "Auto")
 
     lbl := rowGrid.Add("TextBlock").Text("Auto-Run Shortcut").FontSize(13).VerticalAlignment("Center").Grid_Column(0)
-    lbl.InjectResources('<Style TargetType="TextBlock"><Setter Property="Foreground" Value="#CBD5E1"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=TglAutoRun}" Value="True"><Setter Property="Foreground" Value="#F0F9FF"/><Setter Property="Effect"><Setter.Value><DropShadowEffect Color="#D4AF37" BlurRadius="6" ShadowDepth="0" Opacity="0.9"/></Setter.Value></Setter></DataTrigger></Style.Triggers></Style>')
+    lbl.InjectResources('<Style TargetType="TextBlock"><Setter Property="Foreground" Value="#CBD5E1"/><Style.Triggers><DataTrigger Binding="{Binding IsChecked, ElementName=TglAutoRun}" Value="True"><Setter Property="Foreground" Value="#F0F9FF"/><Setter Property="Effect"><Setter.Value><DropShadowEffect Color="#00E5FF" BlurRadius="6" ShadowDepth="0" Opacity="0.9"/></Setter.Value></Setter></DataTrigger></Style.Triggers></Style>')
 
     rightSp := rowGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(1).VerticalAlignment("Center")
 
-    setupBtn := rightSp.Add("Button").Name("BtnSetupShortcut").Content("Setup").Background("Transparent").Foreground("#D4AF37").BorderThickness("0").Cursor("Hand").FontWeight("Bold").Margin("0,0,8,0").VerticalAlignment("Center")
+    setupBtn := rightSp.Add("Button").Name("BtnSetupShortcut").Content("Setup").Background("Transparent").Foreground("#00E5FF").BorderThickness("0").Cursor("Hand").FontWeight("Bold").Margin("0,0,8,0").VerticalAlignment("Center")
     setupBtn.InjectResources('<Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><TextBlock Text="{TemplateBinding Content}" TextDecorations="Underline"/></ControlTemplate></Setter.Value></Setter></Style>')
 
     rightSp.Add("CheckBox").Name("TglAutoRun").Style("{StaticResource CustomCheckBox}").IsChecked(AppState.AutoRunEnabled ? "True" : "False").Cursor("Hand").Margin("0,0,8,0").VerticalAlignment("Center")
@@ -1271,7 +1153,7 @@ AddSliderRow(parent, name, label, minVal, maxVal, currentVal, suffix := "", info
 
     leftSp := rowGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(0).VerticalAlignment("Center")
     leftSp.Add("TextBlock").Text(label).Foreground("#CBD5E1").FontSize(13).VerticalAlignment("Center").Margin("0,0,10,0")
-    leftSp.Add("TextBlock").Name(name "Val").Text(String(currentVal) suffix).Foreground("#D4AF37").FontSize(13).FontWeight("Bold").VerticalAlignment("Center")
+    leftSp.Add("TextBlock").Name(name "Val").Text(String(currentVal) suffix).Foreground("#00E5FF").FontSize(13).FontWeight("Bold").VerticalAlignment("Center")
 
     rightSp := rowGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(1).VerticalAlignment("Center")
     rightSp.Add("Slider").Name(name).Style("{StaticResource GoldSlider}").Width(150).Height(24).Minimum(minVal).Maximum(maxVal).Value(String(currentVal)).Margin("0,0,8,0")
@@ -1345,7 +1227,7 @@ AddFooterLink(sp, name, iconChar, text) {
     btnGrid := linkBtn.Add("Grid")
     btnGrid.Cols("Auto", "*")
 
-    iconColor := "#D4AF37"
+    iconColor := "#00E5FF"
     if (InStr(name, "Nexus"))
         iconColor := "#FF7A00"
     else if (InStr(name, "Github"))
@@ -1459,7 +1341,7 @@ SwitchCategory(cat) {
         if (c == cat) {
             ui.Update("Panel" c, "Visibility", "Visible")
             ui.Update("Ind" c, "Text", "✦")
-            ui.Update("Ind" c, "Foreground", "#D4AF37")
+            ui.Update("Ind" c, "Foreground", "#00E5FF")
         } else {
             ui.Update("Panel" c, "Visibility", "Collapsed")
             ui.Update("Ind" c, "Text", "  ")
@@ -1489,7 +1371,7 @@ OnInfoClick(state, ctrl, event) {
             Title: info.Title,
             Message: info.Desc,
             Icon: Chr(0xE946),
-            IconColor: "#D4AF37",
+            IconColor: "#00E5FF",
             Owner: ui.wpfHwnd,
             Modal: true
         })
@@ -1501,7 +1383,7 @@ OnSetupClick(state, ctrl, event) {
         Title: "Macro Setup",
         Message: "Entering Auto-Run Action Macro Setup...`n`n[MOCKED SETUP] Action coordinates configured for:`n- City Center (Active)`n- Marketplace (Active)`n- Guild Hall (Inactive)",
         Icon: Chr(0xE713),
-        IconColor: "#D4AF37",
+        IconColor: "#00E5FF",
         Owner: ui.wpfHwnd,
         Modal: true
     })
@@ -1565,4 +1447,13 @@ SaveAndReload(state, ctrl, event) {
     }
 }
 
+SetTimer(FlickerTimer, 120)
 app.Show()
+
+FlickerTimer() {
+    try {
+        ; Slightly fluctuate opacity to simulate scanline flicker
+        val := Format("{1:.3f}", Random(88, 100) / 100.0)
+        ui.Update("bgFlickerLayer", "Opacity", val)
+    }
+}

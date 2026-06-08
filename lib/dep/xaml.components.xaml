@@ -327,11 +327,35 @@
     </Style>
 
     <Style TargetType="ComboBox">
+        <Style.Resources>
+            <Style TargetType="TextBox">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="0"/>
+                <Setter Property="MinHeight" Value="0"/>
+                <Setter Property="MinWidth" Value="0"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="FontFamily" Value="{Binding Path=FontFamily, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                <Setter Property="FontSize" Value="{Binding Path=FontSize, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                <Setter Property="FontWeight" Value="{Binding Path=FontWeight, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                <Setter Property="Foreground" Value="{Binding Path=Foreground, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <ScrollViewer x:Name="PART_ContentHost" Background="Transparent" VerticalAlignment="Center" Margin="0"/>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </Style.Resources>
         <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
         <Setter Property="FocusVisualStyle" Value="{DynamicResource GlobalFocusVisual}"/>
         <Setter Property="Background" Value="{DynamicResource ControlBg}"/>
         <Setter Property="BorderBrush" Value="{DynamicResource ControlBorder}"/>
         <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="MinHeight" Value="36"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
@@ -348,7 +372,7 @@
                         <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" Margin="12,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left" />
                         <TextBox x:Name="PART_EditableTextBox" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="12,0,30,0" Focusable="True" Background="Transparent" Foreground="{TemplateBinding Foreground}" BorderThickness="0" Visibility="Hidden" IsReadOnly="{TemplateBinding IsReadOnly}"/>
                         <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
-                            <Border x:Name="DropDownBorder" Background="{DynamicResource DropdownBg}" BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="6" Margin="0,4,0,0" MinWidth="{Binding ActualWidth, ElementName=ToggleButton}" MaxHeight="150">
+                            <Border x:Name="DropDownBorder" Background="{DynamicResource DropdownBg}" BorderThickness="1" BorderBrush="{DynamicResource ControlBorder}" CornerRadius="6" Margin="0,4,0,0" Width="{Binding ActualWidth, ElementName=ToggleButton}" MaxHeight="350">
                                 <ScrollViewer Margin="4" SnapsToDevicePixels="True" Tag="ContainScroll">
                                     <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" />
                                 </ScrollViewer>

@@ -3791,6 +3791,11 @@ class XDocumentEditor {
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Dark">
+                        <Setter Property="Foreground" Value="#E0E0E0"/>
+                    </DataTrigger>
+                </Style.Triggers>
             </Style>
             <Style TargetType="ToggleButton">
                 <Setter Property="Background" Value="Transparent"/>
@@ -3815,13 +3820,18 @@ class XDocumentEditor {
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Dark">
+                        <Setter Property="Foreground" Value="#E0E0E0"/>
+                    </DataTrigger>
+                </Style.Triggers>
             </Style>
             <Style x:Key="[[ID]]_PageStyle" TargetType="Border">
                 <Setter Property="Background" Value="White"/>
                 <Setter Property="BorderBrush" Value="#CCCCCC"/>
                 <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="MinHeight" Value="900"/>
-                <Setter Property="Width" Value="740"/>
+                <Setter Property="MinHeight" Value="1056"/>
+                <Setter Property="Width" Value="816"/>
                 <Setter Property="HorizontalAlignment" Value="Center"/>
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Theme">
@@ -3838,7 +3848,8 @@ class XDocumentEditor {
                 <Setter Property="Foreground" Value="Black"/>
                 <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="BorderThickness" Value="0"/>
-                <Setter Property="Padding" Value="60,50"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="-1,0"/>
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Theme">
                         <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
@@ -3854,8 +3865,8 @@ class XDocumentEditor {
 
         this.container.Rows("Auto", "*", "Auto") ; Toolbar, Editor, Status Bar
         ; === TOOLBAR (Google Docs-style) ===
-        toolbarBg := this.container.Add("Border").Grid_Row(0).Background("{DynamicResource BgColor}").Padding("12,4,12,6")
-        toolbarInner := toolbarBg.Add("Border").Background("{DynamicResource SidebarColor}").CornerRadius("6").Padding("6,4").BorderBrush("{DynamicResource ControlBorder}").BorderThickness(1).ClipToBounds("True")
+        toolbarBg := this.container.Add("Border").Name(this.id "_ToolbarBg").Grid_Row(0).Background("{DynamicResource BgColor}").Padding("12,4,12,6")
+        toolbarInner := toolbarBg.Add("Border").Name(this.id "_ToolbarInner").Background("{DynamicResource SidebarColor}").CornerRadius("6").Padding("6,4").BorderBrush("{DynamicResource ControlBorder}").BorderThickness(1).ClipToBounds("True")
 
         toolbarGrid := toolbarInner.Add("Grid")
         toolbarGrid.Cols("*", "Auto", "Auto")
@@ -3875,7 +3886,7 @@ class XDocumentEditor {
         this._AddToolbarSep(toolbarWrap)
 
         ; Style dropdown
-        styleCb := toolbarWrap.Add("ComboBox").Name(this.id "_StyleSelect").Width(110).Height(28).VerticalAlignment("Center").Margin("4,0")
+        styleCb := toolbarWrap.Add("ComboBox").Name(this.id "_StyleSelect").Width(110).Height(30).VerticalAlignment("Center").Margin("4,0")
         styleCb.Add("ComboBoxItem").Content("Body Text").Tag("Body")
         styleCb.Add("ComboBoxItem").Content("Header 1").Tag("H1")
         styleCb.Add("ComboBoxItem").Content("Header 2").Tag("H2")
@@ -3885,8 +3896,8 @@ class XDocumentEditor {
         styleCb.Add("ComboBoxItem").Content("Header 6").Tag("H6")
         styleCb.SelectedIndex(0)
 
-        ; Font family combo
-        fontCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontFamily").Width(140).Height(28).VerticalAlignment("Center").Margin("4,0")
+        ; Font family combo (IsEditable allows displaying fonts not in the list, IsReadOnly prevents arbitrary typing)
+        fontCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontFamily").Width(220).Height(30).VerticalAlignment("Center").Margin("4,0").IsEditable("True")
         
         fallbackItem := fontCb.Add("ComboBoxItem").Name(this.id "_FallbackFont").Visibility("Collapsed").Tag("Unknown")
         fbSp := fallbackItem.Add("StackPanel").Orientation("Horizontal")
@@ -3899,7 +3910,7 @@ class XDocumentEditor {
         }
         defaultIdx := 0
         for idx, f in systemFonts {
-            if (f == "Segoe UI") {
+            if (f = "Segoe UI") {
                 defaultIdx := idx - 1
                 break
             }
@@ -3907,7 +3918,7 @@ class XDocumentEditor {
         fontCb.SelectedIndex(defaultIdx)
 
         ; Font size combo
-        sizeCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontSize").Width(65).Height(28).VerticalAlignment("Center").Margin("4,0")
+        sizeCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontSize").Width(65).Height(30).VerticalAlignment("Center").Margin("4,0")
         for s in ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "36", "48", "72"]
             sizeCb.Add("ComboBoxItem").Content(s)
         sizeCb.SelectedIndex(5) ; default 14
@@ -4038,7 +4049,7 @@ class XDocumentEditor {
             .Content(Chr(0xE70E)).ToolTip("Hide Menu Bar") ; Default is Chevron Up
 
         ; === EDITOR AREA (Google Docs-style centered page on canvas) ===
-        editorWrapper := this.container.Add("Grid").Grid_Row(1).Background("{DynamicResource DropdownBg}")
+        editorWrapper := this.container.Add("Grid").Name(this.id "_EditorWrapper").Grid_Row(1).Background("{DynamicResource DropdownBg}")
         editorWrapper.Cols("Auto", "*")
         
         this.outlinePane := editorWrapper.Add("Border").Name(this.id "_OutlinePane").Grid_Column(0).Width(280).Background("{DynamicResource SidebarColor}").BorderBrush("{DynamicResource ControlBorder}").BorderThickness("0,0,1,0").Visibility("Collapsed")
@@ -4057,17 +4068,22 @@ class XDocumentEditor {
         this.rtb := pageBorder.Add("RichTextBox").Name(this.id).FontFamily("Segoe UI").FontSize(14)
             .AcceptsReturn("True").VerticalScrollBarVisibility("Disabled").HorizontalScrollBarVisibility("Disabled")
             .Style("{StaticResource " this.id "_RtfStyle}").IsInactiveSelectionHighlightEnabled("True")
-            .IsDocumentEnabled("True")
+            .IsDocumentEnabled("False")
 
         ; === STATUS BAR ===
-        statusBg := this.container.Add("Border").Grid_Row(2).Background("{DynamicResource ControlBg}").Height(28).BorderBrush("{DynamicResource ControlBorder}").BorderThickness("0,1,0,0")
+        statusBg := this.container.Add("Border").Name(this.id "_StatusBg").Grid_Row(2).Background("{DynamicResource ControlBg}").Height(28).BorderBrush("{DynamicResource ControlBorder}").BorderThickness("0,1,0,0")
         statusGrid := statusBg.Add("Grid")
         statusGrid.Cols("Auto", "*", "Auto")
 
         statusLeft := statusGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(0).Margin("15,0")
         statusLeft.Add("TextBlock").Name(this.id "_WordCount").Text("Words: 0").Foreground("{DynamicResource TextSub}").FontSize(12).VerticalAlignment("Center")
 
-        statusRight := statusGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(2).Margin("0,0,15,0")
+        statusCenter := statusGrid.Add("StackPanel").Orientation("Horizontal").Name(this.id "_StatusPageNav").Grid_Column(1).HorizontalAlignment("Center").Visibility("Collapsed")
+        this._TBtn(statusCenter, this.id "_BtnPrevPage", Chr(0xE76B), "Previous Page")
+        statusCenter.Add("TextBlock").Name(this.id "_PageNumberText").Text("Page 1 of 1").Foreground("{DynamicResource TextSub}").FontSize(12).VerticalAlignment("Center").Margin("8,0")
+        this._TBtn(statusCenter, this.id "_BtnNextPage", Chr(0xE76C), "Next Page")
+
+        statusRight := statusGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(2).Margin("0,0,15,0").Visibility("Collapsed")
         this._TBtn(statusRight, this.id "_BtnZoomOut", Chr(0xE71F), "Zoom Out")
         statusRight.Add("TextBlock").Name(this.id "_ZoomLevel").Text("100%").Foreground("{DynamicResource TextSub}").FontSize(12).VerticalAlignment("Center").Margin("8,0")
         this._TBtn(statusRight, this.id "_BtnZoomIn", Chr(0xE710), "Zoom In")
@@ -4649,6 +4665,11 @@ class XDocumentEditor {
     _OnFontFamilyChanged(state, ctrl, event) {
         if (state.Has(this.id "_FontFamily")) {
             val := state[this.id "_FontFamily"]
+            if (SubStr(val, 1, 2) == "⚠ ") {
+                val := SubStr(val, 3)
+            } else if (SubStr(val, 1, 4) == "[!] ") {
+                val := SubStr(val, 5)
+            }
             if (this.HasProp("expectedFormatState") && this.expectedFormatState.Has("Font") && this.expectedFormatState["Font"] == val) {
                 this.expectedFormatState.Delete("Font")
                 return
@@ -4722,38 +4743,123 @@ class XDocumentEditor {
         this.currentTheme := mode
         this.ui.Update(this.id "_Container", "Tag", mode)
         
-        ; Explicitly update PageBorder because DataTriggers in Resources fail to resolve ElementName
+        ; Explicitly update PageBorder and all background elements to match the selected theme
         if (mode == "Dark") {
+            this.ui.Update(this.id "_EditorWrapper", "Background", "#121212")
             this.ui.Update(this.id "_PageBorder", "Background", "#1E1E1E")
             this.ui.Update(this.id "_PageBorder", "BorderBrush", "#333333")
+            
+            ; Status Bar theme matching
+            this.ui.Update(this.id "_StatusBg", "Background", "#252526")
+            this.ui.Update(this.id "_StatusBg", "BorderBrush", "#3F3F46")
+            this.ui.Update(this.id "_WordCount", "Foreground", "#999999")
+            this.ui.Update(this.id "_ZoomLevel", "Foreground", "#999999")
+            
+            ; Toolbar theme matching
+            this.ui.Update(this.id "_ToolbarBg", "Background", "#1E1E1E")
+            this.ui.Update(this.id "_ToolbarInner", "Background", "#2D2D2D")
+            this.ui.Update(this.id "_ToolbarInner", "BorderBrush", "#3F3F46")
+            
+            ; ComboBox theming
+            this.ui.Update(this.id "_StyleSelect", "Background", "#3F3F46")
+            this.ui.Update(this.id "_StyleSelect", "Foreground", "#E0E0E0")
+            this.ui.Update(this.id "_StyleSelect", "BorderBrush", "#555555")
+            this.ui.Update(this.id "_FontFamily", "Background", "#3F3F46")
+            this.ui.Update(this.id "_FontFamily", "Foreground", "#E0E0E0")
+            this.ui.Update(this.id "_FontFamily", "BorderBrush", "#555555")
+            this.ui.Update(this.id "_FontSize", "Background", "#3F3F46")
+            this.ui.Update(this.id "_FontSize", "Foreground", "#E0E0E0")
+            this.ui.Update(this.id "_FontSize", "BorderBrush", "#555555")
+            
+            ; Outline pane
+            this.ui.Update(this.id "_OutlinePane", "Background", "#252526")
+            this.ui.Update(this.id "_OutlinePane", "BorderBrush", "#3F3F46")
+            
+            ; Find & Replace panel
+            this.ui.Update(this.id "_FindPanel", "Background", "#252526")
+            this.ui.Update(this.id "_FindPanel", "BorderBrush", "#3F3F46")
+            
             this.ui.Update(this.id, "Doc_ApplyDarkMode", "")
         } else if (mode == "Theme") {
+            this.ui.Update(this.id "_EditorWrapper", "Background", "{DynamicResource DropdownBg}")
             this.ui.Update(this.id "_PageBorder", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_PageBorder", "BorderBrush", "{DynamicResource ControlBorder}")
+            
+            ; Status Bar theme matching
+            this.ui.Update(this.id "_StatusBg", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_StatusBg", "BorderBrush", "{DynamicResource ControlBorder}")
+            this.ui.Update(this.id "_WordCount", "Foreground", "{DynamicResource TextSub}")
+            this.ui.Update(this.id "_ZoomLevel", "Foreground", "{DynamicResource TextSub}")
+            
+            ; Toolbar theme matching
+            this.ui.Update(this.id "_ToolbarBg", "Background", "{DynamicResource BgColor}")
+            this.ui.Update(this.id "_ToolbarInner", "Background", "{DynamicResource SidebarColor}")
+            this.ui.Update(this.id "_ToolbarInner", "BorderBrush", "{DynamicResource ControlBorder}")
+            
+            ; ComboBox theming
+            this.ui.Update(this.id "_StyleSelect", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_StyleSelect", "Foreground", "{DynamicResource TextMain}")
+            this.ui.Update(this.id "_StyleSelect", "BorderBrush", "{DynamicResource ControlBorder}")
+            this.ui.Update(this.id "_FontFamily", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_FontFamily", "Foreground", "{DynamicResource TextMain}")
+            this.ui.Update(this.id "_FontFamily", "BorderBrush", "{DynamicResource ControlBorder}")
+            this.ui.Update(this.id "_FontSize", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_FontSize", "Foreground", "{DynamicResource TextMain}")
+            this.ui.Update(this.id "_FontSize", "BorderBrush", "{DynamicResource ControlBorder}")
+            
+            ; Outline pane
+            this.ui.Update(this.id "_OutlinePane", "Background", "{DynamicResource SidebarColor}")
+            this.ui.Update(this.id "_OutlinePane", "BorderBrush", "{DynamicResource ControlBorder}")
+            
+            ; Find & Replace panel
+            this.ui.Update(this.id "_FindPanel", "Background", "{DynamicResource DropdownBg}")
+            this.ui.Update(this.id "_FindPanel", "BorderBrush", "{DynamicResource ControlBorder}")
         } else {
+            this.ui.Update(this.id "_EditorWrapper", "Background", "{DynamicResource DropdownBg}")
             this.ui.Update(this.id "_PageBorder", "Background", "White")
             this.ui.Update(this.id "_PageBorder", "BorderBrush", "#E0E0E0")
+            
+            ; Status Bar theme matching
+            this.ui.Update(this.id "_StatusBg", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_StatusBg", "BorderBrush", "{DynamicResource ControlBorder}")
+            this.ui.Update(this.id "_WordCount", "Foreground", "{DynamicResource TextSub}")
+            this.ui.Update(this.id "_ZoomLevel", "Foreground", "{DynamicResource TextSub}")
+            
+            ; Toolbar theme matching
+            this.ui.Update(this.id "_ToolbarBg", "Background", "{DynamicResource BgColor}")
+            this.ui.Update(this.id "_ToolbarInner", "Background", "{DynamicResource SidebarColor}")
+            this.ui.Update(this.id "_ToolbarInner", "BorderBrush", "{DynamicResource ControlBorder}")
+            
+            ; ComboBox theming
+            this.ui.Update(this.id "_StyleSelect", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_StyleSelect", "Foreground", "{DynamicResource TextMain}")
+            this.ui.Update(this.id "_StyleSelect", "BorderBrush", "{DynamicResource ControlBorder}")
+            this.ui.Update(this.id "_FontFamily", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_FontFamily", "Foreground", "{DynamicResource TextMain}")
+            this.ui.Update(this.id "_FontFamily", "BorderBrush", "{DynamicResource ControlBorder}")
+            this.ui.Update(this.id "_FontSize", "Background", "{DynamicResource ControlBg}")
+            this.ui.Update(this.id "_FontSize", "Foreground", "{DynamicResource TextMain}")
+            this.ui.Update(this.id "_FontSize", "BorderBrush", "{DynamicResource ControlBorder}")
+            
+            ; Outline pane
+            this.ui.Update(this.id "_OutlinePane", "Background", "{DynamicResource SidebarColor}")
+            this.ui.Update(this.id "_OutlinePane", "BorderBrush", "{DynamicResource ControlBorder}")
+            
+            ; Find & Replace panel
+            this.ui.Update(this.id "_FindPanel", "Background", "{DynamicResource DropdownBg}")
+            this.ui.Update(this.id "_FindPanel", "BorderBrush", "{DynamicResource ControlBorder}")
         }
+        
+        ; Force spacers to redraw in Paper mode using the new theme colors
+        this.ui.Update(this.id, "Doc_UpdateSpacers", mode)
     }
 
     SetPageView(mode) {
         if (!this.ui)
             return
-        ; Apply width constraints on the Border wrapping the RTB
-        if (mode == "Paper") {
-            this.ui.Update(this.id "_Container", "MaxWidth", "800")
-            this.ui.Update(this.id "_Container", "Width", "800")
-            this.ui.Update(this.id "_Container", "Margin", "0,20")
-        } else if (mode == "Web") {
-            this.ui.Update(this.id "_Container", "MaxWidth", "1200")
-            this.ui.Update(this.id "_Container", "Width", "NaN")
-            this.ui.Update(this.id "_Container", "Margin", "0")
-        } else {
-            ; Feed View (Default)
-            this.ui.Update(this.id "_Container", "MaxWidth", "NaN")
-            this.ui.Update(this.id "_Container", "Width", "NaN")
-            this.ui.Update(this.id "_Container", "Margin", "0")
-        }
+        ; Delegate to C# bridge which handles FlowDocumentReader switching
+        ; Modes: "Feed" (default RichTextBox), "Paper" (paginated), "TwoUp" (2-page side-by-side)
+        this.ui.Update(this.id, "Doc_SetPageView", mode)
     }
 
     _OnStyleChanged(state) {
@@ -4806,15 +4912,13 @@ class XDocumentEditor {
                     }
                 }
             } else if (key == "Font") {
-                this.expectedFormatState["Font"] := val
-                
-                isInstalled := false
-                for f in XDocumentEditor._GetSystemFonts() {
-                    if (f == val) {
-                        isInstalled := true
-                        break
-                    }
+                ; C# prefixes font name with ! if not installed in WPF
+                isInstalled := true
+                if (SubStr(val, 1, 1) = "!") {
+                    val := SubStr(val, 2)
+                    isInstalled := false
                 }
+                this.expectedFormatState["Font"] := val
                 
                 if (isInstalled) {
                     this.ui.Update(this.id "_FontFamily", "Text", val)
@@ -4824,6 +4928,7 @@ class XDocumentEditor {
                     this.ui.Update(this.id "_FallbackFont", "Tag", val)
                     this.ui.Update(this.id "_FallbackFont", "Visibility", "Visible")
                     this.ui.Update(this.id "_FontFamily", "SelectedIndex", "0")
+                    this.ui.Update(this.id "_FontFamily", "Text", "⚠ " val)
                 }
             }
         }
@@ -4831,13 +4936,15 @@ class XDocumentEditor {
 
     static _GetSystemFonts() {
         fonts := Map()
-        Loop Reg, "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" {
-            name := A_LoopRegName
-            name := RegExReplace(name, "\s*\((TrueType|OpenType|PostScript|Type 1|Vector|Stroke)\)$", "")
-            name := RegExReplace(name, "\s+(Bold|Italic|Regular|Semibold|Semi-Bold|Light|Extra\s*Light|Medium|Black|Condensed|Oblique|Bold\s+Italic|Italic\s+Bold|Demibold|Heavy|Nord)\b", "")
-            name := Trim(name)
-            if (name != "")
-                fonts[name] := true
+        for hive in ["HKLM", "HKCU"] {
+            Loop Reg, hive "\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts" {
+                name := A_LoopRegName
+                name := RegExReplace(name, "\s*\((TrueType|OpenType|PostScript|Type 1|Vector|Stroke)\)$", "")
+                name := RegExReplace(name, "\s+(Bold|Italic|Regular|Semibold|Semi-Bold|Light|Extra\s*Light|Medium|Black|Condensed|Oblique|Bold\s+Italic|Italic\s+Bold|Demibold|Heavy|Nord)\b", "")
+                name := Trim(name)
+                if (name != "")
+                    fonts[name] := true
+            }
         }
         common := ["Segoe UI", "Arial", "Calibri", "Cambria", "Consolas", "Courier New", "Georgia", "Impact", "Lucida Console", "Segoe Fluent Icons", "Segoe MDL2 Assets", "Times New Roman", "Trebuchet MS", "Verdana", "Webdings", "Wingdings"]
         for c in common {

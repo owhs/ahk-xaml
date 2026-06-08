@@ -167,6 +167,7 @@ public class AhkWpfEngine
     System.Collections.Generic.HashSet<string> _boundEvents = new System.Collections.Generic.HashSet<string>();
     bool LightweightEvents = false; // When true, events only send the triggering control's value (use ui.Query() for others)
     System.Collections.Generic.Dictionary<string, string> canvasModes = new System.Collections.Generic.Dictionary<string, string>();
+    System.Collections.Generic.Dictionary<string, string> _docViewModes = new System.Collections.Generic.Dictionary<string, string>();
     System.Windows.Shapes.Rectangle selectionBox = null;
     Point selectionStart;
     System.Windows.Shapes.Path tempConnection = null;
@@ -4198,7 +4199,23 @@ public class AhkWpfEngine
                             string st = (td != DependencyProperty.UnsetValue && td == TextDecorations.Strikethrough) ? "1" : "0";
                             double sizeVal = (sz != DependencyProperty.UnsetValue) ? (double)sz : 14.0;
                             string size = sizeVal.ToString();
-                            string font = (ff != DependencyProperty.UnsetValue) ? ff.ToString() : "Segoe UI";
+                            string font = "Segoe UI";
+                            bool fontIsInstalled = true;
+                            if (ff != DependencyProperty.UnsetValue) {
+                                string rawFont = ff.ToString();
+                                // If WPF fallback chain (comma-separated), extract just the primary font
+                                int commaIdx = rawFont.IndexOf(',');
+                                string primaryFont = commaIdx > 0 ? rawFont.Substring(0, commaIdx).Trim() : rawFont;
+                                // If per-user font path, extract the actual font name after '#'
+                                int hashIdx = primaryFont.IndexOf('#');
+                                if (hashIdx >= 0) {
+                                    primaryFont = primaryFont.Substring(hashIdx + 1);
+                                }
+                                // Check if primary font is actually installed via WPF
+                                fontIsInstalled = GetInstalledFonts().Contains(primaryFont);
+                                // Prefix with ! if not installed so AHK can show the fallback indicator
+                                font = fontIsInstalled ? primaryFont : ("!" + primaryFont);
+                            }
                             
                             string style = "Body";
                             if (sz != DependencyProperty.UnsetValue) {
@@ -4215,6 +4232,58 @@ public class AhkWpfEngine
                             string fmt = string.Format("B:{0},I:{1},U:{2},S:{3},Size:{4},Style:{5},Font:{6}", b, i, u, st, size, style, font);
                             SendToAhk(string.Format("EVENT|{0}|{1}|SelectionFormat|{2}\n", winId, ((FrameworkElement)ctrl).Name, LengthPrefix(fmt)));
                         };
+
+                        // Debouncer for page break spacer updates
+                        var spacerTimer = new System.Windows.Threading.DispatcherTimer();
+                        spacerTimer.Interval = TimeSpan.FromMilliseconds(500);
+                        spacerTimer.Tick += (s2, e2) => {
+                            spacerTimer.Stop();
+                            string currentMode = "paper";
+                            if (_docViewModes.ContainsKey(rtb.Name)) {
+                                currentMode = _docViewModes[rtb.Name];
+                            }
+                            if (currentMode != "paper") return;
+
+                            var pageB = win.FindName(rtb.Name + "_PageBorder") as System.Windows.Controls.Border;
+                            if (pageB != null) {
+                                var containerEl = win.FindName(rtb.Name + "_Container") as FrameworkElement;
+                                string thm = (containerEl != null && containerEl.Tag is string) ? (string)containerEl.Tag : "Normal";
+                                _InsertPageBreakSpacers(rtb, thm);
+                            }
+                        };
+
+                        rtb.TextChanged += (s, e) => {
+                            if (!_isUpdatingSpacers) {
+                                spacerTimer.Stop();
+                                spacerTimer.Start();
+                            }
+                        };
+
+                        // Setup click listener on outer ScrollViewer to focus RTB
+                        Action wireScrollViewer = () => {
+                            FrameworkElement walkUp = rtb.Parent as FrameworkElement;
+                            ScrollViewer editorSv = null;
+                            while (walkUp != null) {
+                                if (walkUp is ScrollViewer) { editorSv = (ScrollViewer)walkUp; break; }
+                                walkUp = System.Windows.Media.VisualTreeHelper.GetParent(walkUp) as FrameworkElement;
+                            }
+                            if (editorSv != null && editorSv.Tag == null) {
+                                editorSv.MouseLeftButtonDown += (s2, e2) => {
+                                    if (e2.OriginalSource == editorSv || e2.OriginalSource is Grid || e2.OriginalSource is System.Windows.Controls.Border) {
+                                        rtb.Focus();
+                                        System.Windows.Input.Keyboard.Focus(rtb);
+                                    }
+                                };
+                                editorSv.Tag = "wired";
+                            }
+                        };
+
+                        if (rtb.IsLoaded) {
+                            wireScrollViewer();
+                        } else {
+                            rtb.Loaded += (s, e) => wireScrollViewer();
+                        }
+
                         rtb.Tag = "wired";
                     }
                     string docCmd = parts[1].Substring(4);
@@ -4239,7 +4308,23 @@ public class AhkWpfEngine
                                         doc.Blocks.Add(new System.Windows.Documents.Paragraph(
                                             new System.Windows.Documents.Run(System.IO.File.ReadAllText(filePath))));
                                     }
+                                    if (doc.Tag == null) {
+                                        doc.Tag = new DocLayoutSettings {
+                                            PageWidth = 816,
+                                            PageHeight = 1056,
+                                            PagePadding = new Thickness(96, 72, 96, 72)
+                                        };
+                                    }
                                     rtb.Document = doc;
+                                    string viewMode = "paper";
+                                    if (_docViewModes.ContainsKey(rtb.Name)) {
+                                        viewMode = _docViewModes[rtb.Name];
+                                    } else {
+                                        _docViewModes[rtb.Name] = viewMode;
+                                    }
+                                    var containerEl = win.FindName(rtb.Name + "_Container") as FrameworkElement;
+                                    string currentTheme = (containerEl != null && containerEl.Tag is string) ? (string)containerEl.Tag : "Normal";
+                                    ApplyViewMode(rtb, viewMode, currentTheme, win);
                                     SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentLoaded|" + LengthPrefix(filePath) + "\n");
                                 }
                             } catch (Exception ex) {
@@ -4249,20 +4334,39 @@ public class AhkWpfEngine
                         }
                         case "Export": {
                             try {
+                                // Strip page break spacers before saving
+                                bool hadSpacers = _pageBreakSpacers.Count > 0;
+                                _RemovePageBreakSpacers(rtb);
+                                
+                                // Get the active document (might be in FlowDocumentReader if in Page/TwoUp view)
+                                string rtbN = ((FrameworkElement)ctrl).Name;
+                                var pageReader = win.FindName(rtbN + "_PageReader") as FlowDocumentReader;
+                                FlowDocument exportDoc = rtb.Document;
+                                if (pageReader != null && pageReader.Document != null && pageReader.Visibility == Visibility.Visible) {
+                                    exportDoc = pageReader.Document;
+                                }
+                                
                                 string filePath = docVal;
                                 string ext = System.IO.Path.GetExtension(filePath).ToLower();
                                 if (ext == ".docx") {
-                                    FlowDocumentToDocx(rtb.Document, filePath);
+                                    FlowDocumentToDocx(exportDoc, filePath);
                                 } else if (ext == ".rtf") {
-                                    var range = new TextRange(rtb.Document.ContentStart, rtb.Document.ContentEnd);
+                                    var range = new TextRange(exportDoc.ContentStart, exportDoc.ContentEnd);
                                     using (var fs = new System.IO.FileStream(filePath, System.IO.FileMode.Create)) {
                                         range.Save(fs, DataFormats.Rtf);
                                     }
                                 } else {
-                                    var range = new TextRange(rtb.Document.ContentStart, rtb.Document.ContentEnd);
+                                    var range = new TextRange(exportDoc.ContentStart, exportDoc.ContentEnd);
                                     System.IO.File.WriteAllText(filePath, range.Text);
                                 }
                                 SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentSaved|" + LengthPrefix(filePath) + "\n");
+                                
+                                // Re-insert spacers if we were in page view
+                                if (hadSpacers) {
+                                    var containerEl2 = win.FindName(((FrameworkElement)ctrl).Name + "_Container") as FrameworkElement;
+                                    string thm = (containerEl2 != null && containerEl2.Tag is string) ? (string)containerEl2.Tag : "Normal";
+                                    _InsertPageBreakSpacers(rtb, thm);
+                                }
                             } catch (Exception ex) {
                                 SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentError|" + LengthPrefix(ex.Message) + "\n");
                             }
@@ -4341,10 +4445,16 @@ public class AhkWpfEngine
                             break;
                         }
                         case "GetOutline": {
+                            string rtbN = ((FrameworkElement)ctrl).Name;
+                            var pageReader = win.FindName(rtbN + "_PageReader") as FlowDocumentReader;
+                            FlowDocument activeDoc = rtb.Document;
+                            if (pageReader != null && pageReader.Document != null && pageReader.Visibility == Visibility.Visible) {
+                                activeDoc = pageReader.Document;
+                            }
                             //System.IO.File.WriteAllText(@"c:\projects\ahk\ahk-xaml\examples\clones\outline_debug.txt", "--- GET OUTLINE START ---\n");
                             System.Text.StringBuilder sb = new System.Text.StringBuilder();
                             int pIdx = 0;
-                            System.Windows.Documents.TextPointer ptr = rtb.Document.ContentStart;
+                            System.Windows.Documents.TextPointer ptr = activeDoc.ContentStart;
                             while (ptr != null && ptr.CompareTo(rtb.Document.ContentEnd) < 0) {
                                 if (ptr.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.ElementStart) {
                                     System.Windows.Documents.TextElement element = ptr.GetAdjacentElement(LogicalDirection.Forward) as System.Windows.Documents.TextElement;
@@ -4545,7 +4655,13 @@ public class AhkWpfEngine
                             break;
                         }
                         case "GetWordCount": {
-                            var range = new TextRange(rtb.Document.ContentStart, rtb.Document.ContentEnd);
+                            string rtbN = ((FrameworkElement)ctrl).Name;
+                            var pageReader = win.FindName(rtbN + "_PageReader") as FlowDocumentReader;
+                            FlowDocument activeDoc = rtb.Document;
+                            if (pageReader != null && pageReader.Document != null && pageReader.Visibility == Visibility.Visible) {
+                                activeDoc = pageReader.Document;
+                            }
+                            var range = new TextRange(activeDoc.ContentStart, activeDoc.ContentEnd);
                             string wcText = range.Text;
                             int words = wcText.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
                             int chars = wcText.Length;
@@ -4571,6 +4687,18 @@ public class AhkWpfEngine
                             rtb.Document = new FlowDocument();
                             rtb.Document.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
                             rtb.Document.FontSize = 14;
+                            
+                            string viewMode = "paper";
+                            if (_docViewModes.ContainsKey(rtb.Name)) {
+                                viewMode = _docViewModes[rtb.Name];
+                            } else {
+                                _docViewModes[rtb.Name] = viewMode;
+                            }
+                            
+                            var containerEl = win.FindName(rtb.Name + "_Container") as FrameworkElement;
+                            string currentTheme = (containerEl != null && containerEl.Tag is string) ? (string)containerEl.Tag : "Normal";
+                            
+                            ApplyViewMode(rtb, viewMode, currentTheme, win);
                             break;
                         }
                         case "Undo":
@@ -4736,11 +4864,9 @@ public class AhkWpfEngine
                         }
                         case "ApplyDarkMode": {
                             ApplyDarkModeToDocument(rtb.Document);
-                            rtb.IsReadOnly = true;
                             break;
                         }
                         case "RestoreColors": {
-                            rtb.IsReadOnly = false;
                             RestoreDocumentColors(rtb.Document);
                             break;
                         }
@@ -5154,6 +5280,41 @@ public class AhkWpfEngine
                             } catch (Exception ex) {
                                 SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|PowerToolsError|" + LengthPrefix(ex.Message) + "\n");
                             }
+                            break;
+                        }
+                        case "SetPageView": {
+                            try {
+                                string viewMode = (docVal ?? "").ToLower().Trim();
+                                var containerEl = win.FindName(rtb.Name + "_Container") as FrameworkElement;
+                                string currentTheme = (containerEl != null && containerEl.Tag is string) ? (string)containerEl.Tag : "Normal";
+                                ApplyViewMode(rtb, viewMode, currentTheme, win);
+                            } catch (Exception ex) {
+                                string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log");
+                                System.IO.File.AppendAllText(debugPath, "SetPageView EXCEPTION: " + ex.ToString() + "\n");
+                            }
+                            break;
+                        }
+                        case "UpdateSpacers": {
+                            try {
+                                string currentMode = "paper";
+                                if (_docViewModes.ContainsKey(rtb.Name)) {
+                                    currentMode = _docViewModes[rtb.Name];
+                                }
+                                if (currentMode == "paper") {
+                                    var containerEl = win.FindName(rtb.Name + "_Container") as FrameworkElement;
+                                    string thm = (containerEl != null && containerEl.Tag is string) ? (string)containerEl.Tag : "Normal";
+                                    _InsertPageBreakSpacers(rtb, thm);
+                                }
+                                
+                                // Also update flow document reader if active
+                                string readerName = rtb.Name + "_PageReader";
+                                FlowDocumentReader reader = win.FindName(readerName) as FlowDocumentReader;
+                                if (reader != null && reader.Visibility == Visibility.Visible) {
+                                    var containerEl = win.FindName(rtb.Name + "_Container") as FrameworkElement;
+                                    string thm = (containerEl != null && containerEl.Tag is string) ? (string)containerEl.Tag : "Normal";
+                                    StyleReaderVisuals(reader, thm, win);
+                                }
+                            } catch { }
                             break;
                         }
                     }
@@ -5666,6 +5827,472 @@ public class AhkWpfEngine
             DumpState(ctrlName, "DragEnd");
             e.Handled = true;
         };
+    }
+
+    private static void HideReaderToolbar(FlowDocumentReader reader)
+    {
+        if (reader == null) return;
+        try
+        {
+            reader.ApplyTemplate();
+            DependencyObject contentHost = FindVisualChildByName(reader, "PART_ContentHost");
+            if (contentHost != null)
+            {
+                DependencyObject current = contentHost;
+                DependencyObject childOfReader = null;
+                while (current != null && current != reader)
+                {
+                    childOfReader = current;
+                    current = VisualTreeHelper.GetParent(current);
+                }
+
+                int childCount = VisualTreeHelper.GetChildrenCount(reader);
+                for (int i = 0; i < childCount; i++)
+                {
+                    var child = VisualTreeHelper.GetChild(reader, i) as FrameworkElement;
+                    if (child != null && child != childOfReader)
+                    {
+                        child.Visibility = Visibility.Collapsed;
+                    }
+                }
+
+                if (childOfReader != null)
+                {
+                    current = contentHost;
+                    DependencyObject childOfRoot = null;
+                    while (current != null && current != childOfReader)
+                    {
+                        childOfRoot = current;
+                        current = VisualTreeHelper.GetParent(current);
+                    }
+
+                    int rootChildCount = VisualTreeHelper.GetChildrenCount(childOfReader);
+                    for (int i = 0; i < rootChildCount; i++)
+                    {
+                        var child = VisualTreeHelper.GetChild(childOfReader, i) as FrameworkElement;
+                        if (child != null && child != childOfRoot)
+                        {
+                            child.Visibility = Visibility.Collapsed;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                HideAllToolBarsRecursive(reader);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log"), 
+                "HideReaderToolbar Exception: " + ex.ToString() + "\n");
+        }
+    }
+
+    private static DependencyObject FindVisualChildByName(DependencyObject parent, string name)
+    {
+        if (parent == null) return null;
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is FrameworkElement)
+            {
+                var fe = (FrameworkElement)child;
+                if (fe.Name == name) return child;
+            }
+            var found = FindVisualChildByName(child, name);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static void HideAllToolBarsRecursive(DependencyObject obj)
+    {
+        if (obj == null) return;
+        if (obj is System.Windows.Controls.ToolBar)
+        {
+            var tb = (System.Windows.Controls.ToolBar)obj;
+            tb.Visibility = Visibility.Collapsed;
+        }
+        int count = VisualTreeHelper.GetChildrenCount(obj);
+        for (int i = 0; i < count; i++)
+        {
+            HideAllToolBarsRecursive(VisualTreeHelper.GetChild(obj, i));
+        }
+    }
+
+    private static void UpdatePageStatus(FlowDocumentReader reader, Window win)
+    {
+        try {
+            string rtbName = reader.Name.Replace("_PageReader", "");
+            var pageTxt = win.FindName(rtbName + "_PageNumberText") as TextBlock;
+            var btnPrev = win.FindName(rtbName + "_BtnPrevPage") as Button;
+            var btnNext = win.FindName(rtbName + "_BtnNextPage") as Button;
+            
+            if (pageTxt != null)
+            {
+                pageTxt.Text = "Page " + reader.PageNumber + " of " + reader.PageCount;
+            }
+            if (btnPrev != null)
+            {
+                btnPrev.IsEnabled = reader.CanGoToPreviousPage;
+            }
+            if (btnNext != null)
+            {
+                btnNext.IsEnabled = reader.CanGoToNextPage;
+            }
+        } catch {}
+    }
+
+    private static void StyleReaderVisuals(FlowDocumentReader reader, string theme, Window win)
+    {
+        if (reader == null) return;
+
+        // 1. Generate and inject XAML resource styles
+        try {
+            string xaml = GetReaderStylesXaml(theme, win);
+            var resDict = (ResourceDictionary)System.Windows.Markup.XamlReader.Parse(xaml);
+            
+            // Merge or replace reader's resources
+            reader.Resources.MergedDictionaries.Clear();
+            reader.Resources.MergedDictionaries.Add(resDict);
+        }
+        catch (Exception ex) {
+            System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log"), 
+                "StyleReaderVisuals XAML Parse Exception: " + ex.ToString() + "\n");
+        }
+
+        // 2. Explicitly walk the visual tree and force property overrides for maximum robustness
+        try {
+            reader.ApplyTemplate();
+            StyleVisualTreeRecursive(reader, theme, win);
+        }
+        catch (Exception ex) {
+            System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log"), 
+                "StyleReaderVisuals VisualTree Walk Exception: " + ex.ToString() + "\n");
+        }
+    }
+
+    private static string GetReaderStylesXaml(string theme, Window win)
+    {
+        string tbBg = "Transparent";
+        string borderBrush = "Transparent";
+        string textMain = "Black";
+        string controlBg = "White";
+        string accent = "#005CBA";
+        string hoverBg = "#15000000";
+        string activeBg = "#25000000";
+
+        if (theme == "Dark")
+        {
+            tbBg = "#252526";
+            borderBrush = "#3F3F46";
+            textMain = "#E0E0E0";
+            controlBg = "#2D2D2D";
+            accent = "#007ACC";
+            hoverBg = "#15FFFFFF";
+            activeBg = "#25FFFFFF";
+        }
+        else if (theme == "Theme")
+        {
+            tbBg = "{DynamicResource SidebarColor}";
+            borderBrush = "{DynamicResource ControlBorder}";
+            textMain = "{DynamicResource TextMain}";
+            controlBg = "{DynamicResource ControlBg}";
+            accent = "{DynamicResource Accent}";
+            
+            bool isDark = true;
+            try {
+                var textBrush = win.TryFindResource("TextMain") as SolidColorBrush;
+                if (textBrush != null)
+                {
+                    var c = textBrush.Color;
+                    double brightness = (0.299 * c.R + 0.587 * c.G + 0.114 * c.B) / 255.0;
+                    isDark = brightness > 0.5;
+                }
+            } catch {}
+            hoverBg = isDark ? "#15FFFFFF" : "#15000000";
+            activeBg = isDark ? "#25FFFFFF" : "#25000000";
+        }
+        else // Normal
+        {
+            tbBg = "#F3F3F3";
+            borderBrush = "#E0E0E0";
+            textMain = "#333333";
+            controlBg = "#FFFFFF";
+            accent = "#005CBA";
+            hoverBg = "#15000000";
+            activeBg = "#25000000";
+        }
+
+        string xaml = @"
+<ResourceDictionary xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation""
+                    xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"">
+    <Style TargetType=""ToolBar"">
+        <Setter Property=""Background"" Value=""" + tbBg + @""" />
+        <Setter Property=""BorderBrush"" Value=""" + borderBrush + @""" />
+        <Setter Property=""BorderThickness"" Value=""0,1,0,0"" />
+    </Style>
+    
+    <Style TargetType=""TextBlock"">
+        <Setter Property=""Foreground"" Value=""" + textMain + @""" />
+        <Setter Property=""FontFamily"" Value=""Segoe UI"" />
+        <Setter Property=""FontSize"" Value=""12"" />
+    </Style>
+
+    <Style TargetType=""TextBox"">
+        <Setter Property=""Background"" Value=""" + controlBg + @""" />
+        <Setter Property=""Foreground"" Value=""" + textMain + @""" />
+        <Setter Property=""BorderBrush"" Value=""" + borderBrush + @""" />
+        <Setter Property=""BorderThickness"" Value=""1"" />
+        <Setter Property=""Padding"" Value=""4,2"" />
+        <Setter Property=""SelectionBrush"" Value=""" + accent + @""" />
+    </Style>
+
+    <Style TargetType=""Button"">
+        <Setter Property=""Background"" Value=""Transparent"" />
+        <Setter Property=""Foreground"" Value=""" + textMain + @""" />
+        <Setter Property=""BorderThickness"" Value=""0"" />
+        <Setter Property=""Padding"" Value=""6,4"" />
+        <Setter Property=""Margin"" Value=""2,0"" />
+        <Setter Property=""Cursor"" Value=""Hand"" />
+        <Setter Property=""Template"">
+            <Setter.Value>
+                <ControlTemplate TargetType=""Button"">
+                    <Border x:Name=""bg"" Background=""{TemplateBinding Background}"" CornerRadius=""4"" BorderThickness=""0"" Padding=""{TemplateBinding Padding}"">
+                        <ContentPresenter HorizontalAlignment=""Center"" VerticalAlignment=""Center"" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property=""IsMouseOver"" Value=""True"">
+                            <Setter TargetName=""bg"" Property=""Background"" Value=""" + hoverBg + @""" />
+                        </Trigger>
+                        <Trigger Property=""IsEnabled"" Value=""False"">
+                            <Setter Property=""Opacity"" Value=""0.4"" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType=""ToggleButton"">
+        <Setter Property=""Background"" Value=""Transparent"" />
+        <Setter Property=""Foreground"" Value=""" + textMain + @""" />
+        <Setter Property=""BorderThickness"" Value=""0"" />
+        <Setter Property=""Padding"" Value=""6,4"" />
+        <Setter Property=""Margin"" Value=""2,0"" />
+        <Setter Property=""Cursor"" Value=""Hand"" />
+        <Setter Property=""Template"">
+            <Setter.Value>
+                <ControlTemplate TargetType=""ToggleButton"">
+                    <Border x:Name=""bg"" Background=""{TemplateBinding Background}"" CornerRadius=""4"" BorderThickness=""0"" Padding=""{TemplateBinding Padding}"">
+                        <ContentPresenter HorizontalAlignment=""Center"" VerticalAlignment=""Center"" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property=""IsMouseOver"" Value=""True"">
+                            <Setter TargetName=""bg"" Property=""Background"" Value=""" + hoverBg + @""" />
+                        </Trigger>
+                        <Trigger Property=""IsChecked"" Value=""True"">
+                            <Setter TargetName=""bg"" Property=""Background"" Value=""" + activeBg + @""" />
+                        </Trigger>
+                        <Trigger Property=""IsEnabled"" Value=""False"">
+                            <Setter Property=""Opacity"" Value=""0.4"" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    
+    <Style TargetType=""RepeatButton"">
+        <Setter Property=""Background"" Value=""Transparent"" />
+        <Setter Property=""Foreground"" Value=""" + textMain + @""" />
+        <Setter Property=""BorderThickness"" Value=""0"" />
+        <Setter Property=""Padding"" Value=""6,4"" />
+        <Setter Property=""Margin"" Value=""2,0"" />
+        <Setter Property=""Cursor"" Value=""Hand"" />
+        <Setter Property=""Template"">
+            <Setter.Value>
+                <ControlTemplate TargetType=""RepeatButton"">
+                    <Border x:Name=""bg"" Background=""{TemplateBinding Background}"" CornerRadius=""4"" BorderThickness=""0"" Padding=""{TemplateBinding Padding}"">
+                        <ContentPresenter HorizontalAlignment=""Center"" VerticalAlignment=""Center"" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property=""IsMouseOver"" Value=""True"">
+                            <Setter TargetName=""bg"" Property=""Background"" Value=""" + hoverBg + @""" />
+                        </Trigger>
+                        <Trigger Property=""IsEnabled"" Value=""False"">
+                            <Setter Property=""Opacity"" Value=""0.4"" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>";
+
+        return xaml;
+    }
+
+    private static void StyleVisualTreeRecursive(DependencyObject obj, string theme, Window win)
+    {
+        if (obj == null) return;
+
+        // Skip children of PART_ContentHost (the document pages)
+        FrameworkElement fe = obj as FrameworkElement;
+        if (fe != null && fe.Name == "PART_ContentHost")
+        {
+            return;
+        }
+
+        // Explicitly apply themes to elements
+        System.Windows.Controls.Border border = obj as System.Windows.Controls.Border;
+        if (border != null)
+        {
+            if (border.TemplatedParent == null || border.TemplatedParent is FlowDocumentReader)
+            {
+                if (theme == "Dark")
+                {
+                    border.Background = new SolidColorBrush(Color.FromRgb(37, 37, 38));
+                    border.BorderBrush = new SolidColorBrush(Color.FromRgb(63, 63, 70));
+                }
+                else if (theme == "Theme")
+                {
+                    border.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "SidebarColor");
+                    border.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "ControlBorder");
+                }
+                else
+                {
+                    border.Background = new SolidColorBrush(Color.FromRgb(243, 243, 243));
+                    border.BorderBrush = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                }
+            }
+        }
+        else {
+            System.Windows.Controls.ToolBar toolbar = obj as System.Windows.Controls.ToolBar;
+            if (toolbar != null)
+            {
+                if (theme == "Dark")
+                {
+                    toolbar.Background = new SolidColorBrush(Color.FromRgb(37, 37, 38));
+                    toolbar.BorderBrush = new SolidColorBrush(Color.FromRgb(63, 63, 70));
+                }
+                else if (theme == "Theme")
+                {
+                    toolbar.SetResourceReference(System.Windows.Controls.ToolBar.BackgroundProperty, "SidebarColor");
+                    toolbar.SetResourceReference(System.Windows.Controls.ToolBar.BorderBrushProperty, "ControlBorder");
+                }
+                else
+                {
+                    toolbar.Background = new SolidColorBrush(Color.FromRgb(243, 243, 243));
+                    toolbar.BorderBrush = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                }
+            }
+            else {
+                System.Windows.Controls.Button btn = obj as System.Windows.Controls.Button;
+                if (btn != null)
+                {
+                    if (theme == "Dark")
+                    {
+                        btn.Foreground = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                    }
+                    else if (theme == "Theme")
+                    {
+                        btn.SetResourceReference(System.Windows.Controls.Button.ForegroundProperty, "TextMain");
+                    }
+                    else
+                    {
+                        btn.Foreground = new SolidColorBrush(Color.FromRgb(51, 51, 51));
+                    }
+                }
+                else {
+                    System.Windows.Controls.Primitives.ToggleButton toggleBtn = obj as System.Windows.Controls.Primitives.ToggleButton;
+                    if (toggleBtn != null)
+                    {
+                        if (theme == "Dark")
+                        {
+                            toggleBtn.Foreground = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                        }
+                        else if (theme == "Theme")
+                        {
+                            toggleBtn.SetResourceReference(System.Windows.Controls.Primitives.ToggleButton.ForegroundProperty, "TextMain");
+                        }
+                        else
+                        {
+                            toggleBtn.Foreground = new SolidColorBrush(Color.FromRgb(51, 51, 51));
+                        }
+                    }
+                    else {
+                        System.Windows.Controls.Primitives.RepeatButton repeatBtn = obj as System.Windows.Controls.Primitives.RepeatButton;
+                        if (repeatBtn != null)
+                        {
+                            if (theme == "Dark")
+                            {
+                                repeatBtn.Foreground = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                            }
+                            else if (theme == "Theme")
+                            {
+                                repeatBtn.SetResourceReference(System.Windows.Controls.Primitives.RepeatButton.ForegroundProperty, "TextMain");
+                            }
+                            else
+                            {
+                                repeatBtn.Foreground = new SolidColorBrush(Color.FromRgb(51, 51, 51));
+                            }
+                        }
+                        else {
+                            System.Windows.Controls.TextBlock textBlock = obj as System.Windows.Controls.TextBlock;
+                            if (textBlock != null)
+                            {
+                                if (theme == "Dark")
+                                {
+                                    textBlock.Foreground = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                                }
+                                else if (theme == "Theme")
+                                {
+                                    textBlock.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "TextMain");
+                                }
+                                else
+                               {
+                                    textBlock.Foreground = new SolidColorBrush(Color.FromRgb(51, 51, 51));
+                                }
+                            }
+                            else {
+                                System.Windows.Controls.TextBox textBox = obj as System.Windows.Controls.TextBox;
+                                if (textBox != null)
+                                {
+                                    if (theme == "Dark")
+                                    {
+                                        textBox.Background = new SolidColorBrush(Color.FromRgb(45, 45, 45));
+                                        textBox.Foreground = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                                        textBox.BorderBrush = new SolidColorBrush(Color.FromRgb(63, 63, 70));
+                                    }
+                                    else if (theme == "Theme")
+                                    {
+                                        textBox.SetResourceReference(System.Windows.Controls.TextBox.BackgroundProperty, "ControlBg");
+                                        textBox.SetResourceReference(System.Windows.Controls.TextBox.ForegroundProperty, "TextMain");
+                                        textBox.SetResourceReference(System.Windows.Controls.TextBox.BorderBrushProperty, "ControlBorder");
+                                    }
+                                    else
+                                    {
+                                        textBox.Background = new SolidColorBrush(Color.FromRgb(255, 255, 255));
+                                        textBox.Foreground = new SolidColorBrush(Color.FromRgb(51, 51, 51));
+                                        textBox.BorderBrush = new SolidColorBrush(Color.FromRgb(224, 224, 224));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Traverse children
+        int count = VisualTreeHelper.GetChildrenCount(obj);
+        for (int i = 0; i < count; i++)
+        {
+            StyleVisualTreeRecursive(VisualTreeHelper.GetChild(obj, i), theme, win);
+        }
     }
 
     private void EnableElementDrag(FrameworkElement element, string options)
@@ -6714,7 +7341,7 @@ public class AhkWpfEngine
                 break;
             case "FontFamily":
                 if (!string.IsNullOrEmpty(val))
-                    selection.ApplyPropertyValue(TextElement.FontFamilyProperty, new System.Windows.Media.FontFamily(val));
+                    selection.ApplyPropertyValue(TextElement.FontFamilyProperty, ResolveFontFamily(val));
                 break;
             case "FontSize":
                 double fs; if (double.TryParse(val, out fs))
@@ -6926,15 +7553,152 @@ public class AhkWpfEngine
         return pointer as System.Windows.Documents.TableCell;
     }
 
+    public class DocLayoutSettings {
+        public double PageWidth { get; set; }
+        public double PageHeight { get; set; }
+        public Thickness PagePadding { get; set; }
+    }
+
+    private string _themeMajorLatin = "Calibri Light";
+    private string _themeMinorLatin = "Calibri";
+    private string _themeMajorEastAsia = "Microsoft YaHei";
+    private string _themeMinorEastAsia = "SimSun";
+
+    private static RunProperties GetStyleRunProperties(string styleId, Styles styles) {
+        if (styles == null || string.IsNullOrEmpty(styleId)) return null;
+        var style = styles.Elements<DocumentFormat.OpenXml.Wordprocessing.Style>().FirstOrDefault(s => s.StyleId == styleId);
+        if (style == null) return null;
+        var rPr = style.Elements<RunProperties>().FirstOrDefault();
+        if (rPr != null) return rPr;
+        var basedOn = style.Elements<BasedOn>().FirstOrDefault();
+        if (basedOn != null && basedOn.Val != null) {
+            return GetStyleRunProperties(basedOn.Val.Value, styles);
+        }
+        return null;
+    }
+
+    private static string ResolveRunFontName(RunFonts runFonts, string themeMajorLatin, string themeMinorLatin, string themeMajorEastAsia, string themeMinorEastAsia, bool hasNonAscii) {
+        if (runFonts == null) return null;
+        string fontName = null;
+        if (hasNonAscii) {
+            if (runFonts.EastAsia != null) fontName = runFonts.EastAsia.Value;
+            else if (runFonts.EastAsiaTheme != null && runFonts.EastAsiaTheme.Value != null) {
+                var themeVal = runFonts.EastAsiaTheme.Value.ToString();
+                if (themeVal.Contains("major") || themeVal.Contains("Major")) fontName = themeMajorEastAsia;
+                else if (themeVal.Contains("minor") || themeVal.Contains("Minor")) fontName = themeMinorEastAsia;
+            }
+            if (!string.IsNullOrEmpty(fontName)) return fontName;
+        }
+        if (runFonts.Ascii != null) fontName = runFonts.Ascii.Value;
+        else if (runFonts.AsciiTheme != null && runFonts.AsciiTheme.Value != null) {
+            var themeVal = runFonts.AsciiTheme.Value.ToString();
+            if (themeVal.Contains("major") || themeVal.Contains("Major")) fontName = themeMajorLatin;
+            else if (themeVal.Contains("minor") || themeVal.Contains("Minor")) fontName = themeMinorLatin;
+        }
+        if (!string.IsNullOrEmpty(fontName)) return fontName;
+        if (runFonts.HighAnsi != null) fontName = runFonts.HighAnsi.Value;
+        else if (runFonts.HighAnsiTheme != null && runFonts.HighAnsiTheme.Value != null) {
+            var themeVal = runFonts.HighAnsiTheme.Value.ToString();
+            if (themeVal.Contains("major") || themeVal.Contains("Major")) fontName = themeMajorLatin;
+            else if (themeVal.Contains("minor") || themeVal.Contains("Minor")) fontName = themeMinorLatin;
+        }
+        return fontName;
+    }
+
     private FlowDocument DocxToFlowDocument(string filePath) {
         var doc = new FlowDocument();
         doc.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
         doc.FontSize = 14;
-        doc.PagePadding = new Thickness(40);
+        doc.PagePadding = new Thickness(96, 72, 96, 72); // Standard page margins (1" left/right, 0.75" top/bottom)
 
         using (var wordDoc = WordprocessingDocument.Open(filePath, false)) {
             var mainPart = wordDoc.MainDocumentPart;
             var body = mainPart.Document.Body;
+            
+            // Try to parse theme fonts
+            _themeMajorLatin = "Calibri Light";
+            _themeMinorLatin = "Calibri";
+            _themeMajorEastAsia = "Microsoft YaHei";
+            _themeMinorEastAsia = "SimSun";
+            try {
+                var themePart = mainPart.ThemePart;
+                if (themePart != null && themePart.Theme != null) {
+                    var themeElements = themePart.Theme.Elements<DocumentFormat.OpenXml.Drawing.ThemeElements>().FirstOrDefault();
+                    var fontScheme = themeElements != null ? themeElements.Elements<DocumentFormat.OpenXml.Drawing.FontScheme>().FirstOrDefault() : null;
+                    if (fontScheme != null) {
+                        var majorFont = fontScheme.Elements<DocumentFormat.OpenXml.Drawing.MajorFont>().FirstOrDefault();
+                        if (majorFont != null) {
+                            var latin = majorFont.Elements<DocumentFormat.OpenXml.Drawing.LatinFont>().FirstOrDefault();
+                            if (latin != null && latin.Typeface != null) _themeMajorLatin = latin.Typeface.Value;
+                            var ea = majorFont.Elements<DocumentFormat.OpenXml.Drawing.EastAsianFont>().FirstOrDefault();
+                            if (ea != null && ea.Typeface != null) _themeMajorEastAsia = ea.Typeface.Value;
+                        }
+                        var minorFont = fontScheme.Elements<DocumentFormat.OpenXml.Drawing.MinorFont>().FirstOrDefault();
+                        if (minorFont != null) {
+                            var latin = minorFont.Elements<DocumentFormat.OpenXml.Drawing.LatinFont>().FirstOrDefault();
+                            if (latin != null && latin.Typeface != null) _themeMinorLatin = latin.Typeface.Value;
+                            var ea = minorFont.Elements<DocumentFormat.OpenXml.Drawing.EastAsianFont>().FirstOrDefault();
+                            if (ea != null && ea.Typeface != null) _themeMinorEastAsia = ea.Typeface.Value;
+                        }
+                    }
+                }
+            } catch { }
+
+            // Try to parse document default font and size
+            string defaultFont = "Segoe UI";
+            double defaultPtSize = 11.0;
+            try {
+                var stylesPart = mainPart.StyleDefinitionsPart;
+                if (stylesPart != null && stylesPart.Styles != null) {
+                    var docDefaults = stylesPart.Styles.DocDefaults;
+                    if (docDefaults != null && docDefaults.RunPropertiesDefault != null && docDefaults.RunPropertiesDefault.Elements<RunProperties>().FirstOrDefault() != null) {
+                        var defaultRPr = docDefaults.RunPropertiesDefault.Elements<RunProperties>().FirstOrDefault();
+                        if (defaultRPr.RunFonts != null) {
+                            string fName = ResolveRunFontName(defaultRPr.RunFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, false);
+                            if (!string.IsNullOrEmpty(fName)) defaultFont = fName;
+                        }
+                        if (defaultRPr.FontSize != null && defaultRPr.FontSize.Val != null) {
+                            double sz;
+                            if (double.TryParse(defaultRPr.FontSize.Val.Value, out sz)) {
+                                defaultPtSize = sz / 2.0;
+                            }
+                        }
+                    }
+                }
+            } catch { }
+
+            doc.FontFamily = ResolveFontFamily(defaultFont);
+            doc.FontSize = defaultPtSize * (96.0 / 72.0);
+            doc.LineHeight = (defaultPtSize * (96.0 / 72.0)) * 1.15; // default 1.15x line spacing
+            doc.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+
+            // Try to parse page size and margins from SectionProperties
+            try {
+                var sectPr = body.Elements<SectionProperties>().LastOrDefault() ?? body.Descendants<SectionProperties>().LastOrDefault();
+                if (sectPr != null) {
+                    var pgSz = sectPr.Elements<PageSize>().FirstOrDefault();
+                    if (pgSz != null) {
+                        if (pgSz.Width != null && pgSz.Width.Value > 0)
+                            doc.PageWidth = (pgSz.Width.Value / 20.0) * (96.0 / 72.0);
+                        if (pgSz.Height != null && pgSz.Height.Value > 0)
+                            doc.PageHeight = (pgSz.Height.Value / 20.0) * (96.0 / 72.0);
+                    }
+                    var pgMar = sectPr.Elements<PageMargin>().FirstOrDefault();
+                    if (pgMar != null) {
+                        double left = 96, top = 72, right = 96, bottom = 72;
+                        if (pgMar.Left != null) left = (pgMar.Left.Value / 20.0) * (96.0 / 72.0);
+                        if (pgMar.Top != null) top = (pgMar.Top.Value / 20.0) * (96.0 / 72.0);
+                        if (pgMar.Right != null) right = (pgMar.Right.Value / 20.0) * (96.0 / 72.0);
+                        if (pgMar.Bottom != null) bottom = (pgMar.Bottom.Value / 20.0) * (96.0 / 72.0);
+                    }
+                }
+            } catch { }
+
+            doc.Tag = new DocLayoutSettings {
+                PageWidth = doc.PageWidth,
+                PageHeight = doc.PageHeight,
+                PagePadding = doc.PagePadding
+            };
             
             // Pre-build numbering lookup
             var numberingFormats = new System.Collections.Generic.Dictionary<string, string>(); // numId_level -> format
@@ -7052,6 +7816,7 @@ public class AhkWpfEngine
         MainDocumentPart mainPart) {
         
         var flowPara = new System.Windows.Documents.Paragraph();
+        RunProperties paragraphStyleRPr = null;
 
         if (pPr != null) {
             // Justification
@@ -7070,18 +7835,24 @@ public class AhkWpfEngine
             if (pPr.ParagraphStyleId != null) {
                 string styleId = (pPr.ParagraphStyleId.Val != null) ? pPr.ParagraphStyleId.Val.Value : "";
                 flowPara.Tag = styleId;
+                try {
+                    var stylesPart = mainPart.StyleDefinitionsPart;
+                    if (stylesPart != null && stylesPart.Styles != null) {
+                        paragraphStyleRPr = GetStyleRunProperties(styleId, stylesPart.Styles);
+                    }
+                } catch { }
                 if (styleId.StartsWith("Heading") || styleId.StartsWith("heading")) {
                     int level = 1;
                     if (styleId.Length > 7) int.TryParse(styleId.Substring(7), out level);
                     flowPara.FontWeight = FontWeights.Bold;
-                    flowPara.FontSize = Math.Max(14, 30 - (level * 3));
-                    flowPara.Margin = new Thickness(0, 12, 0, 4);
+                    flowPara.FontSize = Math.Max(11, 24 - (level * 2)) * (96.0 / 72.0); // Convert points to pixels
+                    flowPara.Margin = new Thickness(0, 12.0 * (96.0 / 72.0), 0, 4.0 * (96.0 / 72.0));
                 } else if (styleId.Contains("Quote") || styleId.Contains("quote")) {
                     flowPara.FontStyle = FontStyles.Italic;
                     flowPara.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 100));
                     flowPara.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
-                    flowPara.BorderThickness = new Thickness(3, 0, 0, 0);
-                    flowPara.Padding = new Thickness(12, 4, 4, 4);
+                    flowPara.BorderThickness = new Thickness(3.0 * (96.0 / 72.0), 0, 0, 0);
+                    flowPara.Padding = new Thickness(12.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0));
                 }
             }
 
@@ -7097,45 +7868,72 @@ public class AhkWpfEngine
                 }
             }
 
+            // Default paragraph spacing matching MS Word (0 before, 6pt = 8px after)
+            flowPara.Margin = new Thickness(0, 0, 0, 6.0 * (96.0 / 72.0));
+
             // Indentation
             if (pPr.Indentation != null) {
                 double leftIndent = 0, rightIndent = 0, firstLine = 0;
                 if (pPr.Indentation.Left != null) {
                     double val;
                     if (double.TryParse(pPr.Indentation.Left.Value, out val))
-                        leftIndent = val / 20.0; // twips to points approx
+                        leftIndent = (val / 20.0) * (96.0 / 72.0); // Convert points to WPF pixels
                 }
                 if (pPr.Indentation.Right != null) {
                     double val;
                     if (double.TryParse(pPr.Indentation.Right.Value, out val))
-                        rightIndent = val / 20.0;
+                        rightIndent = (val / 20.0) * (96.0 / 72.0);
                 }
                 if (pPr.Indentation.FirstLine != null) {
                     double val;
                     if (double.TryParse(pPr.Indentation.FirstLine.Value, out val))
-                        firstLine = val / 20.0;
+                        firstLine = (val / 20.0) * (96.0 / 72.0);
                 }
-                if (leftIndent > 0 || rightIndent > 0)
-                    flowPara.Margin = new Thickness(leftIndent, flowPara.Margin.Top, rightIndent, flowPara.Margin.Bottom);
+                if (leftIndent > 0 || rightIndent > 0) {
+                    double top = flowPara.Margin.Top;
+                    double bottom = flowPara.Margin.Bottom;
+                    flowPara.Margin = new Thickness(leftIndent, top, rightIndent, bottom);
+                }
                 if (firstLine > 0)
                     flowPara.TextIndent = firstLine;
             }
 
             // Spacing (before/after)
             if (pPr.SpacingBetweenLines != null) {
-                double before = 0, after = 0;
+                double before = 0;
+                double after = 6.0 * (96.0 / 72.0); // Default 6pt after
                 if (pPr.SpacingBetweenLines.Before != null) {
                     double val;
                     if (double.TryParse(pPr.SpacingBetweenLines.Before.Value, out val))
-                        before = val / 20.0;
+                        before = (val / 20.0) * (96.0 / 72.0);
                 }
                 if (pPr.SpacingBetweenLines.After != null) {
                     double val;
                     if (double.TryParse(pPr.SpacingBetweenLines.After.Value, out val))
-                        after = val / 20.0;
+                        after = (val / 20.0) * (96.0 / 72.0);
                 }
-                if (before > 0 || after > 0)
-                    flowPara.Margin = new Thickness(flowPara.Margin.Left, before, flowPara.Margin.Right, after);
+                
+                double left = flowPara.Margin.Left;
+                double right = flowPara.Margin.Right;
+                flowPara.Margin = new Thickness(left, before, right, after);
+
+                // Line spacing (within paragraph)
+                if (pPr.SpacingBetweenLines.Line != null) {
+                    string lineStr = pPr.SpacingBetweenLines.Line.Value;
+                    double lineVal;
+                    if (double.TryParse(lineStr, out lineVal)) {
+                        var lineRule = pPr.SpacingBetweenLines.LineRule != null ? pPr.SpacingBetweenLines.LineRule.Value : LineSpacingRuleValues.Auto;
+                        if (lineRule == LineSpacingRuleValues.Auto) {
+                            double multiple = lineVal / 240.0;
+                            double estFontSize = flowPara.FontSize > 0 ? flowPara.FontSize : 14.66; // default 11pt is 14.66px
+                            flowPara.LineHeight = estFontSize * multiple;
+                            flowPara.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+                        } else {
+                            flowPara.LineHeight = (lineVal / 20.0) * (96.0 / 72.0);
+                            flowPara.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+                        }
+                    }
+                }
             }
         }
 
@@ -7161,11 +7959,18 @@ public class AhkWpfEngine
                         });
                     }
                 }
-                if (hasDrawing && string.IsNullOrWhiteSpace(run.InnerText)) continue;
-
+                RunProperties runStyleRPr = null;
+                if (run.RunProperties != null && run.RunProperties.RunStyle != null && run.RunProperties.RunStyle.Val != null) {
+                    try {
+                        var stylesPart = mainPart.StyleDefinitionsPart;
+                        if (stylesPart != null && stylesPart.Styles != null) {
+                            runStyleRPr = GetStyleRunProperties(run.RunProperties.RunStyle.Val.Value, stylesPart.Styles);
+                        }
+                    } catch { }
+                }
                 string text = run.InnerText;
                 var flowRun = new System.Windows.Documents.Run(text);
-                ApplyRunProperties(flowRun, run.RunProperties);
+                ApplyRunProperties(flowRun, run.RunProperties, runStyleRPr, paragraphStyleRPr);
                 flowPara.Inlines.Add(flowRun);
 
             } else if (child is DocumentFormat.OpenXml.Wordprocessing.Hyperlink) {
@@ -7189,8 +7994,17 @@ public class AhkWpfEngine
                 var linkSpan = new System.Windows.Documents.Hyperlink();
                 foreach (var hRun in hyperlink.Elements<DocumentFormat.OpenXml.Wordprocessing.Run>()) {
                     linkText += hRun.InnerText;
+                    RunProperties linkRunStyleRPr = null;
+                    if (hRun.RunProperties != null && hRun.RunProperties.RunStyle != null && hRun.RunProperties.RunStyle.Val != null) {
+                        try {
+                            var stylesPart = mainPart.StyleDefinitionsPart;
+                            if (stylesPart != null && stylesPart.Styles != null) {
+                                linkRunStyleRPr = GetStyleRunProperties(hRun.RunProperties.RunStyle.Val.Value, stylesPart.Styles);
+                            }
+                        } catch { }
+                    }
                     var linkFlowRun = new System.Windows.Documents.Run(hRun.InnerText);
-                    ApplyRunProperties(linkFlowRun, hRun.RunProperties);
+                    ApplyRunProperties(linkFlowRun, hRun.RunProperties, linkRunStyleRPr, paragraphStyleRPr);
                     linkSpan.Inlines.Add(linkFlowRun);
                 }
 
@@ -7217,29 +8031,74 @@ public class AhkWpfEngine
         return flowPara;
     }
 
-    // Apply run properties to a WPF Run
-    private void ApplyRunProperties(System.Windows.Documents.Run flowRun, RunProperties rPr) {
-        if (rPr == null) return;
-        if (rPr.Bold != null) flowRun.FontWeight = FontWeights.Bold;
-        if (rPr.Italic != null) flowRun.FontStyle = FontStyles.Italic;
-        if (rPr.Underline != null && rPr.Underline.Val != null && rPr.Underline.Val.Value != UnderlineValues.None)
-            flowRun.TextDecorations = TextDecorations.Underline;
-        if (rPr.Strike != null) flowRun.TextDecorations = TextDecorations.Strikethrough;
-        if (rPr.FontSize != null) {
-            double sz;
-            if (rPr.FontSize.Val != null && double.TryParse(rPr.FontSize.Val.Value, out sz))
-                flowRun.FontSize = sz / 2.0;
+    private T GetRunProperty<T>(RunProperties rPr, RunProperties runStyleRPr, RunProperties paragraphStyleRPr) where T : OpenXmlElement {
+        if (rPr != null) {
+            var prop = rPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
         }
-        if (rPr.Color != null && rPr.Color.Val != null) {
+        if (runStyleRPr != null) {
+            var prop = runStyleRPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
+        }
+        if (paragraphStyleRPr != null) {
+            var prop = paragraphStyleRPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
+        }
+        return null;
+    }
+
+    // Apply run properties to a WPF Run
+    private void ApplyRunProperties(System.Windows.Documents.Run flowRun, RunProperties rPr, RunProperties runStyleRPr, RunProperties paragraphStyleRPr) {
+        if (rPr == null && runStyleRPr == null && paragraphStyleRPr == null) return;
+        
+        var bold = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Bold>(rPr, runStyleRPr, paragraphStyleRPr);
+        if (bold != null) flowRun.FontWeight = FontWeights.Bold;
+        
+        var italic = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Italic>(rPr, runStyleRPr, paragraphStyleRPr);
+        if (italic != null) flowRun.FontStyle = FontStyles.Italic;
+        
+        var decs = new TextDecorationCollection();
+        var underline = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Underline>(rPr, runStyleRPr, paragraphStyleRPr);
+        if (underline != null && underline.Val != null && underline.Val.Value != UnderlineValues.None) {
+            foreach (var d in TextDecorations.Underline) decs.Add(d);
+        }
+        var strike = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Strike>(rPr, runStyleRPr, paragraphStyleRPr);
+        if (strike != null) {
+            foreach (var d in TextDecorations.Strikethrough) decs.Add(d);
+        }
+        if (decs.Count > 0) {
+            flowRun.TextDecorations = decs;
+        }
+
+        var fontSize = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.FontSize>(rPr, runStyleRPr, paragraphStyleRPr);
+        if (fontSize != null) {
+            double sz;
+            if (fontSize.Val != null && double.TryParse(fontSize.Val.Value, out sz))
+                flowRun.FontSize = (sz / 2.0) * (96.0 / 72.0); // Convert points to WPF pixels
+        }
+        var color = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Color>(rPr, runStyleRPr, paragraphStyleRPr);
+        if (color != null && color.Val != null) {
             try {
-                string cVal = rPr.Color.Val.Value;
+                string cVal = color.Val.Value;
                 if (cVal != "auto" && cVal != "Auto")
                     flowRun.Foreground = new System.Windows.Media.SolidColorBrush(
                         (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#" + cVal));
             } catch { }
         }
-        if (rPr.RunFonts != null && rPr.RunFonts.Ascii != null)
-            flowRun.FontFamily = new System.Windows.Media.FontFamily(rPr.RunFonts.Ascii.Value);
+        
+        var runFonts = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.RunFonts>(rPr, runStyleRPr, paragraphStyleRPr);
+        if (runFonts != null) {
+            bool hasNonAscii = false;
+            if (flowRun.Text != null) {
+                foreach (char ch in flowRun.Text) {
+                    if (ch > 127) { hasNonAscii = true; break; }
+                }
+            }
+            string fontName = ResolveRunFontName(runFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, hasNonAscii);
+            if (!string.IsNullOrEmpty(fontName)) {
+                flowRun.FontFamily = ResolveFontFamily(fontName);
+            }
+        }
         // Highlight
         if (rPr.Highlight != null && rPr.Highlight.Val != null) {
             flowRun.Background = HighlightColorToBrush(rPr.Highlight.Val.Value);
@@ -7339,16 +8198,35 @@ public class AhkWpfEngine
         DocumentFormat.OpenXml.Wordprocessing.Table oxTable, MainDocumentPart mainPart) {
         
         var flowTable = new System.Windows.Documents.Table();
-        flowTable.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+        flowTable.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(110, 110, 110));
         flowTable.BorderThickness = new Thickness(1);
         flowTable.CellSpacing = 0;
         flowTable.Margin = new Thickness(0, 8, 0, 8);
+
+        // Parse TableGrid for high-fidelity column widths
+        var tblGrid = oxTable.Elements<TableGrid>().FirstOrDefault();
+        if (tblGrid != null) {
+            var gridCols = tblGrid.Elements<GridColumn>().ToList();
+            if (gridCols.Count > 0) {
+                foreach (var gc in gridCols) {
+                    double wVal = 100;
+                    if (gc.Width != null) {
+                        double twips;
+                        if (double.TryParse(gc.Width.Value, out twips)) {
+                            wVal = twips / 15.0; // convert twips to WPF pixels
+                        }
+                    }
+                    flowTable.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(wVal) });
+                }
+            }
+        }
+
         var rg = new System.Windows.Documents.TableRowGroup();
         foreach (var oxRow in oxTable.Elements<DocumentFormat.OpenXml.Wordprocessing.TableRow>()) {
             var flowRow = new System.Windows.Documents.TableRow();
             foreach (var oxCell in oxRow.Elements<DocumentFormat.OpenXml.Wordprocessing.TableCell>()) {
                 var cell = new System.Windows.Documents.TableCell();
-                cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(180, 180, 180));
+                cell.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(110, 110, 110));
                 cell.BorderThickness = new Thickness(0.5);
                 cell.Padding = new Thickness(8, 6, 8, 6);
 
@@ -7400,6 +8278,699 @@ public class AhkWpfEngine
                 flowTable.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(1, GridUnitType.Star) });
         }
         return flowTable;
+    }
+
+    // === Font Resolution ===
+    // Static cache of installed system fonts for fast lookup
+    private static System.Collections.Generic.HashSet<string> _installedFonts;
+    private static string _userFontsUriStr;
+    
+    private static bool IsSerifFont(string fontName) {
+        if (string.IsNullOrEmpty(fontName)) return false;
+        string name = fontName.ToLower();
+        if (name.Contains("serif") || name.Contains("roman") || name.Contains("georgia") || 
+            name.Contains("times") || name.Contains("garamond") || name.Contains("bookman") || 
+            name.Contains("palatino") || name.Contains("century")) {
+            return true;
+        }
+        if (name.Contains("song") || name.Contains("ming") || name.Contains("kai") ||
+            name.Contains("宋") || name.Contains("明") || name.Contains("楷") ||
+            name.Contains("新細明") || name.Contains("細明") || name.Contains("报宋")) {
+            return true;
+        }
+        return false;
+    }
+
+    private static System.Collections.Generic.HashSet<string> GetInstalledFonts() {
+        if (_installedFonts == null) {
+            _installedFonts = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
+            // 1. Scan default system font families and all their localized names
+            foreach (var family in System.Windows.Media.Fonts.SystemFontFamilies) {
+                _installedFonts.Add(family.Source);
+                try {
+                    foreach (var name in family.FamilyNames.Values) {
+                        _installedFonts.Add(name);
+                    }
+                } catch { }
+            }
+            
+            // 2. Scan user local AppData fonts folder if it exists
+            try {
+                string localAppData = System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData);
+                string userFontsDir = System.IO.Path.Combine(localAppData, @"Microsoft\Windows\Fonts");
+                if (System.IO.Directory.Exists(userFontsDir)) {
+                    _userFontsUriStr = "file:///" + userFontsDir.Replace('\\', '/').TrimEnd('/') + "/";
+                    foreach (var family in System.Windows.Media.Fonts.GetFontFamilies(new Uri(_userFontsUriStr))) {
+                        _installedFonts.Add(family.Source);
+                        try {
+                            foreach (var name in family.FamilyNames.Values) {
+                                _installedFonts.Add(name);
+                            }
+                        } catch { }
+                    }
+                }
+            } catch { }
+        }
+        return _installedFonts;
+    }
+
+    private System.Windows.Media.FontFamily ResolveFontFamily(string requestedFont) {
+        if (string.IsNullOrEmpty(requestedFont)) return new System.Windows.Media.FontFamily("Segoe UI");
+        var installed = GetInstalledFonts();
+        if (installed.Contains(requestedFont)) {
+            // Check if it's a per-user font by checking if it exists in userFonts folder
+            if (!string.IsNullOrEmpty(_userFontsUriStr)) {
+                try {
+                    foreach (var family in System.Windows.Media.Fonts.GetFontFamilies(new Uri(_userFontsUriStr))) {
+                        bool matched = string.Equals(family.Source, requestedFont, StringComparison.OrdinalIgnoreCase);
+                        if (!matched) {
+                            foreach (var name in family.FamilyNames.Values) {
+                                if (string.Equals(name, requestedFont, StringComparison.OrdinalIgnoreCase)) {
+                                    matched = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (matched) {
+                            return new System.Windows.Media.FontFamily(new Uri(_userFontsUriStr), "./#" + requestedFont);
+                        }
+                    }
+                } catch { }
+            }
+            return new System.Windows.Media.FontFamily(requestedFont);
+        }
+        
+        // Build WPF fallback chain preserving Serif/Sans-Serif style
+        if (IsSerifFont(requestedFont)) {
+            return new System.Windows.Media.FontFamily(requestedFont + ", Times New Roman, SimSun, Georgia, PMingLiU, KaiTi, Segoe UI, Arial, Microsoft YaHei");
+        } else {
+            return new System.Windows.Media.FontFamily(requestedFont + ", Segoe UI, Arial, Microsoft YaHei, SimSun, Malgun Gothic, Yu Gothic, Times New Roman");
+        }
+    }
+
+    // === Page Break Spacer Management ===
+    private static T FindParent<T>(DependencyObject child) where T : DependencyObject {
+        DependencyObject parentObject = child;
+        while (parentObject != null) {
+            if (parentObject is T) return (T)parentObject;
+            DependencyObject parentVisual = null;
+            if (parentObject is Visual || parentObject is System.Windows.Media.Media3D.Visual3D) {
+                parentVisual = VisualTreeHelper.GetParent(parentObject);
+            }
+            parentObject = parentVisual ?? LogicalTreeHelper.GetParent(parentObject);
+        }
+        return null;
+    }
+
+    private void LogEditorState(string context, RichTextBox rtb) {
+        try {
+            string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log");
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Format("--- Editor State: {0} ({1:HH:mm:ss.fff}) ---", context, DateTime.Now));
+            if (rtb == null) {
+                sb.AppendLine("RTB is NULL");
+            } else {
+                sb.AppendLine(string.Format("RTB Name: {0}", rtb.Name));
+                sb.AppendLine(string.Format("RTB Visibility: {0}", rtb.Visibility));
+                sb.AppendLine(string.Format("RTB IsEnabled: {0}", rtb.IsEnabled));
+                sb.AppendLine(string.Format("RTB IsReadOnly: {0}", rtb.IsReadOnly));
+                sb.AppendLine(string.Format("RTB IsDocumentEnabled: {0}", rtb.IsDocumentEnabled));
+                sb.AppendLine(string.Format("RTB Focusable: {0}", rtb.Focusable));
+                sb.AppendLine(string.Format("RTB IsFocused: {0}", rtb.IsFocused));
+                sb.AppendLine(string.Format("RTB IsKeyboardFocusWithin: {0}", rtb.IsKeyboardFocusWithin));
+                sb.AppendLine(string.Format("RTB IsHitTestVisible: {0}", rtb.IsHitTestVisible));
+                int blocksCount = -1;
+                if (rtb.Document != null && rtb.Document.Blocks != null) {
+                    blocksCount = rtb.Document.Blocks.Count;
+                }
+                sb.AppendLine(string.Format("RTB Document Blocks Count: {0}", blocksCount));
+                
+                DependencyObject parent = rtb;
+                while (parent != null) {
+                    DependencyObject parentVisual = null;
+                    if (parent is Visual || parent is System.Windows.Media.Media3D.Visual3D) {
+                        parentVisual = VisualTreeHelper.GetParent(parent);
+                    }
+                    parent = parentVisual ?? LogicalTreeHelper.GetParent(parent);
+                    if (parent != null) {
+                        var fe = parent as FrameworkElement;
+                        sb.AppendLine(string.Format("Parent Type: {0}, Name: {1}, Visibility: {2}, IsEnabled: {3}, IsHitTestVisible: {4}", 
+                            parent.GetType().Name, 
+                            fe != null ? fe.Name : "N/A", 
+                            fe != null ? fe.Visibility.ToString() : "N/A", 
+                            fe != null ? fe.IsEnabled.ToString() : "N/A",
+                            fe != null ? fe.IsHitTestVisible.ToString() : "N/A"));
+                    }
+                }
+            }
+            sb.AppendLine();
+            System.IO.File.AppendAllText(debugPath, sb.ToString());
+        } catch { }
+    }
+
+    private System.Collections.Generic.List<BlockUIContainer> _pageBreakSpacers
+        = new System.Collections.Generic.List<BlockUIContainer>();
+    private bool _isUpdatingSpacers = false;
+
+    private void _GetLayoutBlocks(System.Windows.Documents.BlockCollection blocks, System.Collections.Generic.List<Block> flatList) {
+        foreach (var block in blocks) {
+            if (block is System.Windows.Documents.Section) {
+                _GetLayoutBlocks(((System.Windows.Documents.Section)block).Blocks, flatList);
+            } else {
+                flatList.Add(block);
+            }
+        }
+    }
+
+    private double _GetActualBlockHeight(RichTextBox rtb, Block block, double availableWidth) {
+        try {
+            var rectStart = block.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+            var rectEnd = block.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
+            double height = rectEnd.Bottom - rectStart.Top;
+            if (height > 0 && height < 5000) {
+                return height;
+            }
+        } catch { }
+        return _EstimateBlockHeight(block, availableWidth);
+    }
+
+    private void ApplyViewMode(RichTextBox rtb, string viewMode, string currentTheme, Window win)
+    {
+        string rtbName = rtb.Name;
+        string readerName = rtbName + "_PageReader";
+        string pageBorderName = rtbName + "_PageBorder";
+
+        ScrollViewer editorSv = FindParent<ScrollViewer>(rtb);
+        FrameworkElement editorCanvas = editorSv != null ? (VisualTreeHelper.GetParent(editorSv) as FrameworkElement ?? editorSv.Parent as FrameworkElement) : null;
+        Grid editorWrapper = editorCanvas != null ? (VisualTreeHelper.GetParent(editorCanvas) as Grid ?? editorCanvas.Parent as Grid) : null;
+
+        FlowDocumentReader reader = null;
+        if (editorWrapper != null) {
+            foreach (var child in editorWrapper.Children) {
+                if (child is FlowDocumentReader) {
+                    reader = (FlowDocumentReader)child;
+                    break;
+                }
+            }
+        }
+
+        var pageBorder = rtb.Parent as System.Windows.Controls.Border ?? win.FindName(pageBorderName) as System.Windows.Controls.Border;
+
+        // Save view mode
+        _docViewModes[rtbName] = viewMode;
+
+        // STEP 1: ALWAYS consolidate doc back to RTB first
+        if (reader != null && reader.Document != null) {
+            var transferDoc = reader.Document;
+            reader.Document = null;
+            transferDoc.ClearValue(FlowDocument.PageWidthProperty);
+            transferDoc.ClearValue(FlowDocument.PageHeightProperty);
+            transferDoc.PagePadding = new Thickness(60, 50, 60, 50);
+            transferDoc.ClearValue(FlowDocument.BackgroundProperty);
+            transferDoc.ClearValue(FlowDocument.ForegroundProperty);
+            rtb.Document = transferDoc;
+        }
+
+        // If the mode is NOT twoup, remove reader from visual tree
+        if (viewMode != "twoup" && editorWrapper != null) {
+            var toRemove = new System.Collections.Generic.List<UIElement>();
+            foreach (var child in editorWrapper.Children) {
+                if (child is FlowDocumentReader) {
+                    toRemove.Add((UIElement)child);
+                }
+            }
+            foreach (var r in toRemove) {
+                editorWrapper.Children.Remove(r);
+                try { win.UnregisterName(((FrameworkElement)r).Name); } catch {}
+            }
+            reader = null;
+        }
+
+        // STEP 2: Apply the requested view mode
+        if (viewMode == "paper") {
+            // Hide custom page nav in status bar
+            var statusPageNav = win.FindName(rtbName + "_StatusPageNav") as FrameworkElement;
+            if (statusPageNav != null) statusPageNav.Visibility = Visibility.Collapsed;
+
+            // Show RichTextBox editor canvas
+            if (editorCanvas != null) {
+                editorCanvas.Visibility = Visibility.Visible;
+                editorCanvas.IsEnabled = true;
+                editorCanvas.IsHitTestVisible = true;
+            }
+            if (editorSv != null) {
+                editorSv.Visibility = Visibility.Visible;
+                editorSv.IsEnabled = true;
+                editorSv.IsHitTestVisible = true;
+            }
+
+            var settings = rtb.Document.Tag as DocLayoutSettings;
+            double pgW = 816;
+            double pgH = 1056;
+            Thickness pgPad = new Thickness(96, 72, 96, 72);
+            if (settings != null) {
+                pgW = settings.PageWidth;
+                pgH = settings.PageHeight;
+                pgPad = settings.PagePadding;
+            }
+            if (pageBorder != null) {
+                pageBorder.Visibility = Visibility.Visible;
+                pageBorder.IsEnabled = true;
+                pageBorder.IsHitTestVisible = true;
+                pageBorder.Width = pgW;
+                pageBorder.MinHeight = pgH;
+                pageBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect {
+                    BlurRadius = 15,
+                    ShadowDepth = 3,
+                    Opacity = 0.15,
+                    Color = System.Windows.Media.Colors.Black
+                };
+            }
+
+            rtb.Document.ClearValue(FlowDocument.PageWidthProperty);
+            rtb.Document.ClearValue(FlowDocument.PageHeightProperty);
+            rtb.Document.PagePadding = pgPad;
+            rtb.Document.ClearValue(FlowDocument.BackgroundProperty);
+            rtb.Document.ClearValue(FlowDocument.ForegroundProperty);
+
+            // Insert spacers
+            _InsertPageBreakSpacers(rtb, currentTheme);
+
+            rtb.Visibility = Visibility.Visible;
+            rtb.IsEnabled = true;
+            rtb.IsHitTestVisible = true;
+            rtb.IsReadOnly = false;
+            rtb.IsDocumentEnabled = false;
+
+            if (rtb.Document != null) {
+                rtb.CaretPosition = rtb.Document.ContentStart;
+            }
+
+            if (rtb.IsVisible) {
+                rtb.Focus();
+                System.Windows.Input.Keyboard.Focus(rtb);
+            }
+            rtb.Dispatcher.BeginInvoke(new Action(() => {
+                rtb.IsReadOnly = false;
+                rtb.Focus();
+                System.Windows.Input.Keyboard.Focus(rtb);
+            }), System.Windows.Threading.DispatcherPriority.Background);
+
+        } else if (viewMode == "twoup") {
+            _RemovePageBreakSpacers(rtb);
+
+            var statusPageNav = win.FindName(rtbName + "_StatusPageNav") as FrameworkElement;
+            if (statusPageNav != null) statusPageNav.Visibility = Visibility.Visible;
+
+            if (reader == null && editorWrapper != null) {
+                reader = new FlowDocumentReader();
+                reader.Name = readerName;
+                try { win.RegisterName(readerName, reader); } catch { }
+                reader.BorderThickness = new Thickness(0);
+                reader.IsFindEnabled = false;
+                reader.Visibility = Visibility.Collapsed;
+                Grid.SetColumn(reader, 1);
+                Grid.SetRow(reader, 0);
+
+                reader.Loaded += (s, ev) => {
+                    var container = win.FindName(rtbName + "_Container") as FrameworkElement;
+                    string theme = (container != null && container.Tag is string) ? (string)container.Tag : "Normal";
+                    StyleReaderVisuals(reader, theme, win);
+                    HideReaderToolbar(reader);
+
+                    var btnPrev = win.FindName(rtbName + "_BtnPrevPage") as Button;
+                    var btnNext = win.FindName(rtbName + "_BtnNextPage") as Button;
+                    if (btnPrev != null) {
+                        btnPrev.Click += (s2, ev2) => System.Windows.Input.NavigationCommands.PreviousPage.Execute(null, reader);
+                    }
+                    if (btnNext != null) {
+                        btnNext.Click += (s2, ev2) => System.Windows.Input.NavigationCommands.NextPage.Execute(null, reader);
+                    }
+
+                    var dpPageNum = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(FlowDocumentReader.PageNumberProperty, typeof(FlowDocumentReader));
+                    if (dpPageNum != null) {
+                        dpPageNum.AddValueChanged(reader, (s2, ev2) => UpdatePageStatus(reader, win));
+                    }
+                    var dpPageCount = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(FlowDocumentReader.PageCountProperty, typeof(FlowDocumentReader));
+                    if (dpPageCount != null) {
+                        dpPageCount.AddValueChanged(reader, (s2, ev2) => UpdatePageStatus(reader, win));
+                    }
+
+                    UpdatePageStatus(reader, win);
+                };
+
+                editorWrapper.Children.Add(reader);
+            }
+
+            if (reader != null) {
+                var doc = rtb.Document;
+                rtb.Document = new FlowDocument();
+                reader.Document = doc;
+
+                double pgW = 816;
+                double pgH = 1056;
+                Thickness pgPad = new Thickness(96, 72, 96, 72);
+                var settings = doc.Tag as DocLayoutSettings;
+                if (settings != null) {
+                    pgW = settings.PageWidth;
+                    pgH = settings.PageHeight;
+                    pgPad = settings.PagePadding;
+                }
+                doc.PageWidth = pgW;
+                doc.PageHeight = pgH;
+                doc.PagePadding = pgPad;
+                doc.ColumnWidth = double.MaxValue;
+
+                if (currentTheme == "Dark") {
+                    reader.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30));
+                    doc.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(38, 38, 38));
+                    doc.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224));
+                } else if (currentTheme == "Theme") {
+                    reader.SetResourceReference(FlowDocumentReader.BackgroundProperty, "DropdownBg");
+                    doc.SetResourceReference(FlowDocument.BackgroundProperty, "ControlBg");
+                    doc.SetResourceReference(FlowDocument.ForegroundProperty, "TextMain");
+                } else {
+                    reader.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(230, 230, 230));
+                    doc.Background = System.Windows.Media.Brushes.White;
+                    doc.Foreground = System.Windows.Media.Brushes.Black;
+                }
+
+                if (editorCanvas != null) editorCanvas.Visibility = Visibility.Collapsed;
+                reader.Visibility = Visibility.Visible;
+                reader.ViewingMode = FlowDocumentReaderViewingMode.TwoPage;
+
+                StyleReaderVisuals(reader, currentTheme, win);
+                HideReaderToolbar(reader);
+                UpdatePageStatus(reader, win);
+            }
+
+        } else {
+            // Feed View
+            var statusPageNav = win.FindName(rtbName + "_StatusPageNav") as FrameworkElement;
+            if (statusPageNav != null) statusPageNav.Visibility = Visibility.Collapsed;
+
+            if (editorCanvas != null) {
+                editorCanvas.Visibility = Visibility.Visible;
+                editorCanvas.IsEnabled = true;
+                editorCanvas.IsHitTestVisible = true;
+            }
+            if (editorSv != null) {
+                editorSv.Visibility = Visibility.Visible;
+                editorSv.IsEnabled = true;
+                editorSv.IsHitTestVisible = true;
+            }
+
+            if (pageBorder != null) {
+                pageBorder.Visibility = Visibility.Visible;
+                pageBorder.IsEnabled = true;
+                pageBorder.IsHitTestVisible = true;
+                var settings = rtb.Document.Tag as DocLayoutSettings;
+                double pgW = 816;
+                double pgH = 1056;
+                Thickness pgPad = new Thickness(96, 72, 96, 72);
+                if (settings != null) {
+                    pgW = settings.PageWidth;
+                    pgH = settings.PageHeight;
+                    pgPad = settings.PagePadding;
+                }
+                pageBorder.Width = pgW;
+                pageBorder.MinHeight = pgH;
+                pageBorder.Effect = null;
+            }
+
+            _RemovePageBreakSpacers(rtb);
+
+            rtb.Document.ClearValue(FlowDocument.PageWidthProperty);
+            rtb.Document.ClearValue(FlowDocument.PageHeightProperty);
+            rtb.Document.PagePadding = new Thickness(60, 50, 60, 50);
+            rtb.Document.ClearValue(FlowDocument.BackgroundProperty);
+            rtb.Document.ClearValue(FlowDocument.ForegroundProperty);
+
+            rtb.Visibility = Visibility.Visible;
+            rtb.IsEnabled = true;
+            rtb.IsHitTestVisible = true;
+            rtb.IsReadOnly = false;
+            rtb.IsDocumentEnabled = false;
+
+            if (rtb.Document != null) {
+                rtb.CaretPosition = rtb.Document.ContentStart;
+            }
+
+            if (rtb.IsVisible) {
+                rtb.Focus();
+                System.Windows.Input.Keyboard.Focus(rtb);
+            }
+            rtb.Dispatcher.BeginInvoke(new Action(() => {
+                rtb.IsReadOnly = false;
+                rtb.Focus();
+                System.Windows.Input.Keyboard.Focus(rtb);
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+    }
+
+    private void _InsertPageBreakSpacers(RichTextBox rtb, string theme) {
+        if (_isUpdatingSpacers) return;
+        _isUpdatingSpacers = true;
+        try {
+            string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log");
+            System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers: Start. Theme: {0}\n", theme));
+            
+            _RemovePageBreakSpacers(rtb);
+            
+            // Force visual layout pass to make character bounds queryable
+            rtb.UpdateLayout();
+            
+            var doc = rtb.Document;
+            var settings = doc.Tag as DocLayoutSettings;
+            double pgW = 816;
+            double pgH = 1056;
+            Thickness pgPad = new Thickness(96, 72, 96, 72);
+            if (settings != null) {
+                pgW = settings.PageWidth;
+                pgH = settings.PageHeight;
+                pgPad = settings.PagePadding;
+            }
+            double pageContentHeight = pgH - (pgPad.Top + pgPad.Bottom);
+            double availableWidth = pgW - (pgPad.Left + pgPad.Right);
+            double accumulated = 0;
+            int pageNumber = 1;
+
+            var flatList = new System.Collections.Generic.List<Block>();
+            _GetLayoutBlocks(doc.Blocks, flatList);
+            System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers: Flat list blocks count: {0}\n", flatList.Count));
+
+            int spacerCount = 0;
+            int blockIdx = 0;
+            foreach (var block in flatList) {
+                if (block is BlockUIContainer && (((BlockUIContainer)block).Tag as string) == "__PageBreakSpacer__") continue;
+                
+                double blockHeight = _GetActualBlockHeight(rtb, block, availableWidth);
+                accumulated += blockHeight;
+                
+                System.IO.File.AppendAllText(debugPath, string.Format("Block {0}: Type={1}, Height={2}, Accumulated={3}\n", 
+                    blockIdx++, block.GetType().Name, blockHeight, accumulated));
+
+                if (accumulated >= pageContentHeight) {
+                    pageNumber++;
+                    var spacer = _CreatePageBreakSpacer(theme, pageNumber);
+                    if (block.SiblingBlocks != null) {
+                        block.SiblingBlocks.InsertAfter(block, spacer);
+                        _pageBreakSpacers.Add(spacer);
+                        spacerCount++;
+                    } else {
+                        System.IO.File.AppendAllText(debugPath, "InsertSpacers: SiblingBlocks is null for block!\n");
+                    }
+                    accumulated = 0; // Reset for next page
+                }
+            }
+            System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers: Inserted spacers count: {0}\n", spacerCount));
+        } catch (Exception ex) {
+            string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log");
+            System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers ERROR: {0}\n", ex.ToString()));
+        } finally {
+            _isUpdatingSpacers = false;
+        }
+    }
+
+    private void _RemovePageBreakSpacers(RichTextBox rtb) {
+        var doc = rtb.Document;
+        foreach (var spacer in _pageBreakSpacers) {
+            try {
+                if (spacer.SiblingBlocks != null) {
+                    spacer.SiblingBlocks.Remove(spacer);
+                } else {
+                    doc.Blocks.Remove(spacer);
+                }
+            } catch { }
+        }
+        _pageBreakSpacers.Clear();
+        
+        var toRemove = new System.Collections.Generic.List<Block>();
+        _FindOrphanedSpacers(doc.Blocks, toRemove);
+        foreach (var block in toRemove) {
+            try {
+                if (block.SiblingBlocks != null) {
+                    block.SiblingBlocks.Remove(block);
+                } else {
+                    doc.Blocks.Remove(block);
+                }
+            } catch { }
+        }
+    }
+
+    private void _FindOrphanedSpacers(System.Windows.Documents.BlockCollection blocks, System.Collections.Generic.List<Block> toRemove) {
+        foreach (var block in blocks) {
+            if (block is System.Windows.Documents.Section) {
+                _FindOrphanedSpacers(((System.Windows.Documents.Section)block).Blocks, toRemove);
+            } else if (block is BlockUIContainer && (((BlockUIContainer)block).Tag as string) == "__PageBreakSpacer__") {
+                toRemove.Add(block);
+            }
+        }
+    }
+
+    private BlockUIContainer _CreatePageBreakSpacer(string theme, int pageNum) {
+        bool isDark = (theme == "Dark");
+        var spacerGrid = new Grid();
+        spacerGrid.Height = 40;
+        // Extend margin to -150 left/right to completely cover the page from edge to edge ignoring margins/padding
+        spacerGrid.Margin = new Thickness(-150, 10, -150, 10);
+        spacerGrid.Focusable = false;
+        spacerGrid.IsHitTestVisible = false;
+
+        // Background container representing the gap (matches surrounding canvas theme)
+        var bgBorder = new System.Windows.Controls.Border();
+        bgBorder.BorderThickness = new Thickness(0, 1, 0, 1);
+        bgBorder.IsHitTestVisible = false;
+        
+        if (theme == "Dark") {
+            bgBorder.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(18, 18, 18));
+            bgBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(51, 51, 51));
+        } else if (theme == "Theme") {
+            bgBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DropdownBg");
+            bgBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "ControlBorder");
+        } else { // Normal mode (white page, light borders)
+            bgBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DropdownBg");
+            bgBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224)); // matching #E0E0E0 page border
+        }
+
+        spacerGrid.Children.Add(bgBorder);
+
+        // Dashed border representation in the center
+        var doubleColl = new System.Windows.Media.DoubleCollection(new double[] { 4, 4 });
+        var dashedLine = new System.Windows.Shapes.Line();
+        dashedLine.X1 = 0;
+        dashedLine.X2 = 1;
+        dashedLine.Stretch = System.Windows.Media.Stretch.Fill;
+        dashedLine.StrokeThickness = 1;
+        dashedLine.Stroke = isDark ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(60, 60, 60))
+                                   : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
+        dashedLine.StrokeDashArray = doubleColl;
+        dashedLine.VerticalAlignment = VerticalAlignment.Center;
+        dashedLine.IsHitTestVisible = false;
+        //spacerGrid.Children.Add(dashedLine);
+
+        // A little badge in the center displaying "Page X"
+        var badge = new System.Windows.Controls.Border();
+        badge.HorizontalAlignment = HorizontalAlignment.Center;
+        badge.VerticalAlignment = VerticalAlignment.Center;
+        badge.CornerRadius = new CornerRadius(4);
+        badge.BorderThickness = new Thickness(1);
+        badge.Padding = new Thickness(8, 3, 8, 3);
+        badge.IsHitTestVisible = false;
+
+        if (theme == "Dark") {
+            badge.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30));
+            badge.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(60, 60, 60));
+        } else if (theme == "Theme") {
+            badge.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "ControlBg");
+            badge.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "ControlBorder");
+        } else {
+            badge.Background = System.Windows.Media.Brushes.White;
+            badge.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
+        }
+
+        var tb = new System.Windows.Controls.TextBlock();
+        tb.Text = "Page " + pageNum;
+        tb.FontSize = 10;
+        tb.FontWeight = FontWeights.Medium;
+        tb.VerticalAlignment = VerticalAlignment.Center;
+        tb.IsHitTestVisible = false;
+        
+        if (theme == "Dark") {
+            tb.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(150, 150, 150));
+        } else if (theme == "Theme") {
+            tb.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "TextSub");
+        } else {
+            tb.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(120, 120, 120));
+        }
+        
+        //badge.Child = tb;
+        //spacerGrid.Children.Add(badge);
+
+        var container = new BlockUIContainer(spacerGrid);
+        container.Tag = "__PageBreakSpacer__";
+        container.Focusable = false;
+        return container;
+    }
+
+    private double _EstimateBlockHeight(Block block, double availableWidth) {
+        if (block is System.Windows.Documents.Paragraph) {
+            var p = (System.Windows.Documents.Paragraph)block;
+            string text = "";
+            try {
+                text = new TextRange(p.ContentStart, p.ContentEnd).Text;
+            } catch { }
+            
+            double fontSize = 14;
+            try {
+                double rawFs = p.FontSize;
+                if (!double.IsNaN(rawFs) && rawFs > 0) {
+                    fontSize = rawFs;
+                }
+            } catch { }
+
+            double lineHeight = fontSize * 1.5;
+            double charsPerLine = Math.Max(1, availableWidth / (fontSize * 0.55));
+            int lines = 1;
+            if (text != null && text.Length > 0 && charsPerLine > 0) {
+                try {
+                    lines = Math.Max(1, (int)Math.Ceiling(text.Length / charsPerLine));
+                } catch { }
+            }
+
+            double top = 0;
+            double bottom = 0;
+            try {
+                double rawTop = p.Margin.Top;
+                if (!double.IsNaN(rawTop)) top = rawTop;
+            } catch { }
+            try {
+                double rawBottom = p.Margin.Bottom;
+                if (!double.IsNaN(rawBottom)) bottom = rawBottom;
+            } catch { }
+
+            double est = lines * lineHeight + top + bottom + 4;
+            
+            try {
+                string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log");
+                System.IO.File.AppendAllText(debugPath, string.Format("EstimateBlockHeight: textLen={0}, fontSize={1}, lineHeight={2}, charsPerLine={3}, lines={4}, margin.top={5}, margin.bottom={6}, est={7}\n",
+                    text != null ? text.Length : 0, fontSize, lineHeight, charsPerLine, lines, top, bottom, est));
+            } catch { }
+
+            return double.IsNaN(est) ? 24 : est;
+        }
+        if (block is System.Windows.Documents.Table) {
+            var tbl = (System.Windows.Documents.Table)block;
+            int rowCount = 0;
+            foreach (var rg in tbl.RowGroups) rowCount += rg.Rows.Count;
+            return rowCount * 32 + 20;
+        }
+        if (block is System.Windows.Documents.List) {
+            return ((System.Windows.Documents.List)block).ListItems.Count * 26 + 10;
+        }
+        if (block is BlockUIContainer) return 40;
+        return 24;
     }
 
     // === Non-Destructive Dark Mode ===
@@ -7844,6 +9415,11 @@ public class AhkWpfEngine
             doc.Blocks.Add(new System.Windows.Documents.Paragraph(
                 new System.Windows.Documents.Run("Error: Could not open .doc file. For full .doc support, NPOI library is required.")));
         }
+        doc.Tag = new DocLayoutSettings {
+            PageWidth = 816,
+            PageHeight = 1056,
+            PagePadding = doc.PagePadding
+        };
         return doc;
     }
 

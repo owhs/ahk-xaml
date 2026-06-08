@@ -168,7 +168,7 @@ CustomDialogCustomBackground(main) {
     bgGrid.SetProp("Panel.ZIndex", "-1")
     bgGrid.Add("Border").CornerRadius("8").Background("#16191D")
     bgGrid.Add("Border").SetProp("IsHitTestVisible", "False").Background("{StaticResource CustomRadialGlow}")
-    
+
     ; Gold frame border (on top of content)
     fgGrid := main.Add("Grid").Grid_Row(0).Grid_RowSpan(3)
     fgGrid.SetProp("Panel.ZIndex", "10")
@@ -300,18 +300,7 @@ global AppState := {
     Backwards: "s",
     MoveLeft: "u",
     MoveRight: "o",
-    GraphicQuality: "High Fidelity",
-    Difficulty: "Normal",
-    MouseSensitivity: 5.0,
-    InvertY: false,
-    Resolution: "2560x1440",
-    VSync: false,
-    RayTracing: false,
-    MaxFPS: 144,
-    MasterVolume: 80,
-    MusicVolume: 60,
-    SFXVolume: 75,
-    VoiceChat: true
+    GraphicQuality: "High Fidelity"
 }
 
 global infoDescriptions := Map()
@@ -325,9 +314,6 @@ LoadSettings() {
             AppState.VanityKey := IniRead(iniFile, "Gameplay", "VanityKey", "f10")
             AppState.CombatKey := IniRead(iniFile, "Gameplay", "CombatKey", "")
             AppState.AutoRunEnabled := (IniRead(iniFile, "Gameplay", "AutoRunEnabled", "1") == "1")
-            AppState.Difficulty := IniRead(iniFile, "Gameplay", "Difficulty", "Normal")
-            AppState.MouseSensitivity := Float(IniRead(iniFile, "Gameplay", "MouseSensitivity", "5.0"))
-            AppState.InvertY := (IniRead(iniFile, "Gameplay", "InvertY", "0") == "1")
 
             AppState.LookLeft := IniRead(iniFile, "Movement", "LookLeft", "a")
             AppState.LookRight := IniRead(iniFile, "Movement", "LookRight", "d")
@@ -337,15 +323,6 @@ LoadSettings() {
             AppState.MoveRight := IniRead(iniFile, "Movement", "MoveRight", "o")
 
             AppState.GraphicQuality := IniRead(iniFile, "Display", "GraphicQuality", "High Fidelity")
-            AppState.Resolution := IniRead(iniFile, "Display", "Resolution", "2560x1440")
-            AppState.VSync := (IniRead(iniFile, "Display", "VSync", "0") == "1")
-            AppState.RayTracing := (IniRead(iniFile, "Display", "RayTracing", "0") == "1")
-            AppState.MaxFPS := Integer(IniRead(iniFile, "Display", "MaxFPS", "144"))
-
-            AppState.MasterVolume := Integer(IniRead(iniFile, "Audio", "MasterVolume", "80"))
-            AppState.MusicVolume := Integer(IniRead(iniFile, "Audio", "MusicVolume", "60"))
-            AppState.SFXVolume := Integer(IniRead(iniFile, "Audio", "SFXVolume", "75"))
-            AppState.VoiceChat := (IniRead(iniFile, "Audio", "VoiceChat", "1") == "1")
         }
     }
 }
@@ -376,7 +353,7 @@ customStyles := '
         <GradientStop Color="#FFE57F" Offset="0.9"/>
         <GradientStop Color="#8C7853" Offset="1.0"/>
     </LinearGradientBrush>
-
+    
     <SolidColorBrush x:Key="TextMain" Color="#CDD6F4" />
     <SolidColorBrush x:Key="TextSub" Color="#8A94A6" />
     <SolidColorBrush x:Key="Accent" Color="#00A3FF" />
@@ -405,7 +382,7 @@ customStyles := '
             </Setter.Value>
         </Setter>
     </Style>
-
+    
     <Style TargetType="ScrollBar">
         <Setter Property="OverridesDefaultStyle" Value="True"/>
         <Setter Property="Background" Value="Transparent"/>
@@ -444,7 +421,7 @@ customStyles := '
             </Trigger>
         </Style.Triggers>
     </Style>
-
+    
     <Style x:Key="WindowFrameStyle" TargetType="Border">
         <Setter Property="CornerRadius" Value="12"/>
         <Setter Property="BorderThickness" Value="3.5"/>
@@ -712,7 +689,7 @@ customStyles := '
                         <Border x:Name="InnerBorder" CornerRadius="3" Margin="2" 
                                 BorderBrush="#40D4AF37" BorderThickness="1" IsHitTestVisible="False"/>
                         
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="10,8,10,8"/>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="15,8,15,8"/>
                         
                         <Path Data="M 1,8 L 1,1 L 8,1" Stroke="#AA7C11" StrokeThickness="1.5" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"/>
                         <Ellipse Width="3" Height="3" Fill="#AA7C11" Margin="3,3,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" IsHitTestVisible="False"/>
@@ -895,35 +872,6 @@ customStyles := '
         <Setter Property="Effect">
             <Setter.Value>
                 <DropShadowEffect Color="#000" BlurRadius="4" ShadowDepth="1.5" Opacity="0.6"/>
-            </Setter.Value>
-        </Setter>
-    </Style>
-    
-    <Style x:Key="GoldSlider" TargetType="Slider">
-        <Setter Property="Background" Value="#111317"/>
-        <Setter Property="BorderBrush" Value="#2A2C30"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Slider">
-                    <Grid Margin="0,5">
-                        <Border x:Name="TrackBackground" Height="6" CornerRadius="3" Background="#0C0D10" BorderBrush="#AA7C11" BorderThickness="1"/>
-                        <Track x:Name="PART_Track">
-                            <Track.Thumb>
-                                <Thumb Width="14" Height="14" Cursor="Hand">
-                                    <Thumb.Template>
-                                        <ControlTemplate TargetType="Thumb">
-                                            <Grid>
-                                                <Ellipse Fill="#AA7C11" Stroke="#FFE57F" StrokeThickness="1"/>
-                                                <Ellipse Margin="3.5" Fill="#D4AF37"/>
-                                            </Grid>
-                                        </ControlTemplate>
-                                    </Thumb.Template>
-                                </Thumb>
-                            </Track.Thumb>
-                        </Track>
-                    </Grid>
-                </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
@@ -1124,51 +1072,19 @@ app.main.Add("Path").Grid_Row(0).VerticalAlignment("Bottom").Height("12").Margin
 ; ==============================================================================
 
 contentGrid := app.main.Add("Grid").Grid_Row(1).Margin("25,10,25,10")
-contentGrid.Cols("190", "20", "*")
+contentGrid.Cols("1*", "30", "1*")
 contentGrid.Rows("Auto", "*", "Auto", "Auto")
 
 ; Clean centered gothic title block
 contentGrid.Add("TextBlock").Grid_Row(0).Grid_Column(0).Grid_ColumnSpan(3).Text("GAME SETTINGS").FontFamily("Georgia").FontSize(24).FontWeight("Bold").Foreground("#D4AF37").HorizontalAlignment("Center").Margin("0,10,0,15")
 
-; Sidebar StackPanel on Column 0, Row 1
-sidebarSp := contentGrid.Add("StackPanel").Grid_Column(0).Grid_Row(1)
+leftScroll := contentGrid.Add("ScrollViewer").Grid_Column(0).Grid_Row(1).VerticalScrollBarVisibility("Auto").HorizontalScrollBarVisibility("Disabled")
+leftScroll.SetProp("Padding", "0,0,10,0")
+leftCol := leftScroll.Add("StackPanel")
 
-; Categories stack
-AddSidebarButton(sp, name, label, isFirst := false) {
-    btn := sp.Add("Button").Name("BtnNav" name).Style("{StaticResource OrnateButton}").Height(38).Margin("0,0,0,10")
-    btnGrid := btn.Add("Grid")
-    btnGrid.Cols("Auto", "*")
-    
-    indText := isFirst ? "✦" : "  "
-    indColor := isFirst ? "#D4AF37" : "#8A94A6"
-    btnGrid.Add("TextBlock").Name("Ind" name).Text(indText).Foreground(indColor).FontWeight("Bold").Margin("0,0,8,0").VerticalAlignment("Center").Grid_Column(0)
-    btnGrid.Add("TextBlock").Text(label).VerticalAlignment("Center").Grid_Column(1)
-}
-
-AddSidebarButton(sidebarSp, "Gameplay", "Gameplay", true)
-AddSidebarButton(sidebarSp, "Controls", "Controls")
-AddSidebarButton(sidebarSp, "Graphics", "Video & Display")
-AddSidebarButton(sidebarSp, "Audio", "Audio & Sound")
-
-; Right Column: Content grid that holds all overlaid StackPanels
-rightCol := contentGrid.Add("Grid").Grid_Column(2).Grid_Row(1)
-rightCol.Add("Grid.LayoutTransform").Add("ScaleTransform").ScaleX("1.2").ScaleY("1.2")
-
-scrollCol := rightCol.Add("ScrollViewer").VerticalScrollBarVisibility("Auto").HorizontalScrollBarVisibility("Disabled")
-scrollCol.SetProp("Padding", "0,0,10,0")
-panelContainer := scrollCol.Add("Grid")
-
-; Gameplay Panel
-panelGameplay := panelContainer.Add("StackPanel").Name("PanelGameplay").Visibility("Visible")
-
-; Controls Panel
-panelControls := panelContainer.Add("StackPanel").Name("PanelControls").Visibility("Collapsed")
-
-; Graphics Panel
-panelGraphics := panelContainer.Add("StackPanel").Name("PanelGraphics").Visibility("Collapsed")
-
-; Audio Panel
-panelAudio := panelContainer.Add("StackPanel").Name("PanelAudio").Visibility("Collapsed")
+rightScroll := contentGrid.Add("ScrollViewer").Grid_Column(2).Grid_Row(1).VerticalScrollBarVisibility("Auto").HorizontalScrollBarVisibility("Disabled")
+rightScroll.SetProp("Padding", "0,0,10,0")
+rightCol := rightScroll.Add("StackPanel")
 
 ; ==============================================================================
 ; BUILD SECTIONS & CONTROL ROWS
@@ -1241,7 +1157,7 @@ AddAutoRunRow(parent) {
     infoDescriptions["InfoAutoRun"] := { Title: "Auto-Run Shortcut", Desc: "Allows binding a dedicated key to automatically run or perform macro actions." }
 }
 
-AddDropdownRow(parent, name, label, selectedVal, items, infoName := "", infoDesc := "") {
+AddDropdownRow(parent, name, label, selectedVal, items) {
     rowGrid := parent.Add("Grid").Margin("0,5,0,5")
     rowGrid.Cols("*", "Auto")
     rowGrid.Add("TextBlock").Text(label).Foreground("#CBD5E1").FontSize(13).VerticalAlignment("Center").Grid_Column(0)
@@ -1257,72 +1173,32 @@ AddDropdownRow(parent, name, label, selectedVal, items, infoName := "", infoDesc
     }
     combo.SelectedIndex(String(selectedIdx))
 
-    if (infoName != "") {
-        rightSp.Add("Button").Name(infoName).Style("{StaticResource InfoButton}").Content("i").VerticalAlignment("Center")
-        infoDescriptions[infoName] := { Title: label, Desc: infoDesc }
-    } else {
-        rightSp.Add("Border").Width(18).Height(18)
-    }
+    rightSp.Add("Button").Name("Info_" name).Style("{StaticResource InfoButton}").Content("i").VerticalAlignment("Center")
+    infoDescriptions["Info_" name] := { Title: label, Desc: "Selects the graphics rendering fidelity preset. Higher presets enable better shadows and texture resolution." }
 }
 
-AddSliderRow(parent, name, label, minVal, maxVal, currentVal, suffix := "", infoName := "", infoDesc := "") {
-    rowGrid := parent.Add("Grid").Margin("0,5,0,5")
-    rowGrid.Cols("*", "Auto")
-
-    leftSp := rowGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(0).VerticalAlignment("Center")
-    leftSp.Add("TextBlock").Text(label).Foreground("#CBD5E1").FontSize(13).VerticalAlignment("Center").Margin("0,0,10,0")
-    leftSp.Add("TextBlock").Name(name "Val").Text(String(currentVal) suffix).Foreground("#D4AF37").FontSize(13).FontWeight("Bold").VerticalAlignment("Center")
-
-    rightSp := rowGrid.Add("StackPanel").Orientation("Horizontal").Grid_Column(1).VerticalAlignment("Center")
-    rightSp.Add("Slider").Name(name).Style("{StaticResource GoldSlider}").Width(150).Height(24).Minimum(minVal).Maximum(maxVal).Value(String(currentVal)).Margin("0,0,8,0")
-
-    if (infoName != "") {
-        rightSp.Add("Button").Name(infoName).Style("{StaticResource InfoButton}").Content("i").VerticalAlignment("Center")
-        infoDescriptions[infoName] := { Title: label, Desc: infoDesc }
-    } else {
-        rightSp.Add("Border").Width(18).Height(18)
-    }
-}
-
-; --- POPULATE GAMEPLAY PANEL ---
-gameplaySp := CreateSectionBox(panelGameplay, "GAMEPLAY CONFIGURATION")
-AddDropdownRow(gameplaySp, "ComboDifficulty", "Campaign Difficulty Level", AppState.Difficulty, ["Story Mode", "Normal", "Hardcore", "Legendary"], "InfoDifficulty", "Adjusts enemy AI strength, combat modifiers, and health scaling.")
-AddSliderRow(gameplaySp, "SliderSens", "Mouse Look Sensitivity", 1.0, 10.0, AppState.MouseSensitivity, "", "InfoSens", "Adjusts the speed at which the camera rotates when dragging the mouse.")
+; --- LEFT COLUMN SECTIONS ---
+gameplaySp := CreateSectionBox(leftCol, "GAMEPLAY CONFIGURATION")
 AddCheckboxRow(gameplaySp, "TglRightMouse", "Mouselook with Right Mouse Button", AppState.RightMouseLook, "InfoRightMouse", "Enables camera control when holding down the Right Mouse Button.")
 AddCheckboxRow(gameplaySp, "TglMoveLook", "Mouselook while Moving Forward/Backwards", AppState.MoveLook, "InfoMoveLook", "Allows adjusting orientation with mouse while moving.")
-AddCheckboxRow(gameplaySp, "TglInvertY", "Invert Mouse Y-Axis", AppState.InvertY, "InfoInvertY", "Inverts the pitch vertical camera axis for flight or space preferences.")
 
-; --- POPULATE CONTROLS PANEL ---
-specialSp := CreateSectionBox(panelControls, "SPECIAL KEY ASSIGNMENTS")
+specialSp := CreateSectionBox(leftCol, "SPECIAL KEY ASSIGNMENTS")
 AddKeybindRow(specialSp, "KeyVanityCamera", "Orbit Camera", AppState.VanityKey, "InfoVanityCamera", "Switches the viewport to a dramatic orbiting angle.")
 AddKeybindRow(specialSp, "KeyCombatArt", "Ability Key", AppState.CombatKey, "InfoCombatKey", "Executes the selected action or ability.")
 AddAutoRunRow(specialSp)
 
-movementSp := CreateSectionBox(panelControls, "MOVEMENT ACTIONS", "InfoMovementKeys", "Configure the default keyboard movements for camera panning, movement directions, and looking offsets.")
-movementSp.Add("TextBlock").Text("Make sure these are the same as your in-game controls!").Foreground("#8A94A6").FontSize(11).FontStyle("Italic").Margin("0,0,0,8")
+; --- RIGHT COLUMN SECTIONS ---
+movementSp := CreateSectionBox(rightCol, "MOVEMENT ACTIONS", "InfoMovementKeys", "Configure the default keyboard movements for camera panning, movement directions, and looking offsets.")
+movementSp.Add("TextBlock").Text("Make sure these are the same as your in-game controls!").Foreground("#8A94A6").FontSize(11).FontStyle("Italic").Margin("0,0,0,12")
+AddKeybindRow(movementSp, "KeyLookLeft", "Look Left", AppState.LookLeft)
+AddKeybindRow(movementSp, "KeyLookRight", "Look Right", AppState.LookRight)
+AddKeybindRow(movementSp, "KeyForward", "Forward", AppState.Forward)
+AddKeybindRow(movementSp, "KeyBackwards", "Backwards", AppState.Backwards)
+AddKeybindRow(movementSp, "KeyMoveLeft", "Move Left", AppState.MoveLeft)
+AddKeybindRow(movementSp, "KeyMoveRight", "Move Right", AppState.MoveRight)
 
-keyGrid := movementSp.Add("UniformGrid").SetProp("Columns", "2")
-AddKeybindRow(keyGrid, "KeyForward", "Forward", AppState.Forward)
-AddKeybindRow(keyGrid, "KeyBackwards", "Backwards", AppState.Backwards)
-AddKeybindRow(keyGrid, "KeyLookLeft", "Look Left", AppState.LookLeft)
-AddKeybindRow(keyGrid, "KeyLookRight", "Look Right", AppState.LookRight)
-AddKeybindRow(keyGrid, "KeyMoveLeft", "Move Left", AppState.MoveLeft)
-AddKeybindRow(keyGrid, "KeyMoveRight", "Move Right", AppState.MoveRight)
-
-; --- POPULATE GRAPHICS PANEL ---
-displaySp := CreateSectionBox(panelGraphics, "VIDEO & DISPLAY SETTINGS")
-AddDropdownRow(displaySp, "ComboGraphics", "Display Quality Preset", AppState.GraphicQuality, ["Low Performance", "Medium Quality", "High Fidelity", "Ultra / Cinematic"], "InfoGraphics", "Selects the graphics rendering fidelity preset. Higher presets enable better shadows and texture resolution.")
-AddDropdownRow(displaySp, "ComboResolution", "Screen Resolution", AppState.Resolution, ["1280x720", "1920x1080", "2560x1440", "3840x2160"], "InfoResolution", "Sets the horizontal and vertical pixel density for rendering.")
-AddSliderRow(displaySp, "SliderMaxFPS", "Maximum FPS Limit", 30, 300, AppState.MaxFPS, " FPS", "InfoMaxFPS", "Caps the rendering frame rate to reduce GPU stress and temperature.")
-AddCheckboxRow(displaySp, "TglVSync", "Enable Vertical Sync (V-Sync)", AppState.VSync, "InfoVSync", "Synchronizes frame rate with monitor refresh rate to prevent tearing.")
-AddCheckboxRow(displaySp, "TglRayTracing", "Enable Ray Tracing Shadows", AppState.RayTracing, "InfoRayTracing", "Enables hardware-accelerated realistic shadow rendering and lighting.")
-
-; --- POPULATE AUDIO PANEL ---
-audioSp := CreateSectionBox(panelAudio, "AUDIO & VOLUME")
-AddSliderRow(audioSp, "SliderMasterVol", "Master Volume Level", 0, 100, AppState.MasterVolume, "%", "InfoMasterVol", "Main volume scaling for all game audio channels.")
-AddSliderRow(audioSp, "SliderMusicVol", "Background Music Volume", 0, 100, AppState.MusicVolume, "%", "InfoMusicVol", "Volume level for ambient music and cinematic scores.")
-AddSliderRow(audioSp, "SliderSFXVol", "Sound Effects (SFX) Volume", 0, 100, AppState.SFXVolume, "%", "InfoSFXVol", "Volume level for player actions, spells, and environmental sounds.")
-AddCheckboxRow(audioSp, "TglVoiceChat", "Enable Positional Voice Chat", AppState.VoiceChat, "InfoVoiceChat", "Enables proximity-based voice communications with team members.")
+displaySp := CreateSectionBox(rightCol, "DISPLAY SETTINGS")
+AddDropdownRow(displaySp, "ComboGraphics", "Display Quality Preset", AppState.GraphicQuality, ["Low Performance", "Medium Quality", "High Fidelity", "Ultra / Cinematic"])
 
 ; ==============================================================================
 ; ORNATE SAVE & RELOAD BUTTON
@@ -1421,65 +1297,13 @@ ui.OnEvent("Window", "LoadedHwnd", (*) => ValidateKeybinds())
 ui.OnEvent("BtnSaveReload", "Click", SaveAndReload)
 ui.OnEvent("BtnSetupShortcut", "Click", OnSetupClick)
 
-ui.OnEvent("BtnNavGameplay", "Click", (*) => SwitchCategory("Gameplay"))
-ui.OnEvent("BtnNavControls", "Click", (*) => SwitchCategory("Controls"))
-ui.OnEvent("BtnNavGraphics", "Click", (*) => SwitchCategory("Graphics"))
-ui.OnEvent("BtnNavAudio", "Click", (*) => SwitchCategory("Audio"))
-
-ui.OnEvent("SliderSens", "ValueChanged", OnSliderChanged)
-ui.OnEvent("SliderMaxFPS", "ValueChanged", OnSliderChanged)
-ui.OnEvent("SliderMasterVol", "ValueChanged", OnSliderChanged)
-ui.OnEvent("SliderMusicVol", "ValueChanged", OnSliderChanged)
-ui.OnEvent("SliderSFXVol", "ValueChanged", OnSliderChanged)
-
-ui.Track("ComboDifficulty")
-ui.Track("ComboResolution")
-ui.Track("TglInvertY")
-ui.Track("TglVSync")
-ui.Track("TglRayTracing")
-ui.Track("TglVoiceChat")
-ui.Track("SliderSens")
-ui.Track("SliderMaxFPS")
-ui.Track("SliderMasterVol")
-ui.Track("SliderMusicVol")
-ui.Track("SliderSFXVol")
-
 ui.OnEvent("LinkNexus", "Click", (*) => Run("https://www.nexusmods.com"))
 ui.OnEvent("LinkGithub", "Click", (*) => Run("https://github.com"))
-ui.OnEvent("LinkAbout", "Click", (*) => ShowCustomDialog({ Title: "About Game Settings", Message: "Game Settings Configurator Demo v2.0`nCreated with AHK-XAML RPG vector style.`n`nRedesigned with multi-page category selector sidebar.", Icon: Chr(0xE7E7), IconColor: "#FF4D4D", Owner: ui.wpfHwnd, Modal: true }))
+ui.OnEvent("LinkAbout", "Click", (*) => ShowCustomDialog({ Title: "About Game Settings", Message: "Game Settings Configurator Demo v1.2`nCreated with AHK-XAML vector graphics.`n`nProcedural vectors ensure perfect rendering sharpness at any resolution.", Icon: Chr(0xE7E7), IconColor: "#FF4D4D", Owner: ui.wpfHwnd, Modal: true }))
 
 ; Dynamically bind all info buttons
 for infoBtnName, descObj in infoDescriptions {
     ui.OnEvent(infoBtnName, "Click", OnInfoClick)
-}
-
-SwitchCategory(cat) {
-    categories := ["Gameplay", "Controls", "Graphics", "Audio"]
-    for c in categories {
-        if (c == cat) {
-            ui.Update("Panel" c, "Visibility", "Visible")
-            ui.Update("Ind" c, "Text", "✦")
-            ui.Update("Ind" c, "Foreground", "#D4AF37")
-        } else {
-            ui.Update("Panel" c, "Visibility", "Collapsed")
-            ui.Update("Ind" c, "Text", "  ")
-            ui.Update("Ind" c, "Foreground", "#8A94A6")
-        }
-    }
-}
-
-OnSliderChanged(state, ctrl, event) {
-    if state.Has(ctrl) {
-        val := state[ctrl]
-        if (ctrl == "SliderSens") {
-            formatted := Format("{1:.1f}", Float(val))
-            ui.Update(ctrl "Val", "Text", formatted)
-        } else if (ctrl == "SliderMaxFPS") {
-            ui.Update(ctrl "Val", "Text", Integer(Float(val)) " FPS")
-        } else {
-            ui.Update(ctrl "Val", "Text", Integer(Float(val)) "%")
-        }
-    }
 }
 
 OnInfoClick(state, ctrl, event) {
@@ -1520,7 +1344,7 @@ SaveAndReload(state, ctrl, event) {
         return
     }
 
-    res := ui.Query("TglRightMouse", "TglMoveLook", "KeyVanityCamera", "KeyCombatArt", "TglAutoRun", "KeyLookLeft", "KeyLookRight", "KeyForward", "KeyBackwards", "KeyMoveLeft", "KeyMoveRight", "ComboGraphics", "ComboDifficulty", "SliderSens", "TglInvertY", "ComboResolution", "SliderMaxFPS", "TglVSync", "TglRayTracing", "SliderMasterVol", "SliderMusicVol", "SliderSFXVol", "TglVoiceChat")
+    res := ui.Query("TglRightMouse", "TglMoveLook", "KeyVanityCamera", "KeyCombatArt", "TglAutoRun", "KeyLookLeft", "KeyLookRight", "KeyForward", "KeyBackwards", "KeyMoveLeft", "KeyMoveRight", "ComboGraphics")
 
     iniFile := A_ScriptDir "\game_settings.ini"
     try {
@@ -1529,9 +1353,6 @@ SaveAndReload(state, ctrl, event) {
         IniWrite(res["KeyVanityCamera"], iniFile, "Gameplay", "VanityKey")
         IniWrite(res["KeyCombatArt"], iniFile, "Gameplay", "CombatKey")
         IniWrite(res["TglAutoRun"] == "True" ? "1" : "0", iniFile, "Gameplay", "AutoRunEnabled")
-        IniWrite(res["ComboDifficulty"], iniFile, "Gameplay", "Difficulty")
-        IniWrite(Format("{1:.1f}", Float(res["SliderSens"])), iniFile, "Gameplay", "MouseSensitivity")
-        IniWrite(res["TglInvertY"] == "True" ? "1" : "0", iniFile, "Gameplay", "InvertY")
 
         IniWrite(res["KeyLookLeft"], iniFile, "Movement", "LookLeft")
         IniWrite(res["KeyLookRight"], iniFile, "Movement", "LookRight")
@@ -1541,15 +1362,6 @@ SaveAndReload(state, ctrl, event) {
         IniWrite(res["KeyMoveRight"], iniFile, "Movement", "MoveRight")
 
         IniWrite(res["ComboGraphics"], iniFile, "Display", "GraphicQuality")
-        IniWrite(res["ComboResolution"], iniFile, "Display", "Resolution")
-        IniWrite(res["TglVSync"] == "True" ? "1" : "0", iniFile, "Display", "VSync")
-        IniWrite(res["TglRayTracing"] == "True" ? "1" : "0", iniFile, "Display", "RayTracing")
-        IniWrite(String(Integer(Float(res["SliderMaxFPS"]))), iniFile, "Display", "MaxFPS")
-
-        IniWrite(String(Integer(Float(res["SliderMasterVol"]))), iniFile, "Audio", "MasterVolume")
-        IniWrite(String(Integer(Float(res["SliderMusicVol"]))), iniFile, "Audio", "MusicVolume")
-        IniWrite(String(Integer(Float(res["SliderSFXVol"]))), iniFile, "Audio", "SFXVolume")
-        IniWrite(res["TglVoiceChat"] == "True" ? "1" : "0", iniFile, "Audio", "VoiceChat")
 
         ShowCustomDialog({
             Title: "Settings Saved",

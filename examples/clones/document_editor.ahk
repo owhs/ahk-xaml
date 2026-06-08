@@ -1,4 +1,4 @@
-﻿; ==============================================================================
+; ==============================================================================
 ; Document Editor — Google Docs-Inspired Clone
 ; ==============================================================================
 ; A comprehensive document editor with DOCX/DOC support, rich text formatting,
@@ -73,9 +73,9 @@ viewMenu.AddSeparator()
 viewMenu.AddItem("Theme Document", Chr(0xE790), "MenuViewThemeDoc", "").SetProp("IsCheckable", "True")
 viewMenu.AddItem("Dark Document", Chr(0xE793), "MenuViewDarkDoc", "").SetProp("IsCheckable", "True")
 viewMenu.AddSeparator()
-viewMenu.AddItem("Feed View (Default)", Chr(0xE8F1), "MenuViewFeed", "").SetProp("IsCheckable", "True").SetProp("IsChecked", "True")
-viewMenu.AddItem("Paper View", Chr(0xE8A5), "MenuViewPaper", "").SetProp("IsCheckable", "True")
-viewMenu.AddItem("Web View", Chr(0xE774), "MenuViewWeb", "").SetProp("IsCheckable", "True")
+viewMenu.AddItem("Feed View", Chr(0xE8F1), "MenuViewFeed", "").SetProp("IsCheckable", "True")
+viewMenu.AddItem("Page View (Default)", Chr(0xE8A5), "MenuViewPaper", "").SetProp("IsCheckable", "True").SetProp("IsChecked", "True")
+viewMenu.AddItem("Two Page View", Chr(0xEA49), "MenuViewTwoUp", "").SetProp("IsCheckable", "True")
 viewMenu.AddSeparator()
 viewMenu.AddItem("Zoom 100%", "", "MenuViewZoom100", "Ctrl+0")
 viewMenu.AddItem("Zoom In", Chr(0xE8A3), "MenuViewZoomIn", "Ctrl++")
@@ -272,7 +272,7 @@ ui.OnEvent("MenuViewThemeDoc", "Click", (*) => ToggleDocTheme("Theme"))
 ui.OnEvent("MenuViewDarkDoc", "Click", (*) => ToggleDocTheme("Dark"))
 ui.OnEvent("MenuViewFeed", "Click", (*) => TogglePageView("Feed"))
 ui.OnEvent("MenuViewPaper", "Click", (*) => TogglePageView("Paper"))
-ui.OnEvent("MenuViewWeb", "Click", (*) => TogglePageView("Web"))
+ui.OnEvent("MenuViewTwoUp", "Click", (*) => TogglePageView("TwoUp"))
 ui.OnEvent("MenuViewZoom100", "Click", (*) => docEditor._SetZoom(100))
 ui.OnEvent("MenuViewZoomIn", "Click", (*) => docEditor._SetZoom(docEditor.zoom + 10))
 ui.OnEvent("MenuViewZoomOut", "Click", (*) => docEditor._SetZoom(docEditor.zoom - 10))
@@ -376,7 +376,7 @@ ToggleDocTheme(mode) {
 TogglePageView(mode) {
     ui.Update("MenuViewFeed", "IsChecked", mode == "Feed" ? "True" : "False")
     ui.Update("MenuViewPaper", "IsChecked", mode == "Paper" ? "True" : "False")
-    ui.Update("MenuViewWeb", "IsChecked", mode == "Web" ? "True" : "False")
+    ui.Update("MenuViewTwoUp", "IsChecked", mode == "TwoUp" ? "True" : "False")
     docEditor.SetPageView(mode)
 }
 
@@ -953,8 +953,10 @@ CleanXmlString(str) {
 }
 
 ; ============================================================================
-; COMMAND LINE: open file if passed as argument
+; INITIALIZATION & COMMAND LINE
 ; ============================================================================
+TogglePageView("Paper")
+
 if (A_Args.Length > 0 && FileExist(A_Args[1])) {
     docEditor.Open(A_Args[1])
     SplitPath(A_Args[1], , , , &fileName)
