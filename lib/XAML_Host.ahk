@@ -1969,6 +1969,32 @@ class XAMLHost {
         domType := XAMLHost.CLR_AppDomain.GetType()
         mscorlib := domType.Assembly
         asmType := mscorlib.GetType_2("System.Reflection.Assembly")
+        static nullObj := ComValue(13, 0)
+
+        ; Pre-load all dependency DLLs in the directory first to ensure type loader references resolve successfully
+        SplitPath(dllPath, &dllName, &dllDir)
+        Loop Files, dllDir "\*.dll" {
+            if (A_LoopFileName == dllName)
+                continue
+            try {
+                depFileObj := FileOpen(A_LoopFileFullPath, "r")
+                depSize := depFileObj.Length
+                depBuf := Buffer(depSize)
+                depFileObj.Pos := 0
+                depFileObj.RawRead(depBuf, depSize)
+                depFileObj.Close()
+
+                depBytes := ComObjArray(0x11, depSize)
+                depPvData := 0
+                DllCall("oleaut32\SafeArrayAccessData", "Ptr", ComObjValue(depBytes), "Ptr*", &depPvData)
+                DllCall("ntdll\RtlMoveMemory", "Ptr", depPvData, "Ptr", depBuf.Ptr, "Ptr", depSize)
+                DllCall("oleaut32\SafeArrayUnaccessData", "Ptr", ComObjValue(depBytes))
+
+                depLoadArgs := ComObjArray(0xC, 1)
+                depLoadArgs[0] := depBytes
+                asmType.InvokeMember_3("Load", 0x158, nullObj, nullObj, depLoadArgs)
+            }
+        }
 
         fileObj := FileOpen(dllPath, "r")
         fileSize := fileObj.Length
@@ -1983,12 +2009,12 @@ class XAMLHost {
         DllCall("ntdll\RtlMoveMemory", "Ptr", pvData, "Ptr", rawBuf.Ptr, "Ptr", fileSize)
         DllCall("oleaut32\SafeArrayUnaccessData", "Ptr", ComObjValue(bytes))
 
-        static nullObj := ComValue(13, 0)
         loadArgs := ComObjArray(0xC, 1)
         loadArgs[0] := bytes
         bridgeAsm := asmType.InvokeMember_3("Load", 0x158, nullObj, nullObj, loadArgs)
 
         XAMLHost.CLR_BridgeAssembly := bridgeAsm
+        try bridgeAsm.CreateInstance("AhkInProcessBootstrapper") ; Hook AssemblyResolve event
         XAMLHost.CLR_BridgeClass := bridgeAsm.CreateInstance("AhkWpfEngine")
         XAMLHost.CLR_Started := true
 

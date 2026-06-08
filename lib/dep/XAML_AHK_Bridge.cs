@@ -10448,4 +10448,26 @@ namespace AhkEffects
 }
 #endif
 
+[ComVisible(true)]
+public class AhkInProcessBootstrapper
+{
+    static AhkInProcessBootstrapper()
+    {
+        AppDomain.CurrentDomain.AssemblyResolve += ResolveAssembly;
+    }
+    public AhkInProcessBootstrapper() { }
+    private static System.Reflection.Assembly ResolveAssembly(object sender, ResolveEventArgs args)
+    {
+        try {
+            string folder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf");
+            string name = new System.Reflection.AssemblyName(args.Name).Name;
+            string assemblyPath = System.IO.Path.Combine(folder, name + ".dll");
+            if (System.IO.File.Exists(assemblyPath)) {
+                return System.Reflection.Assembly.LoadFrom(assemblyPath);
+            }
+        } catch { }
+        return null;
+    }
+}
+
 
