@@ -165,9 +165,11 @@ public class AhkWpfEngine
 
     string winId; IntPtr ahkHwnd; string[] tracked; Window win;
     System.Collections.Generic.HashSet<string> _boundEvents = new System.Collections.Generic.HashSet<string>();
+    System.Collections.Generic.Dictionary<string, object> _controlCache = new System.Collections.Generic.Dictionary<string, object>();
     bool LightweightEvents = false; // When true, events only send the triggering control's value (use ui.Query() for others)
     System.Collections.Generic.Dictionary<string, string> canvasModes = new System.Collections.Generic.Dictionary<string, string>();
     System.Collections.Generic.Dictionary<string, string> _docViewModes = new System.Collections.Generic.Dictionary<string, string>();
+    System.Collections.Generic.Dictionary<string, string> _spellCheckLangs = new System.Collections.Generic.Dictionary<string, string>();
     System.Windows.Shapes.Rectangle selectionBox = null;
     Point selectionStart;
     System.Windows.Shapes.Path tempConnection = null;
@@ -184,6 +186,7 @@ public class AhkWpfEngine
     RichTextBox _pendingHighlightRtb = null;
     static readonly System.Windows.Media.SolidColorBrush _highlightBrush;
     static readonly System.Windows.Media.SolidColorBrush _activeMatchBrush;
+    string _loadedDictionaryPath = null;
     static void InitHighlightBrushes() { } // Brushes initialized in static field initializers
 
     static AhkWpfEngine()
@@ -2071,8 +2074,18 @@ public class AhkWpfEngine
         if (!_boundEvents.Add(eventKey)) return;
         try
         {
-            object ctrl = ctrlName == "Window" ? (object)win : win.FindName(ctrlName);
-            if (ctrl == null) return;
+            object ctrl = ctrlName == "Window" ? (object)win : FindControlByPath(ctrlName);
+            if (ctrl == null)
+            {
+                _boundEvents.Remove(eventKey);
+                try {
+                    System.IO.File.AppendAllText(
+                        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfDebug.log"),
+                        string.Format("BindEvent info: Control '{0}' not found for event '{1}' (may be dynamic)\n", ctrlName, eventName)
+                    );
+                } catch { }
+                return;
+            }
 
             if (eventName == "IsVisibleChanged")
             {
@@ -2088,7 +2101,11 @@ public class AhkWpfEngine
             }
 
             var evt = ctrl.GetType().GetEvent(eventName);
-            if (evt == null) return;
+            if (evt == null)
+            {
+                _boundEvents.Remove(eventKey);
+                return;
+            }
 
             var parameters = evt.EventHandlerType.GetMethod("Invoke").GetParameters();
 
@@ -2148,7 +2165,16 @@ public class AhkWpfEngine
             var lambda = System.Linq.Expressions.Expression.Lambda(evt.EventHandlerType, call, pExprs);
             evt.AddEventHandler(ctrl, lambda.Compile());
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _boundEvents.Remove(eventKey);
+            try {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfDebug.log"),
+                    string.Format("BindEvent exception: Control '{0}', Event '{1}' - {2}\n", ctrlName, eventName, ex.ToString())
+                );
+            } catch { }
+        }
     }
 
     public class EventThrottler
@@ -2649,7 +2675,7 @@ public class AhkWpfEngine
                 lastSendMouseMove = DateTime.Now;
             }
             var me = (System.Windows.Input.MouseEventArgs)e;
-            var ctrl = win.FindName(cName) as System.Windows.IInputElement;
+            var ctrl = FindControlByPath(cName) as System.Windows.IInputElement;
             if (ctrl != null)
             {
                 var pos = me.GetPosition(ctrl);
@@ -2668,7 +2694,7 @@ public class AhkWpfEngine
 
     private void DumpState(string cName, string eName)
     {
-        var ctrl = win.FindName(cName) as FrameworkElement;
+        var ctrl = FindControlByPath(cName) as FrameworkElement;
         if (ctrl != null)
         {
             string tag = ctrl.Tag as string ?? "";
@@ -3504,6 +3530,7 @@ public class AhkWpfEngine
             {
                 if (parts[1] == "AddItem")
                 {
+                    _controlCache.Clear();
                     if (ctrl is ListBox)
                     {
                         ListBox lb = (ListBox)ctrl;
@@ -3554,6 +3581,7 @@ public class AhkWpfEngine
                 }
                 else if (parts[1] == "AddXamlItem")
                 {
+                    _controlCache.Clear();
                     try
                     {
                         object element = XamlReader.Parse(parts[2]);
@@ -3568,8 +3596,38 @@ public class AhkWpfEngine
                             {
                                 if (!string.IsNullOrEmpty(fe.Name))
                                 {
-                                    try { win.UnregisterName(fe.Name); } catch { }
-                                    try { win.RegisterName(fe.Name, fe); } catch { }
+                                    try {
+                                        var ns = NameScope.GetNameScope(win);
+                                        try {
+                                            System.IO.File.AppendAllText(
+                                                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfDebug.log"),
+                                                string.Format("AddXamlItem RegisterName: fe.Name={0}, ns is null={1}\n", fe.Name, ns == null)
+                                            );
+                                        } catch { }
+                                        if (ns != null) {
+                                            try { ns.UnregisterName(fe.Name); } catch { }
+                                            ns.RegisterName(fe.Name, fe);
+                                        } else {
+                                            try { win.UnregisterName(fe.Name); } catch { }
+                                            win.RegisterName(fe.Name, fe);
+                                        }
+                                    } catch (Exception ex) {
+                                        try {
+                                            System.IO.File.AppendAllText(
+                                                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfDebug.log"),
+                                                "RegisterName Error for " + fe.Name + ": " + ex.ToString() + "\n"
+                                            );
+                                        } catch { }
+                                    }
+                                }
+                                else
+                                {
+                                    try {
+                                        System.IO.File.AppendAllText(
+                                            System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfDebug.log"),
+                                            "RegisterName Warning: Element " + fe.GetType().Name + " has empty Name\n"
+                                        );
+                                    } catch { }
                                 }
                             }
                             var dobj = obj as DependencyObject;
@@ -3619,7 +3677,7 @@ public class AhkWpfEngine
                         try
                         {
                             System.IO.File.AppendAllText(
-                                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfError.log"),
+                                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "AhkWpf", "AhkWpfDebug.log"),
                                 "XamlParse Error in AddXamlItem:\n" + ex.ToString() + "\n\n"
                             );
                         }
@@ -3740,6 +3798,7 @@ public class AhkWpfEngine
                 }
                 else if (parts[1] == "RemoveItem" && ctrl is ItemsControl)
                 {
+                    _controlCache.Clear();
                     var itemsControl = (ItemsControl)ctrl;
                     object toRemove = null;
                     foreach (var item in itemsControl.Items)
@@ -3758,44 +3817,69 @@ public class AhkWpfEngine
                     }
                     if (toRemove != null)
                     {
-                        itemsControl.Items.Remove(toRemove);
+                        if (toRemove is DependencyObject)
+                        {
+                            try { UnregisterNamesRecursive((DependencyObject)toRemove); } catch { }
+                        }
+                        try { itemsControl.Items.Remove(toRemove); } catch { }
                     }
                 }
                 else if (parts[1] == "ClearItems")
                 {
+                    _controlCache.Clear();
                     if (ctrl is ItemsControl)
                     {
                         var ic = (ItemsControl)ctrl;
-                        foreach (var item in ic.Items)
+                        var itemsList = new System.Collections.Generic.List<object>();
+                        try
+                        {
+                            foreach (var item in ic.Items) itemsList.Add(item);
+                        }
+                        catch { }
+                        foreach (var item in itemsList)
                         {
                             if (item is DependencyObject)
-                                UnregisterNamesRecursive((DependencyObject)item);
+                            {
+                                try { UnregisterNamesRecursive((DependencyObject)item); } catch { }
+                            }
                         }
-                        ic.Items.Clear();
+                        try { ic.Items.Clear(); } catch { }
                     }
                     else if (ctrl is System.Windows.Controls.Panel)
                     {
                         var panel = (System.Windows.Controls.Panel)ctrl;
-                        foreach (var child in panel.Children)
+                        var childrenList = new System.Collections.Generic.List<UIElement>();
+                        try
+                        {
+                            foreach (UIElement child in panel.Children) childrenList.Add(child);
+                        }
+                        catch { }
+                        foreach (var child in childrenList)
                         {
                             if (child is DependencyObject)
-                                UnregisterNamesRecursive((DependencyObject)child);
+                            {
+                                try { UnregisterNamesRecursive((DependencyObject)child); } catch { }
+                            }
                         }
-                        panel.Children.Clear();
+                        try { panel.Children.Clear(); } catch { }
                     }
                     else if (ctrl is System.Windows.Controls.Border)
                     {
                         var border = (System.Windows.Controls.Border)ctrl;
                         if (border.Child != null)
-                            UnregisterNamesRecursive(border.Child);
-                        border.Child = null;
+                        {
+                            try { UnregisterNamesRecursive(border.Child); } catch { }
+                        }
+                        try { border.Child = null; } catch { }
                     }
                     else if (ctrl is ContentControl)
                     {
                         var cc = (ContentControl)ctrl;
                         if (cc.Content is DependencyObject)
-                            UnregisterNamesRecursive((DependencyObject)cc.Content);
-                        cc.Content = null;
+                        {
+                            try { UnregisterNamesRecursive((DependencyObject)cc.Content); } catch { }
+                        }
+                        try { cc.Content = null; } catch { }
                     }
                 }
                 else if (parts[1] == "Play" && ctrl is MediaElement)
@@ -4203,16 +4287,74 @@ public class AhkWpfEngine
                             bool fontIsInstalled = true;
                             if (ff != DependencyProperty.UnsetValue) {
                                 string rawFont = ff.ToString();
-                                // If WPF fallback chain (comma-separated), extract just the primary font
-                                int commaIdx = rawFont.IndexOf(',');
-                                string primaryFont = commaIdx > 0 ? rawFont.Substring(0, commaIdx).Trim() : rawFont;
-                                // If per-user font path, extract the actual font name after '#'
-                                int hashIdx = primaryFont.IndexOf('#');
-                                if (hashIdx >= 0) {
-                                    primaryFont = primaryFont.Substring(hashIdx + 1);
+                                // Determine if the selected text contains CJK characters
+                                bool selectionHasCJK = false;
+                                try {
+                                    string selText = r.Text;
+                                    if (!string.IsNullOrEmpty(selText)) {
+                                        foreach (char ch in selText) {
+                                            if (ch > 127) { selectionHasCJK = true; break; }
+                                        }
+                                    }
+                                    if (!selectionHasCJK) {
+                                        // No text selected or no CJK in selection — check the Run at caret
+                                        var caretPos = r.Start;
+                                        if (caretPos != null) {
+                                            // Walk the parent chain to find the enclosing Run
+                                            DependencyObject parent = caretPos.Parent;
+                                            while (parent != null && !(parent is System.Windows.Documents.Run)) {
+                                                parent = LogicalTreeHelper.GetParent(parent);
+                                            }
+                                            if (parent is System.Windows.Documents.Run) {
+                                                string runText = ((System.Windows.Documents.Run)parent).Text;
+                                                if (!string.IsNullOrEmpty(runText)) {
+                                                    foreach (char ch in runText) {
+                                                        if (ch > 127) { selectionHasCJK = true; break; }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch { }
+
+                                // Parse the comma-separated font chain
+                                var fontParts = rawFont.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                                string primaryFont = "";
+                                if (selectionHasCJK && fontParts.Length > 0) {
+                                    // For CJK text, find the first CJK-capable font in the chain
+                                    string cjkFont = null;
+                                    foreach (var fp in fontParts) {
+                                        string candidate = fp.Trim();
+                                        int hashIdx = candidate.IndexOf('#');
+                                        if (hashIdx >= 0) candidate = candidate.Substring(hashIdx + 1);
+                                        // Check if this looks like a CJK font
+                                        bool isCJK = false;
+                                        foreach (char ch in candidate) {
+                                            if (ch > 127) { isCJK = true; break; }
+                                        }
+                                        if (!isCJK) {
+                                            string lower = candidate.ToLower();
+                                            if (lower.Contains("sim") || lower.Contains("song") || lower.Contains("hei") || 
+                                                lower.Contains("kai") || lower.Contains("ming") || lower.Contains("yahei") ||
+                                                lower.Contains("gothic") || lower.Contains("malgun") || lower.Contains("meiryo") ||
+                                                lower.Contains("dotum") || lower.Contains("batang") || lower.Contains("gulim") ||
+                                                lower.Contains("fang")) {
+                                                isCJK = true;
+                                            }
+                                        }
+                                        if (isCJK) { cjkFont = candidate; break; }
+                                    }
+                                    primaryFont = cjkFont ?? fontParts[0].Trim();
+                                } else if (fontParts.Length > 0) {
+                                    primaryFont = fontParts[0].Trim();
                                 }
-                                // Check if primary font is actually installed via WPF
-                                fontIsInstalled = GetInstalledFonts().Contains(primaryFont);
+                                // If per-user font path, extract the actual font name after '#'
+                                int hashIdx2 = primaryFont.IndexOf('#');
+                                if (hashIdx2 >= 0) {
+                                    primaryFont = primaryFont.Substring(hashIdx2 + 1);
+                                }
+                                // Check if primary font is actually installed via WPF or alias
+                                fontIsInstalled = IsFontInstalledWithAlias(primaryFont, GetInstalledFonts());
                                 // Prefix with ! if not installed so AHK can show the fallback indicator
                                 font = fontIsInstalled ? primaryFont : ("!" + primaryFont);
                             }
@@ -4235,7 +4377,7 @@ public class AhkWpfEngine
 
                         // Debouncer for page break spacer updates
                         var spacerTimer = new System.Windows.Threading.DispatcherTimer();
-                        spacerTimer.Interval = TimeSpan.FromMilliseconds(500);
+                        spacerTimer.Interval = TimeSpan.FromMilliseconds(1500);
                         spacerTimer.Tick += (s2, e2) => {
                             spacerTimer.Stop();
                             string currentMode = "paper";
@@ -4316,6 +4458,26 @@ public class AhkWpfEngine
                                         };
                                     }
                                     rtb.Document = doc;
+                                    
+                                    string configLang = "en-US";
+                                    if (_spellCheckLangs.ContainsKey(rtb.Name)) {
+                                        configLang = _spellCheckLangs[rtb.Name];
+                                    }
+                                    
+                                    string langToApply = configLang;
+                                    if (configLang == "auto") {
+                                        langToApply = DetectLanguage(rtb);
+                                    }
+                                    
+                                    try {
+                                        var xmlLang = System.Windows.Markup.XmlLanguage.GetLanguage(langToApply);
+                                        rtb.Language = xmlLang;
+                                        rtb.Document.Language = xmlLang;
+                                        bool wasEnabled = rtb.SpellCheck.IsEnabled;
+                                        rtb.SpellCheck.IsEnabled = false;
+                                        rtb.SpellCheck.IsEnabled = wasEnabled;
+                                    } catch { }
+
                                     string viewMode = "paper";
                                     if (_docViewModes.ContainsKey(rtb.Name)) {
                                         viewMode = _docViewModes[rtb.Name];
@@ -4326,6 +4488,7 @@ public class AhkWpfEngine
                                     string currentTheme = (containerEl != null && containerEl.Tag is string) ? (string)containerEl.Tag : "Normal";
                                     ApplyViewMode(rtb, viewMode, currentTheme, win);
                                     SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentLoaded|" + LengthPrefix(filePath) + "\n");
+                                    SendSpellCheckInfo(rtb, winId, ((FrameworkElement)ctrl).Name);
                                 }
                             } catch (Exception ex) {
                                 SendToAhk("EVENT|" + winId + "|" + ((FrameworkElement)ctrl).Name + "|DocumentError|" + LengthPrefix(ex.Message) + "\n");
@@ -4617,6 +4780,74 @@ public class AhkWpfEngine
                                 if (System.IO.File.Exists(docVal)) {
                                     var bi = new System.Windows.Media.Imaging.BitmapImage(new Uri(docVal));
                                     var img = new System.Windows.Controls.Image { Source = bi, MaxWidth = 600, Stretch = System.Windows.Media.Stretch.Uniform };
+                                    img.Cursor = System.Windows.Input.Cursors.SizeNWSE;
+                                    
+                                    // Add right-click context menu
+                                    var ctxMenu = new ContextMenu();
+                                    var miSmall = new MenuItem { Header = "Resize: Small (200px)" };
+                                    var miMedium = new MenuItem { Header = "Resize: Medium (400px)" };
+                                    var miLarge = new MenuItem { Header = "Resize: Large (600px)" };
+                                    var miOriginal = new MenuItem { Header = "Resize: Original" };
+                                    var miDelete = new MenuItem { Header = "Delete Image" };
+                                    var miCopy = new MenuItem { Header = "Copy Image" };
+                                    
+                                    miSmall.Click += (s, e) => { img.MaxWidth = 200; img.Width = 200; };
+                                    miMedium.Click += (s, e) => { img.MaxWidth = 400; img.Width = 400; };
+                                    miLarge.Click += (s, e) => { img.MaxWidth = 600; img.Width = 600; };
+                                    miOriginal.Click += (s, e) => { img.ClearValue(FrameworkElement.MaxWidthProperty); img.ClearValue(FrameworkElement.WidthProperty); };
+                                    miDelete.Click += (s, e) => {
+                                        try {
+                                            var parent = LogicalTreeHelper.GetParent(img) as InlineUIContainer;
+                                            if (parent != null) {
+                                                var para = parent.Parent as System.Windows.Documents.Paragraph;
+                                                if (para != null) para.Inlines.Remove(parent);
+                                            }
+                                        } catch { }
+                                    };
+                                    miCopy.Click += (s, e) => {
+                                        try {
+                                            Clipboard.SetImage(bi);
+                                        } catch { }
+                                    };
+                                    
+                                    ctxMenu.Items.Add(miSmall);
+                                    ctxMenu.Items.Add(miMedium);
+                                    ctxMenu.Items.Add(miLarge);
+                                    ctxMenu.Items.Add(miOriginal);
+                                    ctxMenu.Items.Add(new Separator());
+                                    ctxMenu.Items.Add(miCopy);
+                                    ctxMenu.Items.Add(miDelete);
+                                    img.ContextMenu = ctxMenu;
+                                    
+                                    // Mouse-drag resizing: drag the image to resize proportionally
+                                    bool isResizing = false;
+                                    double startX = 0, startW = 0;
+                                    img.MouseLeftButtonDown += (s, e) => {
+                                        if (System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.Shift) {
+                                            isResizing = true;
+                                            startX = e.GetPosition(img).X;
+                                            startW = img.ActualWidth > 0 ? img.ActualWidth : 300;
+                                            img.CaptureMouse();
+                                            e.Handled = true;
+                                        }
+                                    };
+                                    img.MouseMove += (s, e) => {
+                                        if (isResizing) {
+                                            double dx = e.GetPosition(img).X - startX;
+                                            double newW = Math.Max(50, startW + dx);
+                                            img.Width = newW;
+                                            img.MaxWidth = newW;
+                                            e.Handled = true;
+                                        }
+                                    };
+                                    img.MouseLeftButtonUp += (s, e) => {
+                                        if (isResizing) {
+                                            isResizing = false;
+                                            img.ReleaseMouseCapture();
+                                            e.Handled = true;
+                                        }
+                                    };
+                                    
                                     var container = new InlineUIContainer(img, rtb.CaretPosition);
                                 }
                             } catch { }
@@ -4628,6 +4859,32 @@ public class AhkWpfEngine
                             line.BorderThickness = new Thickness(0, 0, 0, 1);
                             line.Margin = new Thickness(0, 10, 0, 10);
                             rtb.Document.Blocks.Add(line);
+                            break;
+                        }
+                        case "SetLineSpacing": {
+                            double spacingMultiplier;
+                            if (double.TryParse(docVal, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out spacingMultiplier)) {
+                                // Resolve grid line height
+                                var lsSettings = rtb.Document.Tag as DocLayoutSettings;
+                                double gridLH = 0;
+                                if (lsSettings != null && lsSettings.LinePitch > 0) {
+                                    gridLH = (lsSettings.LinePitch / 20.0) * (96.0 / 72.0);
+                                }
+                                // Apply to all paragraphs recursively
+                                _ApplyLineSpacingToBlocks(rtb.Document.Blocks, spacingMultiplier, gridLH);
+                                // Store multiplier for future reference
+                                if (lsSettings != null) {
+                                    lsSettings.LineSpacingOverride = spacingMultiplier;
+                                }
+                                // Re-insert page break spacers if in paper mode
+                                if (_docViewModes.ContainsKey(rtb.Name) && _docViewModes[rtb.Name] == "paper") {
+                                    var containerEl2 = win.FindName(rtb.Name + "_Container") as FrameworkElement;
+                                    string thm2 = (containerEl2 != null && containerEl2.Tag is string) ? (string)containerEl2.Tag : "Normal";
+                                    rtb.Dispatcher.BeginInvoke(new Action(() => {
+                                        _InsertPageBreakSpacers(rtb, thm2);
+                                    }), System.Windows.Threading.DispatcherPriority.Background);
+                                }
+                            }
                             break;
                         }
                         case "InsertLink": {
@@ -4685,7 +4942,7 @@ public class AhkWpfEngine
                         }
                         case "NewDocument": {
                             rtb.Document = new FlowDocument();
-                            rtb.Document.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+                            rtb.Document.FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Segoe UI Emoji, Segoe UI Symbol");
                             rtb.Document.FontSize = 14;
                             
                             string viewMode = "paper";
@@ -5317,6 +5574,332 @@ public class AhkWpfEngine
                             } catch { }
                             break;
                         }
+                        // ================================================================
+                        // TABLE OPERATIONS
+                        // ================================================================
+                        case "InsertRowAbove":
+                        case "InsertRowBelow": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null) {
+                                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                                    var rg = row.Parent as System.Windows.Documents.TableRowGroup;
+                                    if (row != null && rg != null) {
+                                        int colCount = row.Cells.Count;
+                                        var newRow = new System.Windows.Documents.TableRow();
+                                        for (int c = 0; c < colCount; c++) {
+                                            var newCell = new System.Windows.Documents.TableCell(new System.Windows.Documents.Paragraph());
+                                            newCell.BorderBrush = cell.BorderBrush;
+                                            newCell.BorderThickness = cell.BorderThickness;
+                                            newCell.Padding = cell.Padding;
+                                            newRow.Cells.Add(newCell);
+                                        }
+                                        int idx = rg.Rows.IndexOf(row);
+                                        if (docCmd == "InsertRowAbove") {
+                                            rg.Rows.Insert(idx, newRow);
+                                        } else {
+                                            rg.Rows.Insert(idx + 1, newRow);
+                                        }
+                                    }
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "InsertColumnLeft":
+                        case "InsertColumnRight": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null) {
+                                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                                    var rg = row.Parent as System.Windows.Documents.TableRowGroup;
+                                    var table = rg.Parent as System.Windows.Documents.Table;
+                                    if (table != null) {
+                                        int colIdx = row.Cells.IndexOf(cell);
+                                        int insertIdx = docCmd == "InsertColumnLeft" ? colIdx : colIdx + 1;
+                                        table.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(1, GridUnitType.Star) });
+                                        foreach (var trg in table.RowGroups) {
+                                            foreach (var tr in trg.Rows) {
+                                                var newCell = new System.Windows.Documents.TableCell(new System.Windows.Documents.Paragraph());
+                                                newCell.BorderBrush = cell.BorderBrush;
+                                                newCell.BorderThickness = cell.BorderThickness;
+                                                newCell.Padding = cell.Padding;
+                                                if (insertIdx <= tr.Cells.Count) {
+                                                    tr.Cells.Insert(insertIdx, newCell);
+                                                } else {
+                                                    tr.Cells.Add(newCell);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "DeleteRow": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null) {
+                                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                                    var rg = row.Parent as System.Windows.Documents.TableRowGroup;
+                                    if (rg != null && rg.Rows.Count > 1) {
+                                        rg.Rows.Remove(row);
+                                    }
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "DeleteColumn": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null) {
+                                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                                    var rg = row.Parent as System.Windows.Documents.TableRowGroup;
+                                    var table = rg.Parent as System.Windows.Documents.Table;
+                                    if (table != null) {
+                                        int colIdx = row.Cells.IndexOf(cell);
+                                        if (row.Cells.Count > 1) {
+                                            foreach (var trg in table.RowGroups) {
+                                                foreach (var tr in trg.Rows) {
+                                                    if (colIdx < tr.Cells.Count) {
+                                                        tr.Cells.RemoveAt(colIdx);
+                                                    }
+                                                }
+                                            }
+                                            if (table.Columns.Count > 0) {
+                                                table.Columns.RemoveAt(table.Columns.Count - 1);
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "CellBackground": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null) {
+                                    var color = ShowColorPickerDialog(win);
+                                    if (color.HasValue) {
+                                        cell.Background = new System.Windows.Media.SolidColorBrush(color.Value);
+                                    }
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "TableBorders": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null) {
+                                    var row = cell.Parent as System.Windows.Documents.TableRow;
+                                    var rg = row.Parent as System.Windows.Documents.TableRowGroup;
+                                    var table = rg.Parent as System.Windows.Documents.Table;
+                                    if (table != null) {
+                                        // Toggle between thick, thin, and no borders
+                                        double currentThick = table.BorderThickness.Left;
+                                        Thickness newBorder;
+                                        if (currentThick >= 1.5) newBorder = new Thickness(0);
+                                        else if (currentThick >= 0.5) newBorder = new Thickness(2);
+                                        else newBorder = new Thickness(1);
+                                        table.BorderThickness = newBorder;
+                                        foreach (var trg in table.RowGroups) {
+                                            foreach (var tr in trg.Rows) {
+                                                foreach (var tc in tr.Cells) {
+                                                    tc.BorderThickness = new Thickness(Math.Max(0.5, newBorder.Left * 0.5));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "MergeCells": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null) {
+                                    int current = cell.ColumnSpan;
+                                    cell.ColumnSpan = current + 1;
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "SplitCell": {
+                            try {
+                                var cell = FindTableCellAtCaret(rtb);
+                                if (cell != null && cell.ColumnSpan > 1) {
+                                    cell.ColumnSpan = cell.ColumnSpan - 1;
+                                }
+                            } catch { }
+                            break;
+                        }
+                        // ================================================================
+                        // FORMATTING COMMANDS
+                        // ================================================================
+                        case "Superscript": {
+                            try {
+                                var sel = rtb.Selection;
+                                if (!sel.IsEmpty) {
+                                    var current = sel.GetPropertyValue(Inline.BaselineAlignmentProperty);
+                                    if (current is BaselineAlignment && (BaselineAlignment)current == BaselineAlignment.Superscript)
+                                        sel.ApplyPropertyValue(Inline.BaselineAlignmentProperty, BaselineAlignment.Baseline);
+                                    else
+                                        sel.ApplyPropertyValue(Inline.BaselineAlignmentProperty, BaselineAlignment.Superscript);
+                                    sel.ApplyPropertyValue(TextElement.FontSizeProperty, 10.0);
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "Subscript": {
+                            try {
+                                var sel = rtb.Selection;
+                                if (!sel.IsEmpty) {
+                                    var current = sel.GetPropertyValue(Inline.BaselineAlignmentProperty);
+                                    if (current is BaselineAlignment && (BaselineAlignment)current == BaselineAlignment.Subscript)
+                                        sel.ApplyPropertyValue(Inline.BaselineAlignmentProperty, BaselineAlignment.Baseline);
+                                    else
+                                        sel.ApplyPropertyValue(Inline.BaselineAlignmentProperty, BaselineAlignment.Subscript);
+                                    sel.ApplyPropertyValue(TextElement.FontSizeProperty, 10.0);
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "IncreaseFontSize": {
+                            try {
+                                var sel = rtb.Selection;
+                                var sz = sel.GetPropertyValue(TextElement.FontSizeProperty);
+                                double currentSize = (sz != DependencyProperty.UnsetValue) ? (double)sz : 14.0;
+                                double[] sizes = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72 };
+                                double newSize = 72;
+                                for (int si = 0; si < sizes.Length; si++) {
+                                    if (sizes[si] > currentSize) { newSize = sizes[si]; break; }
+                                }
+                                sel.ApplyPropertyValue(TextElement.FontSizeProperty, newSize);
+                            } catch { }
+                            break;
+                        }
+                        case "DecreaseFontSize": {
+                            try {
+                                var sel = rtb.Selection;
+                                var sz = sel.GetPropertyValue(TextElement.FontSizeProperty);
+                                double currentSize = (sz != DependencyProperty.UnsetValue) ? (double)sz : 14.0;
+                                double[] sizes = { 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72 };
+                                double newSize = 8;
+                                for (int si = sizes.Length - 1; si >= 0; si--) {
+                                    if (sizes[si] < currentSize) { newSize = sizes[si]; break; }
+                                }
+                                sel.ApplyPropertyValue(TextElement.FontSizeProperty, newSize);
+                            } catch { }
+                            break;
+                        }
+                        case "TextColor": {
+                            try {
+                                var color = ShowColorPickerDialog(win);
+                                if (color.HasValue) {
+                                    rtb.Selection.ApplyPropertyValue(TextElement.ForegroundProperty,
+                                        new System.Windows.Media.SolidColorBrush(color.Value));
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "Highlight": {
+                            try {
+                                var color = ShowColorPickerDialog(win);
+                                if (color.HasValue) {
+                                    rtb.Selection.ApplyPropertyValue(TextElement.BackgroundProperty,
+                                        new System.Windows.Media.SolidColorBrush(color.Value));
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "ClearFormatting": {
+                            try {
+                                var sel = rtb.Selection;
+                                sel.ApplyPropertyValue(TextElement.FontSizeProperty, 14.0);
+                                sel.ApplyPropertyValue(TextElement.FontWeightProperty, FontWeights.Normal);
+                                sel.ApplyPropertyValue(TextElement.FontStyleProperty, FontStyles.Normal);
+                                sel.ApplyPropertyValue(Inline.TextDecorationsProperty, null);
+                                sel.ApplyPropertyValue(TextElement.ForegroundProperty, System.Windows.Media.Brushes.Black);
+                                sel.ApplyPropertyValue(TextElement.BackgroundProperty, System.Windows.Media.Brushes.Transparent);
+                                sel.ApplyPropertyValue(Inline.BaselineAlignmentProperty, BaselineAlignment.Baseline);
+                            } catch { }
+                            break;
+                        }
+                        // ================================================================
+                        // SPELL CHECK COMMANDS
+                        // ================================================================
+                        case "LoadDictionary": {
+                            try {
+                                var dlg = new Microsoft.Win32.OpenFileDialog();
+                                dlg.Title = "Select Dictionary File (.dic / .lex)";
+                                dlg.Filter = "Dictionary Files (*.dic;*.lex)|*.dic;*.lex|All Files|*.*";
+                                if (dlg.ShowDialog(win) == true) {
+                                    string dictPath = dlg.FileName;
+                                    try {
+                                        Uri dictUri = new Uri(dictPath);
+                                        if (!rtb.SpellCheck.CustomDictionaries.Contains(dictUri)) {
+                                            rtb.SpellCheck.CustomDictionaries.Add(dictUri);
+                                        }
+                                    } catch { }
+                                    SendSpellCheckInfo(rtb, winId, ((FrameworkElement)ctrl).Name);
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "AddDictionary": {
+                            try {
+                                string dictPath = docVal;
+                                if (!string.IsNullOrEmpty(dictPath)) {
+                                    Uri dictUri = new Uri(dictPath);
+                                    if (!rtb.SpellCheck.CustomDictionaries.Contains(dictUri)) {
+                                        rtb.SpellCheck.CustomDictionaries.Add(dictUri);
+                                    }
+                                    SendSpellCheckInfo(rtb, winId, ((FrameworkElement)ctrl).Name);
+                                }
+                            } catch { }
+                            break;
+                        }
+                        case "SpellCheckOff": {
+                            try {
+                                rtb.SpellCheck.IsEnabled = false;
+                                SendSpellCheckInfo(rtb, winId, ((FrameworkElement)ctrl).Name);
+                            } catch { }
+                            break;
+                        }
+                        case "SpellCheck": {
+                            try {
+                                string scAction = (docVal ?? "").ToLower().Trim();
+                                if (scAction == "on") {
+                                    rtb.SpellCheck.IsEnabled = true;
+                                } else if (scAction == "off") {
+                                    rtb.SpellCheck.IsEnabled = false;
+                                } else if (scAction == "toggle") {
+                                    rtb.SpellCheck.IsEnabled = !rtb.SpellCheck.IsEnabled;
+                                } else if (scAction.StartsWith("setlang:")) {
+                                    string langTag = scAction.Substring(8);
+                                    _spellCheckLangs[rtb.Name] = langTag;
+                                    string langToApply = langTag;
+                                    if (langTag == "auto") {
+                                        langToApply = DetectLanguage(rtb);
+                                    }
+                                    var xmlLang = System.Windows.Markup.XmlLanguage.GetLanguage(langToApply);
+                                    rtb.Language = xmlLang;
+                                    if (rtb.Document != null) {
+                                        rtb.Document.Language = xmlLang;
+                                    }
+                                    bool wasEnabled = rtb.SpellCheck.IsEnabled;
+                                    rtb.SpellCheck.IsEnabled = false;
+                                    rtb.SpellCheck.IsEnabled = wasEnabled;
+                                }
+                                SendSpellCheckInfo(rtb, winId, ((FrameworkElement)ctrl).Name);
+                            } catch { }
+                            break;
+                        }
+                        case "QuerySpellCheck": {
+                            try {
+                                SendSpellCheckInfo(rtb, winId, ((FrameworkElement)ctrl).Name);
+                            } catch { }
+                            break;
+                        }
                     }
                 }
 #endif
@@ -5596,7 +6179,32 @@ public class AhkWpfEngine
         var fe = d as FrameworkElement;
         if (fe != null && !string.IsNullOrEmpty(fe.Name))
         {
-            try { win.UnregisterName(fe.Name); } catch { }
+            try {
+                var ns = NameScope.GetNameScope(win);
+                if (ns != null) { ns.UnregisterName(fe.Name); }
+                else { win.UnregisterName(fe.Name); }
+            } catch { }
+            try {
+                var keys = _boundEvents.Where(k => k.StartsWith(fe.Name + ":")).ToList();
+                foreach (var key in keys) {
+                    _boundEvents.Remove(key);
+                }
+            } catch { }
+        }
+        var fce = d as FrameworkContentElement;
+        if (fce != null && !string.IsNullOrEmpty(fce.Name))
+        {
+            try {
+                var ns = NameScope.GetNameScope(win);
+                if (ns != null) { ns.UnregisterName(fce.Name); }
+                else { win.UnregisterName(fce.Name); }
+            } catch { }
+            try {
+                var keys = _boundEvents.Where(k => k.StartsWith(fce.Name + ":")).ToList();
+                foreach (var key in keys) {
+                    _boundEvents.Remove(key);
+                }
+            } catch { }
         }
         foreach (object child in LogicalTreeHelper.GetChildren(d))
         {
@@ -5638,17 +6246,77 @@ public class AhkWpfEngine
 
     private DependencyObject FindLogicalNodeDeep(DependencyObject parent, string name)
     {
-        FrameworkElement fe = parent as FrameworkElement;
-        if (fe != null && fe.Name == name) return parent;
-        foreach (object child in LogicalTreeHelper.GetChildren(parent))
+        var visited = new System.Collections.Generic.HashSet<object>();
+        return FindControlDeepInternal(parent, name, visited);
+    }
+
+    private DependencyObject FindControlDeepInternal(DependencyObject d, string name, System.Collections.Generic.HashSet<object> visited)
+    {
+        if (d == null || !visited.Add(d)) return null;
+
+        var fe = d as FrameworkElement;
+        if (fe != null && fe.Name == name) return d;
+
+        var fce = d as FrameworkContentElement;
+        if (fce != null && fce.Name == name) return d;
+
+        if (fe != null && fe.ContextMenu != null)
         {
-            DependencyObject doChild = child as DependencyObject;
-            if (doChild != null)
+            var found = FindControlDeepInternal(fe.ContextMenu, name, visited);
+            if (found != null) return found;
+        }
+
+        // 1. ContentControl Content
+        var cc = d as ContentControl;
+        if (cc != null && cc.Content is DependencyObject)
+        {
+            var found = FindControlDeepInternal((DependencyObject)cc.Content, name, visited);
+            if (found != null) return found;
+        }
+
+        // 2. Decorator Child
+        var dec = d as Decorator;
+        if (dec != null && dec.Child != null)
+        {
+            var found = FindControlDeepInternal(dec.Child, name, visited);
+            if (found != null) return found;
+        }
+
+        // 3. Panel Children
+        var panel = d as Panel;
+        if (panel != null)
+        {
+            foreach (UIElement child in panel.Children)
             {
-                DependencyObject found = FindLogicalNodeDeep(doChild, name);
+                var found = FindControlDeepInternal(child, name, visited);
                 if (found != null) return found;
             }
         }
+
+        // 4. ItemsControl Items
+        var ic = d as ItemsControl;
+        if (ic != null)
+        {
+            foreach (object item in ic.Items)
+            {
+                if (item is DependencyObject)
+                {
+                    var found = FindControlDeepInternal((DependencyObject)item, name, visited);
+                    if (found != null) return found;
+                }
+            }
+        }
+
+        // 5. Logical Tree Helper
+        foreach (object child in LogicalTreeHelper.GetChildren(d))
+        {
+            if (child is DependencyObject)
+            {
+                var found = FindControlDeepInternal((DependencyObject)child, name, visited);
+                if (found != null) return found;
+            }
+        }
+
         return null;
     }
 
@@ -5666,10 +6334,39 @@ public class AhkWpfEngine
     private object FindControlByPath(string path)
     {
         if (string.IsNullOrEmpty(path)) return null;
+        object cached;
+        if (_controlCache.TryGetValue(path, out cached)) return cached;
+
         string[] parts = path.Split('>');
-        object current = win.FindName(parts[0]);
-        if (current == null) current = FindLogicalNodeDeep(win, parts[0]);
+        object current = null;
+        if (win != null)
+        {
+            if (parts[0] == "Window")
+            {
+                current = win;
+            }
+            else
+            {
+                current = win.FindName(parts[0]);
+                if (current == null && win.Content is FrameworkElement)
+                {
+                    current = ((FrameworkElement)win.Content).FindName(parts[0]);
+                }
+                if (current == null)
+                {
+                    var ns = NameScope.GetNameScope(win);
+                    if (ns != null)
+                    {
+                        current = ns.FindName(parts[0]);
+                    }
+                }
+            }
+        }
         if (current == null)
+        {
+            current = FindLogicalNodeDeep(win, parts[0]);
+        }
+        if (current == null && win != null)
         {
             WalkVisualTree(win, (DependencyObject d) =>
             {
@@ -5681,66 +6378,76 @@ public class AhkWpfEngine
                 }
             });
         }
-        if (current == null) return null;
 
-        for (int i = 1; i < parts.Length; i++)
+        if (current != null)
         {
-            string segment = parts[i];
-            if (current is ItemsControl)
+            for (int i = 1; i < parts.Length; i++)
             {
-                ItemsControl ic = (ItemsControl)current;
-                object found = null;
-                foreach (var item in ic.Items)
+                string segment = parts[i];
+                if (current is ItemsControl)
                 {
-                    if (item is HeaderedItemsControl)
+                    ItemsControl ic = (ItemsControl)current;
+                    object found = null;
+                    foreach (var item in ic.Items)
                     {
-                        var hic = (HeaderedItemsControl)item;
-                        string headerStr = hic.Header != null ? hic.Header.ToString() : "";
-                        if (headerStr.Contains("(" + segment + ")") || headerStr == segment || hic.Name == segment || (hic.Tag != null && hic.Tag.ToString() == segment))
+                        if (item is HeaderedItemsControl)
                         {
-                            found = hic;
-                            break;
+                            var hic = (HeaderedItemsControl)item;
+                            string headerStr = hic.Header != null ? hic.Header.ToString() : "";
+                            if (headerStr.Contains("(" + segment + ")") || headerStr == segment || hic.Name == segment || (hic.Tag != null && hic.Tag.ToString() == segment))
+                            {
+                                found = hic;
+                                break;
+                            }
+                        }
+                        else if (item is FrameworkElement)
+                        {
+                            var fe = (FrameworkElement)item;
+                            if (fe.Name == segment || (fe.Tag != null && fe.Tag.ToString() == segment))
+                            {
+                                found = fe;
+                                break;
+                            }
                         }
                     }
-                    else if (item is FrameworkElement)
+                    if (found != null)
                     {
-                        var fe = (FrameworkElement)item;
-                        if (fe.Name == segment || (fe.Tag != null && fe.Tag.ToString() == segment))
-                        {
-                            found = fe;
-                            break;
-                        }
+                        current = found;
+                    }
+                    else
+                    {
+                        current = null;
                     }
                 }
-                if (found != null)
+                else if (current is DependencyObject)
                 {
-                    current = found;
+                    object found = null;
+                    WalkVisualTree((DependencyObject)current, (DependencyObject d) =>
+                    {
+                        if (found != null) return;
+                        FrameworkElement fe = d as FrameworkElement;
+                        if (fe != null && (fe.Name == segment || (fe.Tag != null && fe.Tag.ToString() == segment)))
+                        {
+                            found = fe;
+                        }
+                    });
+                    if (found != null)
+                    {
+                        current = found;
+                    }
+                    else
+                    {
+                        current = null;
+                    }
                 }
                 else
                 {
-                    return null;
+                    current = null;
                 }
-            }
-            else if (current is DependencyObject)
-            {
-                object found = null;
-                WalkVisualTree((DependencyObject)current, (DependencyObject d) =>
-                {
-                    if (found != null) return;
-                    FrameworkElement fe = d as FrameworkElement;
-                    if (fe != null && (fe.Name == segment || (fe.Tag != null && fe.Tag.ToString() == segment)))
-                    {
-                        found = fe;
-                    }
-                });
-                if (found != null) current = found;
-                else return null;
-            }
-            else
-            {
-                return null;
+                if (current == null) break;
             }
         }
+        _controlCache[path] = current;
         return current;
     }
 
@@ -7557,6 +8264,31 @@ public class AhkWpfEngine
         public double PageWidth { get; set; }
         public double PageHeight { get; set; }
         public Thickness PagePadding { get; set; }
+        public double LinePitch { get; set; } // From <w:docGrid w:linePitch="312"/> in twips; 0 = not set
+        public double LineSpacingOverride { get; set; } // User-set multiplier (0 = use document default)
+    }
+
+    private void _ApplyLineSpacingToBlocks(BlockCollection blocks, double multiplier, double gridLH) {
+        foreach (var block in blocks) {
+            if (block is System.Windows.Documents.Paragraph) {
+                var para = (System.Windows.Documents.Paragraph)block;
+                double effFontSize = para.FontSize;
+                double baseHeight;
+                if (gridLH > 0) {
+                    baseHeight = Math.Max(gridLH, effFontSize * 1.2);
+                } else {
+                    baseHeight = effFontSize * 1.2;
+                }
+                para.LineHeight = baseHeight * multiplier;
+                para.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+            } else if (block is System.Windows.Documents.Section) {
+                _ApplyLineSpacingToBlocks(((System.Windows.Documents.Section)block).Blocks, multiplier, gridLH);
+            } else if (block is System.Windows.Documents.List) {
+                foreach (var li in ((System.Windows.Documents.List)block).ListItems) {
+                    _ApplyLineSpacingToBlocks(li.Blocks, multiplier, gridLH);
+                }
+            }
+        }
     }
 
     private string _themeMajorLatin = "Calibri Light";
@@ -7573,6 +8305,81 @@ public class AhkWpfEngine
         var basedOn = style.Elements<BasedOn>().FirstOrDefault();
         if (basedOn != null && basedOn.Val != null) {
             return GetStyleRunProperties(basedOn.Val.Value, styles);
+        }
+        return null;
+    }
+
+    private static ParagraphProperties GetStyleParagraphProperties(string styleId, Styles styles) {
+        if (styles == null || string.IsNullOrEmpty(styleId)) return null;
+        var style = styles.Elements<DocumentFormat.OpenXml.Wordprocessing.Style>().FirstOrDefault(s => s.StyleId == styleId);
+        if (style == null) return null;
+        var pPr = style.Elements<ParagraphProperties>().FirstOrDefault();
+        if (pPr != null) return pPr;
+        var basedOn = style.Elements<BasedOn>().FirstOrDefault();
+        if (basedOn != null && basedOn.Val != null) {
+            return GetStyleParagraphProperties(basedOn.Val.Value, styles);
+        }
+        return null;
+    }
+
+    private static T GetPropertyFromStyleHierarchy<T>(string styleId, Styles styles) where T : OpenXmlElement {
+        if (styles == null || string.IsNullOrEmpty(styleId)) return null;
+        var style = styles.Elements<DocumentFormat.OpenXml.Wordprocessing.Style>().FirstOrDefault(s => s.StyleId == styleId);
+        if (style == null) return null;
+        // Style definitions use StyleRunProperties (not RunProperties) for <w:rPr> children
+        var srPr = style.Elements<DocumentFormat.OpenXml.Wordprocessing.StyleRunProperties>().FirstOrDefault();
+        if (srPr != null) {
+            var prop = srPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
+        }
+        // Also check RunProperties in case some documents use it (shouldn't per spec, but be safe)
+        var rPr = style.Elements<RunProperties>().FirstOrDefault();
+        if (rPr != null) {
+            var prop = rPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
+        }
+        var basedOn = style.Elements<BasedOn>().FirstOrDefault();
+        if (basedOn != null && basedOn.Val != null) {
+            return GetPropertyFromStyleHierarchy<T>(basedOn.Val.Value, styles);
+        }
+        return null;
+    }
+
+    private static T GetParagraphPropertyFromStyleHierarchy<T>(string styleId, Styles styles) where T : OpenXmlElement {
+        if (styles == null || string.IsNullOrEmpty(styleId)) return null;
+        var style = styles.Elements<DocumentFormat.OpenXml.Wordprocessing.Style>().FirstOrDefault(s => s.StyleId == styleId);
+        if (style == null) return null;
+        // Style definitions use StyleParagraphProperties (not ParagraphProperties)
+        var spPr = style.Elements<DocumentFormat.OpenXml.Wordprocessing.StyleParagraphProperties>().FirstOrDefault();
+        if (spPr != null) {
+            var prop = spPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
+        }
+        // Also check ParagraphProperties for compatibility
+        var pPr = style.Elements<ParagraphProperties>().FirstOrDefault();
+        if (pPr != null) {
+            var prop = pPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
+        }
+        var basedOn = style.Elements<BasedOn>().FirstOrDefault();
+        if (basedOn != null && basedOn.Val != null) {
+            return GetParagraphPropertyFromStyleHierarchy<T>(basedOn.Val.Value, styles);
+        }
+        return null;
+    }
+
+    private T GetParagraphProperty<T>(ParagraphProperties pPr, string paragraphStyleId, Styles styles, ParagraphProperties defaultPPr) where T : OpenXmlElement {
+        if (pPr != null) {
+            var prop = pPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
+        }
+        if (!string.IsNullOrEmpty(paragraphStyleId)) {
+            var prop = GetParagraphPropertyFromStyleHierarchy<T>(paragraphStyleId, styles);
+            if (prop != null) return prop;
+        }
+        if (defaultPPr != null) {
+            var prop = defaultPPr.Elements<T>().FirstOrDefault();
+            if (prop != null) return prop;
         }
         return null;
     }
@@ -7607,9 +8414,13 @@ public class AhkWpfEngine
 
     private FlowDocument DocxToFlowDocument(string filePath) {
         var doc = new FlowDocument();
-        doc.FontFamily = new System.Windows.Media.FontFamily("Segoe UI");
+        doc.FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Segoe UI Emoji, Segoe UI Symbol");
         doc.FontSize = 14;
         doc.PagePadding = new Thickness(96, 72, 96, 72); // Standard page margins (1" left/right, 0.75" top/bottom)
+        // Set high-quality text rendering on the document itself
+        TextOptions.SetTextFormattingMode(doc, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(doc, TextRenderingMode.ClearType);
+        TextOptions.SetTextHintingMode(doc, TextHintingMode.Fixed);
 
         using (var wordDoc = WordprocessingDocument.Open(filePath, false)) {
             var mainPart = wordDoc.MainDocumentPart;
@@ -7654,8 +8465,16 @@ public class AhkWpfEngine
                     if (docDefaults != null && docDefaults.RunPropertiesDefault != null && docDefaults.RunPropertiesDefault.Elements<RunProperties>().FirstOrDefault() != null) {
                         var defaultRPr = docDefaults.RunPropertiesDefault.Elements<RunProperties>().FirstOrDefault();
                         if (defaultRPr.RunFonts != null) {
-                            string fName = ResolveRunFontName(defaultRPr.RunFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, false);
-                            if (!string.IsNullOrEmpty(fName)) defaultFont = fName;
+                            string asciiFont = ResolveRunFontName(defaultRPr.RunFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, false);
+                            string eastAsiaFont = ResolveRunFontName(defaultRPr.RunFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, true);
+                            
+                            string defaultFontChain = "";
+                            if (!string.IsNullOrEmpty(asciiFont)) defaultFontChain += asciiFont;
+                            if (!string.IsNullOrEmpty(eastAsiaFont) && eastAsiaFont != asciiFont) {
+                                if (defaultFontChain != "") defaultFontChain += ", ";
+                                defaultFontChain += eastAsiaFont;
+                            }
+                            if (!string.IsNullOrEmpty(defaultFontChain)) defaultFont = defaultFontChain;
                         }
                         if (defaultRPr.FontSize != null && defaultRPr.FontSize.Val != null) {
                             double sz;
@@ -7669,8 +8488,6 @@ public class AhkWpfEngine
 
             doc.FontFamily = ResolveFontFamily(defaultFont);
             doc.FontSize = defaultPtSize * (96.0 / 72.0);
-            doc.LineHeight = (defaultPtSize * (96.0 / 72.0)) * 1.15; // default 1.15x line spacing
-            doc.LineStackingStrategy = LineStackingStrategy.MaxHeight;
 
             // Try to parse page size and margins from SectionProperties
             try {
@@ -7690,6 +8507,19 @@ public class AhkWpfEngine
                         if (pgMar.Top != null) top = (pgMar.Top.Value / 20.0) * (96.0 / 72.0);
                         if (pgMar.Right != null) right = (pgMar.Right.Value / 20.0) * (96.0 / 72.0);
                         if (pgMar.Bottom != null) bottom = (pgMar.Bottom.Value / 20.0) * (96.0 / 72.0);
+                        doc.PagePadding = new Thickness(left, top, right, bottom);
+                    }
+                }
+            } catch { }
+
+            // Parse document grid (controls line spacing in Chinese docs)
+            double docGridLinePitch = 0;
+            try {
+                var sectPr = body.Elements<SectionProperties>().LastOrDefault() ?? body.Descendants<SectionProperties>().LastOrDefault();
+                if (sectPr != null) {
+                    var docGrid = sectPr.Elements<DocumentFormat.OpenXml.Wordprocessing.DocGrid>().FirstOrDefault();
+                    if (docGrid != null && docGrid.LinePitch != null && docGrid.LinePitch.Value > 0) {
+                        docGridLinePitch = docGrid.LinePitch.Value; // Value is in twips (1/20th of a point)
                     }
                 }
             } catch { }
@@ -7697,7 +8527,8 @@ public class AhkWpfEngine
             doc.Tag = new DocLayoutSettings {
                 PageWidth = doc.PageWidth,
                 PageHeight = doc.PageHeight,
-                PagePadding = doc.PagePadding
+                PagePadding = doc.PagePadding,
+                LinePitch = docGridLinePitch
             };
             
             // Pre-build numbering lookup
@@ -7735,206 +8566,325 @@ public class AhkWpfEngine
             System.Windows.Documents.List currentList = null;
             string currentListKey = "";
 
-            foreach (var element in body.Elements()) {
-                if (element is DocumentFormat.OpenXml.Wordprocessing.Paragraph) {
-                    var para = (DocumentFormat.OpenXml.Wordprocessing.Paragraph)element;
-                    var pPr = para.ParagraphProperties;
-
-                    // Check if this is a list paragraph
-                    bool isList = false;
-                    int listLevel = 0;
-                    string listFormat = "bullet";
-                    string listKey = "";
-                    if (pPr != null && pPr.NumberingProperties != null) {
-                        var numProps = pPr.NumberingProperties;
-                        string numId = "0";
-                        if (numProps.NumberingId != null && numProps.NumberingId.Val != null) {
-                            numId = numProps.NumberingId.Val.Value.ToString();
-                        }
-                        if (numProps.NumberingLevelReference != null && numProps.NumberingLevelReference.Val != null) {
-                            listLevel = numProps.NumberingLevelReference.Val.Value;
-                        }
-                        if (numId != "0") {
-                            isList = true;
-                            listKey = numId + "_" + listLevel;
-                            if (numberingFormats.ContainsKey(listKey)) {
-                                listFormat = numberingFormats[listKey];
-                            }
-                        }
-                    }
-
-                    if (isList) {
-                        // Create or continue a List block
-                        if (currentList == null || currentListKey != listKey) {
-                            currentList = new System.Windows.Documents.List();
-                            currentList.Margin = new Thickness(listLevel * 20 + 20, 2, 0, 2);
-                            if (listFormat == "bullet" || listFormat == "none") {
-                                currentList.MarkerStyle = TextMarkerStyle.Disc;
-                            } else if (listFormat == "decimal" || listFormat == "arabic") {
-                                currentList.MarkerStyle = TextMarkerStyle.Decimal;
-                            } else if (listFormat == "lowerroman") {
-                                currentList.MarkerStyle = TextMarkerStyle.LowerRoman;
-                            } else if (listFormat == "upperroman") {
-                                currentList.MarkerStyle = TextMarkerStyle.UpperRoman;
-                            } else if (listFormat == "lowerletter") {
-                                currentList.MarkerStyle = TextMarkerStyle.LowerLatin;
-                            } else if (listFormat == "upperletter") {
-                                currentList.MarkerStyle = TextMarkerStyle.UpperLatin;
-                            } else {
-                                currentList.MarkerStyle = TextMarkerStyle.Disc;
-                            }
-                            currentListKey = listKey;
-                            doc.Blocks.Add(currentList);
-                        }
-                        var listItem = new System.Windows.Documents.ListItem();
-                        var listPara = BuildFlowParagraph(para, pPr, mainPart);
-                        listItem.Blocks.Add(listPara);
-                        currentList.ListItems.Add(listItem);
-                    } else {
-                        // End any active list
-                        currentList = null;
-                        currentListKey = "";
-
-                        var flowPara = BuildFlowParagraph(para, pPr, mainPart);
-                        doc.Blocks.Add(flowPara);
-                    }
-                } else if (element is DocumentFormat.OpenXml.Wordprocessing.Table) {
-                    currentList = null;
-                    currentListKey = "";
-                    var flowTable = BuildFlowTable((DocumentFormat.OpenXml.Wordprocessing.Table)element, mainPart);
-                    doc.Blocks.Add(flowTable);
-                }
-            }
+            ParseBodyElements(body, doc, ref currentList, ref currentListKey, mainPart, numberingFormats);
         }
         return doc;
+    }
+
+    private void ParseBodyElements(OpenXmlElement parent, FlowDocument doc, ref System.Windows.Documents.List currentList, ref string currentListKey, MainDocumentPart mainPart, System.Collections.Generic.Dictionary<string, string> numberingFormats) {
+        foreach (var element in parent.ChildElements) {
+            if (element is DocumentFormat.OpenXml.Wordprocessing.Paragraph) {
+                var para = (DocumentFormat.OpenXml.Wordprocessing.Paragraph)element;
+                var pPr = para.ParagraphProperties;
+
+                // Check if this is a list paragraph
+                bool isList = false;
+                int listLevel = 0;
+                string listFormat = "bullet";
+                string listKey = "";
+                if (pPr != null && pPr.NumberingProperties != null) {
+                    var numProps = pPr.NumberingProperties;
+                    string numId = "0";
+                    if (numProps.NumberingId != null && numProps.NumberingId.Val != null) {
+                        numId = numProps.NumberingId.Val.Value.ToString();
+                    }
+                    if (numProps.NumberingLevelReference != null && numProps.NumberingLevelReference.Val != null) {
+                        listLevel = numProps.NumberingLevelReference.Val.Value;
+                    }
+                    if (numId != "0") {
+                        isList = true;
+                        listKey = numId + "_" + listLevel;
+                        if (numberingFormats.ContainsKey(listKey)) {
+                            listFormat = numberingFormats[listKey];
+                        }
+                    }
+                }
+
+                if (isList) {
+                    // Create or continue a List block
+                    if (currentList == null || currentListKey != listKey) {
+                        currentList = new System.Windows.Documents.List();
+                        currentList.Margin = new Thickness(listLevel * 20 + 20, 2, 0, 2);
+                        if (listFormat == "bullet" || listFormat == "none") {
+                            currentList.MarkerStyle = TextMarkerStyle.Disc;
+                        } else if (listFormat == "decimal" || listFormat == "arabic") {
+                            currentList.MarkerStyle = TextMarkerStyle.Decimal;
+                        } else if (listFormat == "lowerroman") {
+                            currentList.MarkerStyle = TextMarkerStyle.LowerRoman;
+                        } else if (listFormat == "upperroman") {
+                            currentList.MarkerStyle = TextMarkerStyle.UpperRoman;
+                        } else if (listFormat == "lowerletter") {
+                            currentList.MarkerStyle = TextMarkerStyle.LowerLatin;
+                        } else if (listFormat == "upperletter") {
+                            currentList.MarkerStyle = TextMarkerStyle.UpperLatin;
+                        } else {
+                            currentList.MarkerStyle = TextMarkerStyle.Disc;
+                        }
+                        currentListKey = listKey;
+                        doc.Blocks.Add(currentList);
+                    }
+                    var listItem = new System.Windows.Documents.ListItem();
+                    var listPara = BuildFlowParagraph(para, pPr, mainPart, doc);
+                    listItem.Blocks.Add(listPara);
+                    currentList.ListItems.Add(listItem);
+                } else {
+                    // End any active list
+                    currentList = null;
+                    currentListKey = "";
+
+                    var flowPara = BuildFlowParagraph(para, pPr, mainPart, doc);
+                    doc.Blocks.Add(flowPara);
+                }
+            } else if (element is DocumentFormat.OpenXml.Wordprocessing.Table) {
+                currentList = null;
+                currentListKey = "";
+                var flowTable = BuildFlowTable((DocumentFormat.OpenXml.Wordprocessing.Table)element, mainPart, doc);
+                doc.Blocks.Add(flowTable);
+            } else if (element is SdtBlock || element is SdtContentBlock || element is CustomXmlBlock) {
+                ParseBodyElements(element, doc, ref currentList, ref currentListKey, mainPart, numberingFormats);
+            }
+        }
     }
 
     // Build a FlowDocument Paragraph from an OpenXML Paragraph
     private System.Windows.Documents.Paragraph BuildFlowParagraph(
         DocumentFormat.OpenXml.Wordprocessing.Paragraph para,
         ParagraphProperties pPr,
-        MainDocumentPart mainPart) {
+        MainDocumentPart mainPart,
+        FlowDocument doc) {
         
         var flowPara = new System.Windows.Documents.Paragraph();
-        RunProperties paragraphStyleRPr = null;
+        double effFontSize = doc.FontSize;
 
-        if (pPr != null) {
-            // Justification
-            var jc = pPr.Justification;
-            if (jc != null) {
-                var jcVal = jc.Val != null ? jc.Val.Value : JustificationValues.Left;
-                switch (jcVal) {
-                    case JustificationValues.Center: flowPara.TextAlignment = System.Windows.TextAlignment.Center; break;
-                    case JustificationValues.Right: flowPara.TextAlignment = System.Windows.TextAlignment.Right; break;
-                    case JustificationValues.Both: flowPara.TextAlignment = System.Windows.TextAlignment.Justify; break;
-                    default: flowPara.TextAlignment = System.Windows.TextAlignment.Left; break;
+        ParagraphProperties defaultPPr = null;
+        RunProperties defaultRPr = null;
+        Styles docStyles = null;
+        try {
+            var stylesPart = mainPart.StyleDefinitionsPart;
+            if (stylesPart != null && stylesPart.Styles != null) {
+                docStyles = stylesPart.Styles;
+                var docDefaults = docStyles.DocDefaults;
+                if (docDefaults != null) {
+                    if (docDefaults.ParagraphPropertiesDefault != null) {
+                        defaultPPr = docDefaults.ParagraphPropertiesDefault.Elements<ParagraphProperties>().FirstOrDefault();
+                    }
+                    if (docDefaults.RunPropertiesDefault != null) {
+                        defaultRPr = docDefaults.RunPropertiesDefault.Elements<RunProperties>().FirstOrDefault();
+                    }
                 }
             }
+        } catch { }
 
-            // Heading style
-            if (pPr.ParagraphStyleId != null) {
-                string styleId = (pPr.ParagraphStyleId.Val != null) ? pPr.ParagraphStyleId.Val.Value : "";
-                flowPara.Tag = styleId;
-                try {
-                    var stylesPart = mainPart.StyleDefinitionsPart;
-                    if (stylesPart != null && stylesPart.Styles != null) {
-                        paragraphStyleRPr = GetStyleRunProperties(styleId, stylesPart.Styles);
+        string styleId = "";
+        if (pPr != null && pPr.ParagraphStyleId != null && pPr.ParagraphStyleId.Val != null) {
+            styleId = pPr.ParagraphStyleId.Val.Value;
+        } else {
+            styleId = "Normal";
+        }
+
+        flowPara.Tag = styleId;
+        if (styleId.StartsWith("Heading") || styleId.StartsWith("heading")) {
+            int level = 1;
+            if (styleId.Length > 7) int.TryParse(styleId.Substring(7), out level);
+            flowPara.FontWeight = FontWeights.Bold;
+            flowPara.FontSize = Math.Max(11, 24 - (level * 2)) * (96.0 / 72.0); // Convert points to pixels
+            flowPara.Margin = new Thickness(0, 12.0 * (96.0 / 72.0), 0, 4.0 * (96.0 / 72.0));
+            effFontSize = flowPara.FontSize;
+        } else if (styleId.Contains("Quote") || styleId.Contains("quote")) {
+            flowPara.FontStyle = FontStyles.Italic;
+            flowPara.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 100));
+            flowPara.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
+            flowPara.BorderThickness = new Thickness(3.0 * (96.0 / 72.0), 0, 0, 0);
+            flowPara.Padding = new Thickness(12.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0));
+        } else if (!string.IsNullOrEmpty(styleId) && docStyles != null) {
+            var fontSizeProp = GetPropertyFromStyleHierarchy<DocumentFormat.OpenXml.Wordprocessing.FontSize>(styleId, docStyles);
+            if (fontSizeProp != null && fontSizeProp.Val != null) {
+                double sz;
+                if (double.TryParse(fontSizeProp.Val.Value, out sz)) {
+                    effFontSize = (sz / 2.0) * (96.0 / 72.0);
+                }
+            } else if (defaultRPr != null) {
+                var defaultFontSize = defaultRPr.Elements<DocumentFormat.OpenXml.Wordprocessing.FontSize>().FirstOrDefault();
+                if (defaultFontSize != null && defaultFontSize.Val != null) {
+                    double sz;
+                    if (double.TryParse(defaultFontSize.Val.Value, out sz)) {
+                        effFontSize = (sz / 2.0) * (96.0 / 72.0);
                     }
-                } catch { }
-                if (styleId.StartsWith("Heading") || styleId.StartsWith("heading")) {
-                    int level = 1;
-                    if (styleId.Length > 7) int.TryParse(styleId.Substring(7), out level);
+                }
+            }
+            // Apply bold from paragraph style hierarchy
+            var styleBold = GetPropertyFromStyleHierarchy<DocumentFormat.OpenXml.Wordprocessing.Bold>(styleId, docStyles);
+            if (styleBold != null && IsBoldTrue(styleBold)) {
+                flowPara.FontWeight = FontWeights.Bold;
+            } else {
+                var styleBoldCs = GetPropertyFromStyleHierarchy<DocumentFormat.OpenXml.Wordprocessing.BoldComplexScript>(styleId, docStyles);
+                if (styleBoldCs != null && (styleBoldCs.Val == null || styleBoldCs.Val.Value)) {
                     flowPara.FontWeight = FontWeights.Bold;
-                    flowPara.FontSize = Math.Max(11, 24 - (level * 2)) * (96.0 / 72.0); // Convert points to pixels
-                    flowPara.Margin = new Thickness(0, 12.0 * (96.0 / 72.0), 0, 4.0 * (96.0 / 72.0));
-                } else if (styleId.Contains("Quote") || styleId.Contains("quote")) {
+                }
+            }
+            // Apply italic from paragraph style hierarchy
+            var styleItalic = GetPropertyFromStyleHierarchy<DocumentFormat.OpenXml.Wordprocessing.Italic>(styleId, docStyles);
+            if (styleItalic != null && IsItalicTrue(styleItalic)) {
+                flowPara.FontStyle = FontStyles.Italic;
+            } else {
+                var styleItalicCs = GetPropertyFromStyleHierarchy<DocumentFormat.OpenXml.Wordprocessing.ItalicComplexScript>(styleId, docStyles);
+                if (styleItalicCs != null && (styleItalicCs.Val == null || styleItalicCs.Val.Value)) {
                     flowPara.FontStyle = FontStyles.Italic;
-                    flowPara.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(100, 100, 100));
-                    flowPara.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
-                    flowPara.BorderThickness = new Thickness(3.0 * (96.0 / 72.0), 0, 0, 0);
-                    flowPara.Padding = new Thickness(12.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0), 4.0 * (96.0 / 72.0));
                 }
             }
+        }
 
-            // Paragraph shading/background
-            if (pPr.Shading != null && pPr.Shading.Fill != null) {
-                string fillHex = pPr.Shading.Fill.Value;
-                if (!string.IsNullOrEmpty(fillHex) && fillHex != "auto" && fillHex != "Auto") {
-                    try {
-                        flowPara.Background = new System.Windows.Media.SolidColorBrush(
-                            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#" + fillHex));
-                        flowPara.Padding = new Thickness(10, 6, 10, 6);
-                    } catch { }
-                }
-            }
-
-            // Default paragraph spacing matching MS Word (0 before, 6pt = 8px after)
-            flowPara.Margin = new Thickness(0, 0, 0, 6.0 * (96.0 / 72.0));
-
-            // Indentation
-            if (pPr.Indentation != null) {
-                double leftIndent = 0, rightIndent = 0, firstLine = 0;
-                if (pPr.Indentation.Left != null) {
-                    double val;
-                    if (double.TryParse(pPr.Indentation.Left.Value, out val))
-                        leftIndent = (val / 20.0) * (96.0 / 72.0); // Convert points to WPF pixels
-                }
-                if (pPr.Indentation.Right != null) {
-                    double val;
-                    if (double.TryParse(pPr.Indentation.Right.Value, out val))
-                        rightIndent = (val / 20.0) * (96.0 / 72.0);
-                }
-                if (pPr.Indentation.FirstLine != null) {
-                    double val;
-                    if (double.TryParse(pPr.Indentation.FirstLine.Value, out val))
-                        firstLine = (val / 20.0) * (96.0 / 72.0);
-                }
-                if (leftIndent > 0 || rightIndent > 0) {
-                    double top = flowPara.Margin.Top;
-                    double bottom = flowPara.Margin.Bottom;
-                    flowPara.Margin = new Thickness(leftIndent, top, rightIndent, bottom);
-                }
-                if (firstLine > 0)
-                    flowPara.TextIndent = firstLine;
-            }
-
-            // Spacing (before/after)
-            if (pPr.SpacingBetweenLines != null) {
-                double before = 0;
-                double after = 6.0 * (96.0 / 72.0); // Default 6pt after
-                if (pPr.SpacingBetweenLines.Before != null) {
-                    double val;
-                    if (double.TryParse(pPr.SpacingBetweenLines.Before.Value, out val))
-                        before = (val / 20.0) * (96.0 / 72.0);
-                }
-                if (pPr.SpacingBetweenLines.After != null) {
-                    double val;
-                    if (double.TryParse(pPr.SpacingBetweenLines.After.Value, out val))
-                        after = (val / 20.0) * (96.0 / 72.0);
-                }
-                
-                double left = flowPara.Margin.Left;
-                double right = flowPara.Margin.Right;
-                flowPara.Margin = new Thickness(left, before, right, after);
-
-                // Line spacing (within paragraph)
-                if (pPr.SpacingBetweenLines.Line != null) {
-                    string lineStr = pPr.SpacingBetweenLines.Line.Value;
-                    double lineVal;
-                    if (double.TryParse(lineStr, out lineVal)) {
-                        var lineRule = pPr.SpacingBetweenLines.LineRule != null ? pPr.SpacingBetweenLines.LineRule.Value : LineSpacingRuleValues.Auto;
-                        if (lineRule == LineSpacingRuleValues.Auto) {
-                            double multiple = lineVal / 240.0;
-                            double estFontSize = flowPara.FontSize > 0 ? flowPara.FontSize : 14.66; // default 11pt is 14.66px
-                            flowPara.LineHeight = estFontSize * multiple;
-                            flowPara.LineStackingStrategy = LineStackingStrategy.MaxHeight;
-                        } else {
-                            flowPara.LineHeight = (lineVal / 20.0) * (96.0 / 72.0);
-                            flowPara.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
-                        }
+        // Scan all runs inside the paragraph to resolve the actual maximum font size.
+        // This ensures line heights scale proportionally to inline run sizes.
+        double maxRunFontSize = effFontSize;
+        foreach (var run in para.Descendants<DocumentFormat.OpenXml.Wordprocessing.Run>()) {
+            string runStyleId = (run.RunProperties != null && run.RunProperties.RunStyle != null && run.RunProperties.RunStyle.Val != null)
+                ? run.RunProperties.RunStyle.Val.Value
+                : null;
+            var rFontSize = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.FontSize>(run.RunProperties, runStyleId, styleId, docStyles, defaultRPr);
+            if (rFontSize != null && rFontSize.Val != null) {
+                double sz;
+                if (double.TryParse(rFontSize.Val.Value, out sz)) {
+                    double runSize = (sz / 2.0) * (96.0 / 72.0);
+                    if (runSize > maxRunFontSize) {
+                        maxRunFontSize = runSize;
                     }
                 }
             }
+        }
+        effFontSize = maxRunFontSize;
+
+        // Justification
+        var jc = GetParagraphProperty<Justification>(pPr, styleId, docStyles, defaultPPr);
+        if (jc != null) {
+            var jcVal = jc.Val != null ? jc.Val.Value : JustificationValues.Left;
+            switch (jcVal) {
+                case JustificationValues.Center: flowPara.TextAlignment = System.Windows.TextAlignment.Center; break;
+                case JustificationValues.Right: flowPara.TextAlignment = System.Windows.TextAlignment.Right; break;
+                case JustificationValues.Both: flowPara.TextAlignment = System.Windows.TextAlignment.Justify; break;
+                default: flowPara.TextAlignment = System.Windows.TextAlignment.Left; break;
+            }
+        }
+
+        // Shading/Background
+        var shading = GetParagraphProperty<Shading>(pPr, styleId, docStyles, defaultPPr);
+        if (shading != null && shading.Fill != null) {
+            string fillHex = shading.Fill.Value;
+            if (!string.IsNullOrEmpty(fillHex) && fillHex != "auto" && fillHex != "Auto") {
+                try {
+                    flowPara.Background = new System.Windows.Media.SolidColorBrush(
+                        (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#" + fillHex));
+                    flowPara.Padding = new Thickness(10, 6, 10, 6);
+                } catch { }
+            }
+        }
+
+        // Default paragraph margin (Word style: 0 before, scaled after)
+        flowPara.Margin = new Thickness(0, 0, 0, effFontSize * 0.6);
+
+        // Indentation
+        var indent = GetParagraphProperty<DocumentFormat.OpenXml.Wordprocessing.Indentation>(pPr, styleId, docStyles, defaultPPr);
+        if (indent != null) {
+            double leftIndent = 0, rightIndent = 0, firstLine = 0;
+            if (indent.Left != null) {
+                double val;
+                if (double.TryParse(indent.Left.Value, out val))
+                    leftIndent = (val / 20.0) * (96.0 / 72.0);
+            }
+            if (indent.Right != null) {
+                double val;
+                if (double.TryParse(indent.Right.Value, out val))
+                    rightIndent = (val / 20.0) * (96.0 / 72.0);
+            }
+            if (indent.FirstLine != null) {
+                double val;
+                if (double.TryParse(indent.FirstLine.Value, out val))
+                    firstLine = (val / 20.0) * (96.0 / 72.0);
+            }
+            if (leftIndent > 0 || rightIndent > 0) {
+                double top = flowPara.Margin.Top;
+                double bottom = flowPara.Margin.Bottom;
+                flowPara.Margin = new Thickness(leftIndent, top, rightIndent, bottom);
+            }
+            if (firstLine > 0)
+                flowPara.TextIndent = firstLine;
+        }
+
+        // Spacing (before/after) and Line spacing (within paragraph)
+        var spacing = GetParagraphProperty<DocumentFormat.OpenXml.Wordprocessing.SpacingBetweenLines>(pPr, styleId, docStyles, defaultPPr);
+        double before = 0;
+        double after = 0; // Default no after-spacing; Chinese docs typically have 0pt after-paragraph spacing
+        if (spacing != null) {
+            if (spacing.BeforeLines != null) {
+                double val = spacing.BeforeLines.Value;
+                var ls = doc.Tag as DocLayoutSettings;
+                double lineUnit = (ls != null && ls.LinePitch > 0) ? ((ls.LinePitch / 20.0) * (96.0 / 72.0)) : (effFontSize * 1.3);
+                before = lineUnit * (val / 100.0);
+            } else if (spacing.Before != null) {
+                double val;
+                if (double.TryParse(spacing.Before.Value, out val))
+                    before = (val / 20.0) * (96.0 / 72.0);
+            }
+
+            if (spacing.AfterLines != null) {
+                double val = spacing.AfterLines.Value;
+                var ls = doc.Tag as DocLayoutSettings;
+                double lineUnit = (ls != null && ls.LinePitch > 0) ? ((ls.LinePitch / 20.0) * (96.0 / 72.0)) : (effFontSize * 1.3);
+                after = lineUnit * (val / 100.0);
+            } else if (spacing.After != null) {
+                double val;
+                if (double.TryParse(spacing.After.Value, out val))
+                    after = (val / 20.0) * (96.0 / 72.0);
+            }
+        }
+        double leftMargin = flowPara.Margin.Left;
+        double rightMargin = flowPara.Margin.Right;
+        flowPara.Margin = new Thickness(leftMargin, before, rightMargin, after);
+
+        // Resolve document grid line height (used as base unit for line spacing)
+        var _layoutSettings = doc.Tag as DocLayoutSettings;
+        double gridLineHeight = 0;
+        if (_layoutSettings != null && _layoutSettings.LinePitch > 0) {
+            gridLineHeight = (_layoutSettings.LinePitch / 20.0) * (96.0 / 72.0); // twips → WPF pixels
+        }
+
+        if (spacing != null && spacing.Line != null) {
+            string lineStr = spacing.Line.Value;
+            double lineVal;
+            if (double.TryParse(lineStr, out lineVal)) {
+                var lineRule = spacing.LineRule != null ? spacing.LineRule.Value : LineSpacingRuleValues.Auto;
+                if (lineRule == LineSpacingRuleValues.Auto) {
+                    double multiple = lineVal / 240.0;
+                    if (gridLineHeight > 0) {
+                        // Word uses grid pitch as the base unit for Auto multipliers
+                        // 240 = 1 grid unit, 360 = 1.5 grid units, 480 = 2 grid units
+                        double baseHeight = Math.Max(gridLineHeight, effFontSize * 1.2);
+                        flowPara.LineHeight = baseHeight * multiple;
+                    } else {
+                        // No grid — use font-proportional with leading
+                        flowPara.LineHeight = effFontSize * multiple * 1.2;
+                    }
+                    flowPara.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+                } else if (lineRule == LineSpacingRuleValues.Exact) {
+                    flowPara.LineHeight = (lineVal / 20.0) * (96.0 / 72.0);
+                    flowPara.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+                } else if (lineRule == LineSpacingRuleValues.AtLeast) {
+                    flowPara.LineHeight = (lineVal / 20.0) * (96.0 / 72.0);
+                    flowPara.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+                }
+            }
+        } else {
+            // No explicit spacing — use document grid for line height
+            if (gridLineHeight > 0) {
+                // Snap text to grid: each line occupies ceil(fontHeight / gridPitch) grid units
+                double fontNaturalHeight = effFontSize * 1.2; // approximate font line metrics
+                double gridUnits = Math.Ceiling(fontNaturalHeight / gridLineHeight);
+                flowPara.LineHeight = gridUnits * gridLineHeight;
+            } else {
+                // No grid — use font-proportional spacing (~130% of font em-size)
+                flowPara.LineHeight = effFontSize * 1.3;
+            }
+            flowPara.LineStackingStrategy = LineStackingStrategy.MaxHeight;
         }
 
         // Process paragraph children (Runs, Hyperlinks, Bookmarks, etc.)
@@ -7959,18 +8909,12 @@ public class AhkWpfEngine
                         });
                     }
                 }
-                RunProperties runStyleRPr = null;
-                if (run.RunProperties != null && run.RunProperties.RunStyle != null && run.RunProperties.RunStyle.Val != null) {
-                    try {
-                        var stylesPart = mainPart.StyleDefinitionsPart;
-                        if (stylesPart != null && stylesPart.Styles != null) {
-                            runStyleRPr = GetStyleRunProperties(run.RunProperties.RunStyle.Val.Value, stylesPart.Styles);
-                        }
-                    } catch { }
-                }
+                string runStyleId = (run.RunProperties != null && run.RunProperties.RunStyle != null && run.RunProperties.RunStyle.Val != null) 
+                    ? run.RunProperties.RunStyle.Val.Value 
+                    : null;
                 string text = run.InnerText;
                 var flowRun = new System.Windows.Documents.Run(text);
-                ApplyRunProperties(flowRun, run.RunProperties, runStyleRPr, paragraphStyleRPr);
+                ApplyRunProperties(flowRun, run.RunProperties, runStyleId, styleId, docStyles, defaultRPr);
                 flowPara.Inlines.Add(flowRun);
 
             } else if (child is DocumentFormat.OpenXml.Wordprocessing.Hyperlink) {
@@ -7994,17 +8938,11 @@ public class AhkWpfEngine
                 var linkSpan = new System.Windows.Documents.Hyperlink();
                 foreach (var hRun in hyperlink.Elements<DocumentFormat.OpenXml.Wordprocessing.Run>()) {
                     linkText += hRun.InnerText;
-                    RunProperties linkRunStyleRPr = null;
-                    if (hRun.RunProperties != null && hRun.RunProperties.RunStyle != null && hRun.RunProperties.RunStyle.Val != null) {
-                        try {
-                            var stylesPart = mainPart.StyleDefinitionsPart;
-                            if (stylesPart != null && stylesPart.Styles != null) {
-                                linkRunStyleRPr = GetStyleRunProperties(hRun.RunProperties.RunStyle.Val.Value, stylesPart.Styles);
-                            }
-                        } catch { }
-                    }
+                    string linkRunStyleId = (hRun.RunProperties != null && hRun.RunProperties.RunStyle != null && hRun.RunProperties.RunStyle.Val != null) 
+                        ? hRun.RunProperties.RunStyle.Val.Value 
+                        : null;
                     var linkFlowRun = new System.Windows.Documents.Run(hRun.InnerText);
-                    ApplyRunProperties(linkFlowRun, hRun.RunProperties, linkRunStyleRPr, paragraphStyleRPr);
+                    ApplyRunProperties(linkFlowRun, hRun.RunProperties, linkRunStyleId, styleId, docStyles, defaultRPr);
                     linkSpan.Inlines.Add(linkFlowRun);
                 }
 
@@ -8031,38 +8969,71 @@ public class AhkWpfEngine
         return flowPara;
     }
 
-    private T GetRunProperty<T>(RunProperties rPr, RunProperties runStyleRPr, RunProperties paragraphStyleRPr) where T : OpenXmlElement {
+    // Check if a Bold element actually means "bold" (bare <w:b/> = true, <w:b w:val="0"/> = false)
+    private static bool IsBoldTrue(DocumentFormat.OpenXml.Wordprocessing.Bold bold) {
+        if (bold == null) return false;
+        if (bold.Val == null) return true; // bare <w:b/> means true
+        return bold.Val.Value; // OnOffValue resolves "0"/"false" to false, "1"/"true" to true
+    }
+
+    // Check if an Italic element actually means "italic"
+    private static bool IsItalicTrue(DocumentFormat.OpenXml.Wordprocessing.Italic italic) {
+        if (italic == null) return false;
+        if (italic.Val == null) return true;
+        return italic.Val.Value;
+    }
+
+    private T GetRunProperty<T>(RunProperties rPr, string runStyleId, string paragraphStyleId, Styles styles, RunProperties defaultRPr) where T : OpenXmlElement {
         if (rPr != null) {
             var prop = rPr.Elements<T>().FirstOrDefault();
             if (prop != null) return prop;
         }
-        if (runStyleRPr != null) {
-            var prop = runStyleRPr.Elements<T>().FirstOrDefault();
+        if (!string.IsNullOrEmpty(runStyleId)) {
+            var prop = GetPropertyFromStyleHierarchy<T>(runStyleId, styles);
             if (prop != null) return prop;
         }
-        if (paragraphStyleRPr != null) {
-            var prop = paragraphStyleRPr.Elements<T>().FirstOrDefault();
+        if (!string.IsNullOrEmpty(paragraphStyleId)) {
+            var prop = GetPropertyFromStyleHierarchy<T>(paragraphStyleId, styles);
+            if (prop != null) return prop;
+        }
+        if (defaultRPr != null) {
+            var prop = defaultRPr.Elements<T>().FirstOrDefault();
             if (prop != null) return prop;
         }
         return null;
     }
 
     // Apply run properties to a WPF Run
-    private void ApplyRunProperties(System.Windows.Documents.Run flowRun, RunProperties rPr, RunProperties runStyleRPr, RunProperties paragraphStyleRPr) {
-        if (rPr == null && runStyleRPr == null && paragraphStyleRPr == null) return;
+    private void ApplyRunProperties(System.Windows.Documents.Run flowRun, RunProperties rPr, string runStyleId, string paragraphStyleId, Styles styles, RunProperties defaultRPr) {
+        if (rPr == null && string.IsNullOrEmpty(runStyleId) && string.IsNullOrEmpty(paragraphStyleId) && defaultRPr == null) return;
         
-        var bold = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Bold>(rPr, runStyleRPr, paragraphStyleRPr);
-        if (bold != null) flowRun.FontWeight = FontWeights.Bold;
+        var bold = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Bold>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
+        if (bold != null && IsBoldTrue(bold)) {
+            flowRun.FontWeight = FontWeights.Bold;
+        } else {
+            // Check BoldComplexScript for CJK text
+            var boldCs = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.BoldComplexScript>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
+            if (boldCs != null && (boldCs.Val == null || boldCs.Val.Value)) {
+                flowRun.FontWeight = FontWeights.Bold;
+            }
+        }
         
-        var italic = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Italic>(rPr, runStyleRPr, paragraphStyleRPr);
-        if (italic != null) flowRun.FontStyle = FontStyles.Italic;
+        var italic = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Italic>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
+        if (italic != null && IsItalicTrue(italic)) {
+            flowRun.FontStyle = FontStyles.Italic;
+        } else {
+            var italicCs = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.ItalicComplexScript>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
+            if (italicCs != null && (italicCs.Val == null || italicCs.Val.Value)) {
+                flowRun.FontStyle = FontStyles.Italic;
+            }
+        }
         
         var decs = new TextDecorationCollection();
-        var underline = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Underline>(rPr, runStyleRPr, paragraphStyleRPr);
+        var underline = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Underline>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
         if (underline != null && underline.Val != null && underline.Val.Value != UnderlineValues.None) {
             foreach (var d in TextDecorations.Underline) decs.Add(d);
         }
-        var strike = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Strike>(rPr, runStyleRPr, paragraphStyleRPr);
+        var strike = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Strike>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
         if (strike != null) {
             foreach (var d in TextDecorations.Strikethrough) decs.Add(d);
         }
@@ -8070,13 +9041,13 @@ public class AhkWpfEngine
             flowRun.TextDecorations = decs;
         }
 
-        var fontSize = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.FontSize>(rPr, runStyleRPr, paragraphStyleRPr);
+        var fontSize = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.FontSize>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
         if (fontSize != null) {
             double sz;
             if (fontSize.Val != null && double.TryParse(fontSize.Val.Value, out sz))
                 flowRun.FontSize = (sz / 2.0) * (96.0 / 72.0); // Convert points to WPF pixels
         }
-        var color = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Color>(rPr, runStyleRPr, paragraphStyleRPr);
+        var color = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.Color>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
         if (color != null && color.Val != null) {
             try {
                 string cVal = color.Val.Value;
@@ -8086,25 +9057,51 @@ public class AhkWpfEngine
             } catch { }
         }
         
-        var runFonts = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.RunFonts>(rPr, runStyleRPr, paragraphStyleRPr);
+        string asciiFont = null;
+        string eastAsiaFont = null;
+        var runFonts = GetRunProperty<DocumentFormat.OpenXml.Wordprocessing.RunFonts>(rPr, runStyleId, paragraphStyleId, styles, defaultRPr);
         if (runFonts != null) {
-            bool hasNonAscii = false;
-            if (flowRun.Text != null) {
-                foreach (char ch in flowRun.Text) {
-                    if (ch > 127) { hasNonAscii = true; break; }
-                }
-            }
-            string fontName = ResolveRunFontName(runFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, hasNonAscii);
-            if (!string.IsNullOrEmpty(fontName)) {
-                flowRun.FontFamily = ResolveFontFamily(fontName);
+            asciiFont = ResolveRunFontName(runFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, false);
+            eastAsiaFont = ResolveRunFontName(runFonts, _themeMajorLatin, _themeMinorLatin, _themeMajorEastAsia, _themeMinorEastAsia, true);
+        }
+
+        bool hasNonAscii = false;
+        if (flowRun.Text != null) {
+            foreach (char ch in flowRun.Text) {
+                if (ch > 127) { hasNonAscii = true; break; }
             }
         }
+
+        if (hasNonAscii && string.IsNullOrEmpty(eastAsiaFont)) {
+            eastAsiaFont = _themeMinorEastAsia; // Fallback to document default East Asian font
+        }
+        if (string.IsNullOrEmpty(asciiFont)) {
+            asciiFont = _themeMinorLatin; // Fallback to document default Latin font
+        }
+
+        string fontChain = "";
+        if (hasNonAscii) {
+            if (!string.IsNullOrEmpty(eastAsiaFont)) fontChain += eastAsiaFont;
+            if (!string.IsNullOrEmpty(asciiFont) && asciiFont != eastAsiaFont) {
+                if (fontChain != "") fontChain += ", ";
+                fontChain += asciiFont;
+            }
+        } else {
+            if (!string.IsNullOrEmpty(asciiFont)) fontChain += asciiFont;
+            if (!string.IsNullOrEmpty(eastAsiaFont) && eastAsiaFont != asciiFont) {
+                if (fontChain != "") fontChain += ", ";
+                fontChain += eastAsiaFont;
+            }
+        }
+        if (!string.IsNullOrEmpty(fontChain)) {
+            flowRun.FontFamily = ResolveFontFamily(fontChain);
+        }
         // Highlight
-        if (rPr.Highlight != null && rPr.Highlight.Val != null) {
+        if (rPr != null && rPr.Highlight != null && rPr.Highlight.Val != null) {
             flowRun.Background = HighlightColorToBrush(rPr.Highlight.Val.Value);
         }
         // Shading on run
-        if (rPr.Shading != null && rPr.Shading.Fill != null) {
+        if (rPr != null && rPr.Shading != null && rPr.Shading.Fill != null) {
             string fillHex = rPr.Shading.Fill.Value;
             if (!string.IsNullOrEmpty(fillHex) && fillHex != "auto" && fillHex != "Auto") {
                 try {
@@ -8114,7 +9111,7 @@ public class AhkWpfEngine
             }
         }
         // Superscript / Subscript
-        if (rPr.VerticalTextAlignment != null && rPr.VerticalTextAlignment.Val != null) {
+        if (rPr != null && rPr.VerticalTextAlignment != null && rPr.VerticalTextAlignment.Val != null) {
             if (rPr.VerticalTextAlignment.Val.Value == VerticalPositionValues.Superscript) {
                 flowRun.Typography.Variants = System.Windows.FontVariants.Superscript;
                 flowRun.FontSize = (flowRun.FontSize > 0 ? flowRun.FontSize : 14) * 0.7;
@@ -8195,7 +9192,7 @@ public class AhkWpfEngine
 
     // Build a FlowDocument Table from an OpenXML Table
     private System.Windows.Documents.Table BuildFlowTable(
-        DocumentFormat.OpenXml.Wordprocessing.Table oxTable, MainDocumentPart mainPart) {
+        DocumentFormat.OpenXml.Wordprocessing.Table oxTable, MainDocumentPart mainPart, FlowDocument doc) {
         
         var flowTable = new System.Windows.Documents.Table();
         flowTable.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(110, 110, 110));
@@ -8232,7 +9229,7 @@ public class AhkWpfEngine
 
                 // Cell content — multiple paragraphs
                 foreach (var cellPara in oxCell.Elements<DocumentFormat.OpenXml.Wordprocessing.Paragraph>()) {
-                    var flowCellPara = BuildFlowParagraph(cellPara, cellPara.ParagraphProperties, mainPart);
+                    var flowCellPara = BuildFlowParagraph(cellPara, cellPara.ParagraphProperties, mainPart, doc);
                     flowCellPara.Margin = new Thickness(0, 0, 0, 2);
                     cell.Blocks.Add(flowCellPara);
                 }
@@ -8277,6 +9274,28 @@ public class AhkWpfEngine
             for (int i = 0; i < maxCols; i++)
                 flowTable.Columns.Add(new System.Windows.Documents.TableColumn { Width = new GridLength(1, GridUnitType.Star) });
         }
+
+        // Fix table cropping: scale absolute column widths to fit within available content area
+        try {
+            double pageWidth = double.IsNaN(doc.PageWidth) ? 816.0 : doc.PageWidth;
+            double availableWidth = pageWidth - doc.PagePadding.Left - doc.PagePadding.Right;
+            if (availableWidth > 0 && flowTable.Columns.Count > 0) {
+                double totalColWidth = 0;
+                bool allAbsolute = true;
+                foreach (var col in flowTable.Columns) {
+                    if (col.Width.IsStar) { allAbsolute = false; break; }
+                    totalColWidth += col.Width.Value;
+                }
+                // Only scale if columns use absolute widths and exceed available space
+                if (allAbsolute && totalColWidth > availableWidth && totalColWidth > 0) {
+                    double scale = availableWidth / totalColWidth;
+                    foreach (var col in flowTable.Columns) {
+                        col.Width = new GridLength(col.Width.Value * scale);
+                    }
+                }
+            }
+        } catch { }
+
         return flowTable;
     }
 
@@ -8284,6 +9303,44 @@ public class AhkWpfEngine
     // Static cache of installed system fonts for fast lookup
     private static System.Collections.Generic.HashSet<string> _installedFonts;
     private static string _userFontsUriStr;
+
+    private static readonly System.Collections.Generic.Dictionary<string, string[]> _fontAliases = new System.Collections.Generic.Dictionary<string, string[]>(System.StringComparer.OrdinalIgnoreCase) {
+        { "SimSun", new[] { "SimSun", "宋体", "Songti", "NSimSun", "新宋体" } },
+        { "宋体", new[] { "SimSun", "宋体", "Songti", "NSimSun", "新宋体" } },
+        { "Songti", new[] { "SimSun", "宋体", "Songti", "NSimSun", "新宋体" } },
+        { "NSimSun", new[] { "SimSun", "宋体", "Songti", "NSimSun", "新宋体" } },
+        { "新宋体", new[] { "SimSun", "宋体", "Songti", "NSimSun", "新宋体" } },
+        { "Microsoft YaHei", new[] { "Microsoft YaHei", "微软雅黑", "YaHei", "Microsoft YaHei UI", "微软雅黑 UI" } },
+        { "微软雅黑", new[] { "Microsoft YaHei", "微软雅黑", "YaHei", "Microsoft YaHei UI", "微软雅黑 UI" } },
+        { "YaHei", new[] { "Microsoft YaHei", "微软雅黑", "YaHei", "Microsoft YaHei UI", "微软雅黑 UI" } },
+        { "KaiTi", new[] { "KaiTi", "楷体", "Kaiti", "KaiTi_GB2312", "楷体_GB2312" } },
+        { "楷体", new[] { "KaiTi", "楷体", "Kaiti", "KaiTi_GB2312", "楷体_GB2312" } },
+        { "楷体_GB2312", new[] { "KaiTi", "楷体", "Kaiti", "KaiTi_GB2312", "楷体_GB2312" } },
+        { "FangSong", new[] { "FangSong", "仿宋", "Fangsong", "FangSong_GB2312", "仿宋_GB2312" } },
+        { "仿宋", new[] { "FangSong", "仿宋", "Fangsong", "FangSong_GB2312", "仿宋_GB2312" } },
+        { "仿宋_GB2312", new[] { "FangSong", "仿宋", "Fangsong", "FangSong_GB2312", "仿宋_GB2312" } },
+        { "SimHei", new[] { "SimHei", "黑体", "Heiti" } },
+        { "黑体", new[] { "SimHei", "黑体", "Heiti" } },
+        { "LiSu", new[] { "LiSu", "隶书", "Lishu" } },
+        { "隶书", new[] { "LiSu", "隶书", "Lishu" } },
+        { "YouYuan", new[] { "YouYuan", "幼圆", "Youyuan" } },
+        { "幼圆", new[] { "YouYuan", "幼圆", "Youyuan" } },
+        { "Times", new[] { "Times New Roman", "Georgia", "Times" } },
+        { "Courier", new[] { "Courier New", "Consolas" } },
+        { "Helvetica", new[] { "Arial", "Segoe UI" } },
+        { "Calibri", new[] { "Calibri", "Segoe UI", "Arial" } }
+    };
+
+    private static bool IsFontInstalledWithAlias(string fontName, System.Collections.Generic.HashSet<string> installed) {
+        if (string.IsNullOrEmpty(fontName)) return false;
+        if (installed.Contains(fontName)) return true;
+        if (_fontAliases.ContainsKey(fontName)) {
+            foreach (var alias in _fontAliases[fontName]) {
+                if (installed.Contains(alias)) return true;
+            }
+        }
+        return false;
+    }
     
     private static bool IsSerifFont(string fontName) {
         if (string.IsNullOrEmpty(fontName)) return false;
@@ -8303,7 +9360,7 @@ public class AhkWpfEngine
 
     private static System.Collections.Generic.HashSet<string> GetInstalledFonts() {
         if (_installedFonts == null) {
-            _installedFonts = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _installedFonts = new System.Collections.Generic.HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
             
             // 1. Scan default system font families and all their localized names
             foreach (var family in System.Windows.Media.Fonts.SystemFontFamilies) {
@@ -8331,42 +9388,109 @@ public class AhkWpfEngine
                     }
                 }
             } catch { }
+
+            // 3. Scan system and user registry fonts to match AHK side
+            foreach (var hive in new[] { Microsoft.Win32.Registry.LocalMachine, Microsoft.Win32.Registry.CurrentUser }) {
+                try {
+                    using (var key = hive.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts")) {
+                        if (key != null) {
+                            foreach (var valName in key.GetValueNames()) {
+                                string name = valName;
+                                name = System.Text.RegularExpressions.Regex.Replace(name, @"\s*\((TrueType|OpenType|PostScript|Type 1|Vector|Stroke)\)$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+(Bold|Italic|Regular|Semibold|Semi-Bold|Light|Extra\s*Light|Medium|Black|Condensed|Oblique|Bold\s+Italic|Italic\s+Bold|Demibold|Heavy|Nord)\b", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                                name = name.Trim();
+                                if (!string.IsNullOrEmpty(name)) {
+                                    if (name.Contains("&")) {
+                                        foreach (var sName in name.Split('&')) {
+                                            string trimmedSub = sName.Trim();
+                                            if (!string.IsNullOrEmpty(trimmedSub)) _installedFonts.Add(trimmedSub);
+                                        }
+                                    } else {
+                                        _installedFonts.Add(name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch { }
+            }
         }
         return _installedFonts;
     }
 
     private System.Windows.Media.FontFamily ResolveFontFamily(string requestedFont) {
         if (string.IsNullOrEmpty(requestedFont)) return new System.Windows.Media.FontFamily("Segoe UI");
+        
         var installed = GetInstalledFonts();
-        if (installed.Contains(requestedFont)) {
-            // Check if it's a per-user font by checking if it exists in userFonts folder
-            if (!string.IsNullOrEmpty(_userFontsUriStr)) {
-                try {
-                    foreach (var family in System.Windows.Media.Fonts.GetFontFamilies(new Uri(_userFontsUriStr))) {
-                        bool matched = string.Equals(family.Source, requestedFont, StringComparison.OrdinalIgnoreCase);
-                        if (!matched) {
-                            foreach (var name in family.FamilyNames.Values) {
-                                if (string.Equals(name, requestedFont, StringComparison.OrdinalIgnoreCase)) {
-                                    matched = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if (matched) {
-                            return new System.Windows.Media.FontFamily(new Uri(_userFontsUriStr), "./#" + requestedFont);
+        var parts = requestedFont.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+        var resolvedFonts = new System.Collections.Generic.List<string>();
+        
+        foreach (var p in parts) {
+            string fontName = p.Trim();
+            if (string.IsNullOrEmpty(fontName)) continue;
+            
+            string resolvedName = null;
+            if (installed.Contains(fontName)) {
+                resolvedName = fontName;
+            } else {
+                if (_fontAliases.ContainsKey(fontName)) {
+                    foreach (var alias in _fontAliases[fontName]) {
+                        if (installed.Contains(alias)) {
+                            resolvedName = alias;
+                            break;
                         }
                     }
-                } catch { }
+                }
             }
-            return new System.Windows.Media.FontFamily(requestedFont);
+            
+            if (resolvedName != null) {
+                bool isUserFont = false;
+                if (!string.IsNullOrEmpty(_userFontsUriStr)) {
+                    try {
+                        foreach (var family in System.Windows.Media.Fonts.GetFontFamilies(new Uri(_userFontsUriStr))) {
+                            bool matched = string.Equals(family.Source, resolvedName, StringComparison.OrdinalIgnoreCase);
+                            if (!matched) {
+                                foreach (var name in family.FamilyNames.Values) {
+                                    if (string.Equals(name, resolvedName, StringComparison.OrdinalIgnoreCase)) {
+                                        matched = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (matched) {
+                                resolvedFonts.Add(_userFontsUriStr + "#" + resolvedName);
+                                isUserFont = true;
+                                break;
+                            }
+                        }
+                    } catch { }
+                }
+                if (!isUserFont) {
+                    resolvedFonts.Add(resolvedName);
+                }
+            } else {
+                resolvedFonts.Add(fontName); // Add anyway as fallback
+            }
         }
         
-        // Build WPF fallback chain preserving Serif/Sans-Serif style
-        if (IsSerifFont(requestedFont)) {
-            return new System.Windows.Media.FontFamily(requestedFont + ", Times New Roman, SimSun, Georgia, PMingLiU, KaiTi, Segoe UI, Arial, Microsoft YaHei");
+        // Add default fallbacks based on whether the primary font is Serif
+        string primaryFont = parts.Length > 0 ? parts[0].Trim() : "";
+        if (IsSerifFont(primaryFont)) {
+            resolvedFonts.AddRange(new[] { "Times New Roman", "SimSun", "Georgia", "PMingLiU", "KaiTi", "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", "Arial", "Microsoft YaHei" });
         } else {
-            return new System.Windows.Media.FontFamily(requestedFont + ", Segoe UI, Arial, Microsoft YaHei, SimSun, Malgun Gothic, Yu Gothic, Times New Roman");
+            resolvedFonts.AddRange(new[] { "Segoe UI", "Segoe UI Emoji", "Segoe UI Symbol", "Arial", "Microsoft YaHei", "SimSun", "Malgun Gothic", "Yu Gothic", "Times New Roman" });
         }
+        
+        // Remove duplicates while keeping order
+        var uniqueFonts = new System.Collections.Generic.List<string>();
+        foreach (var f in resolvedFonts) {
+            if (!uniqueFonts.Contains(f)) {
+                uniqueFonts.Add(f);
+            }
+        }
+        
+        string joined = string.Join(", ", uniqueFonts);
+        return new System.Windows.Media.FontFamily(joined);
     }
 
     // === Page Break Spacer Management ===
@@ -8460,10 +9584,39 @@ public class AhkWpfEngine
         string rtbName = rtb.Name;
         string readerName = rtbName + "_PageReader";
         string pageBorderName = rtbName + "_PageBorder";
+        string editorWrapperName = rtbName + "_EditorWrapper";
 
-        ScrollViewer editorSv = FindParent<ScrollViewer>(rtb);
-        FrameworkElement editorCanvas = editorSv != null ? (VisualTreeHelper.GetParent(editorSv) as FrameworkElement ?? editorSv.Parent as FrameworkElement) : null;
-        Grid editorWrapper = editorCanvas != null ? (VisualTreeHelper.GetParent(editorCanvas) as Grid ?? editorCanvas.Parent as Grid) : null;
+        // Use FindName for robust lookup — visual tree walking fails when parents are Collapsed
+        var pageBorder = win.FindName(pageBorderName) as System.Windows.Controls.Border;
+        if (pageBorder == null) pageBorder = rtb.Parent as System.Windows.Controls.Border;
+        Grid editorWrapper = win.FindName(editorWrapperName) as Grid;
+        
+        // Find editorCanvas and editorSv by walking from pageBorder upwards via logical tree
+        // (logical tree is always available even when elements are Collapsed)
+        FrameworkElement editorCanvas = null;
+        ScrollViewer editorSv = null;
+        if (pageBorder != null) {
+            // pageBorder → Grid(editorCenter) → ScrollViewer(editorSv) → Border(editorCanvas)
+            var editorCenter = LogicalTreeHelper.GetParent(pageBorder) as FrameworkElement;
+            editorSv = editorCenter != null ? LogicalTreeHelper.GetParent(editorCenter) as ScrollViewer : null;
+            editorCanvas = editorSv != null ? LogicalTreeHelper.GetParent(editorSv) as FrameworkElement : null;
+        }
+        // Fallback: try visual tree if logical tree didn't work
+        if (editorSv == null) {
+            editorSv = FindParent<ScrollViewer>(rtb);
+        }
+        if (editorCanvas == null && editorSv != null) {
+            editorCanvas = LogicalTreeHelper.GetParent(editorSv) as FrameworkElement;
+            if (editorCanvas == null) {
+                try { editorCanvas = VisualTreeHelper.GetParent(editorSv) as FrameworkElement; } catch { }
+            }
+        }
+        if (editorWrapper == null && editorCanvas != null) {
+            editorWrapper = LogicalTreeHelper.GetParent(editorCanvas) as Grid;
+            if (editorWrapper == null) {
+                try { editorWrapper = VisualTreeHelper.GetParent(editorCanvas) as Grid; } catch { }
+            }
+        }
 
         FlowDocumentReader reader = null;
         if (editorWrapper != null) {
@@ -8474,11 +9627,18 @@ public class AhkWpfEngine
                 }
             }
         }
-
-        var pageBorder = rtb.Parent as System.Windows.Controls.Border ?? win.FindName(pageBorderName) as System.Windows.Controls.Border;
+        // Also try FindName for the reader
+        if (reader == null) {
+            reader = win.FindName(readerName) as FlowDocumentReader;
+        }
 
         // Save view mode
         _docViewModes[rtbName] = viewMode;
+
+        // If transitioning away from twoup, restore the editor's visual chain first so the RTB is fully visible and connected when Document is assigned
+        if (viewMode != "twoup") {
+            _RestoreEditorChain(rtb, pageBorder, editorSv, editorCanvas);
+        }
 
         // STEP 1: ALWAYS consolidate doc back to RTB first
         if (reader != null && reader.Document != null) {
@@ -8493,17 +9653,28 @@ public class AhkWpfEngine
         }
 
         // If the mode is NOT twoup, remove reader from visual tree
-        if (viewMode != "twoup" && editorWrapper != null) {
-            var toRemove = new System.Collections.Generic.List<UIElement>();
-            foreach (var child in editorWrapper.Children) {
-                if (child is FlowDocumentReader) {
-                    toRemove.Add((UIElement)child);
+        if (viewMode != "twoup") {
+            if (editorWrapper != null) {
+                var toRemove = new System.Collections.Generic.List<UIElement>();
+                foreach (var child in editorWrapper.Children) {
+                    if (child is FlowDocumentReader) {
+                        toRemove.Add((UIElement)child);
+                    }
+                }
+                foreach (var r in toRemove) {
+                    editorWrapper.Children.Remove(r);
+                    try { win.UnregisterName(((FrameworkElement)r).Name); } catch {}
                 }
             }
-            foreach (var r in toRemove) {
-                editorWrapper.Children.Remove(r);
-                try { win.UnregisterName(((FrameworkElement)r).Name); } catch {}
-            }
+            // Also try to unregister by name if it still exists
+            try {
+                var staleReader = win.FindName(readerName) as FlowDocumentReader;
+                if (staleReader != null) {
+                    var parentPanel = LogicalTreeHelper.GetParent(staleReader) as System.Windows.Controls.Panel;
+                    if (parentPanel != null) parentPanel.Children.Remove(staleReader);
+                    try { win.UnregisterName(readerName); } catch { }
+                }
+            } catch { }
             reader = null;
         }
 
@@ -8513,17 +9684,8 @@ public class AhkWpfEngine
             var statusPageNav = win.FindName(rtbName + "_StatusPageNav") as FrameworkElement;
             if (statusPageNav != null) statusPageNav.Visibility = Visibility.Collapsed;
 
-            // Show RichTextBox editor canvas
-            if (editorCanvas != null) {
-                editorCanvas.Visibility = Visibility.Visible;
-                editorCanvas.IsEnabled = true;
-                editorCanvas.IsHitTestVisible = true;
-            }
-            if (editorSv != null) {
-                editorSv.Visibility = Visibility.Visible;
-                editorSv.IsEnabled = true;
-                editorSv.IsHitTestVisible = true;
-            }
+            // Robustly restore the entire editor visual chain
+            _RestoreEditorChain(rtb, pageBorder, editorSv, editorCanvas);
 
             var settings = rtb.Document.Tag as DocLayoutSettings;
             double pgW = 816;
@@ -8535,11 +9697,9 @@ public class AhkWpfEngine
                 pgPad = settings.PagePadding;
             }
             if (pageBorder != null) {
-                pageBorder.Visibility = Visibility.Visible;
-                pageBorder.IsEnabled = true;
-                pageBorder.IsHitTestVisible = true;
                 pageBorder.Width = pgW;
                 pageBorder.MinHeight = pgH;
+                pageBorder.ClearValue(FrameworkElement.HeightProperty);
                 pageBorder.Effect = new System.Windows.Media.Effects.DropShadowEffect {
                     BlurRadius = 15,
                     ShadowDepth = 3,
@@ -8557,25 +9717,24 @@ public class AhkWpfEngine
             // Insert spacers
             _InsertPageBreakSpacers(rtb, currentTheme);
 
-            rtb.Visibility = Visibility.Visible;
-            rtb.IsEnabled = true;
-            rtb.IsHitTestVisible = true;
-            rtb.IsReadOnly = false;
-            rtb.IsDocumentEnabled = false;
-
-            if (rtb.Document != null) {
-                rtb.CaretPosition = rtb.Document.ContentStart;
-            }
-
-            if (rtb.IsVisible) {
-                rtb.Focus();
-                System.Windows.Input.Keyboard.Focus(rtb);
-            }
+            // Deferred focus and scroll restore — use multiple passes at different priorities
             rtb.Dispatcher.BeginInvoke(new Action(() => {
-                rtb.IsReadOnly = false;
+                _RestoreEditorChain(rtb, pageBorder, editorSv, editorCanvas);
+                if (rtb.Document != null) {
+                    rtb.Document.IsEnabled = true;
+                    rtb.CaretPosition = rtb.Document.ContentStart;
+                }
                 rtb.Focus();
                 System.Windows.Input.Keyboard.Focus(rtb);
-            }), System.Windows.Threading.DispatcherPriority.Background);
+                rtb.Dispatcher.BeginInvoke(new Action(() => {
+                    rtb.IsReadOnly = false;
+                    rtb.Focusable = true;
+                    rtb.IsEnabled = false;
+                    rtb.IsEnabled = true;
+                    rtb.Focus();
+                    System.Windows.Input.Keyboard.Focus(rtb);
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
 
         } else if (viewMode == "twoup") {
             _RemovePageBreakSpacers(rtb);
@@ -8590,6 +9749,12 @@ public class AhkWpfEngine
                 reader.BorderThickness = new Thickness(0);
                 reader.IsFindEnabled = false;
                 reader.Visibility = Visibility.Collapsed;
+                // Set text rendering quality for two-page mode
+                TextOptions.SetTextFormattingMode(reader, TextFormattingMode.Ideal);
+                TextOptions.SetTextRenderingMode(reader, TextRenderingMode.ClearType);
+                TextOptions.SetTextHintingMode(reader, TextHintingMode.Fixed);
+                RenderOptions.SetClearTypeHint(reader, ClearTypeHint.Enabled);
+                reader.UseLayoutRounding = true;
                 Grid.SetColumn(reader, 1);
                 Grid.SetRow(reader, 0);
 
@@ -8641,6 +9806,17 @@ public class AhkWpfEngine
                 doc.PageHeight = pgH;
                 doc.PagePadding = pgPad;
                 doc.ColumnWidth = double.MaxValue;
+                
+                // Set text rendering quality on the document itself
+                TextOptions.SetTextFormattingMode(doc, TextFormattingMode.Ideal);
+                TextOptions.SetTextRenderingMode(doc, TextRenderingMode.ClearType);
+                TextOptions.SetTextHintingMode(doc, TextHintingMode.Fixed);
+                // Also ensure the reader has these settings
+                TextOptions.SetTextFormattingMode(reader, TextFormattingMode.Ideal);
+                TextOptions.SetTextRenderingMode(reader, TextRenderingMode.ClearType);
+                TextOptions.SetTextHintingMode(reader, TextHintingMode.Fixed);
+                RenderOptions.SetClearTypeHint(reader, ClearTypeHint.Enabled);
+                reader.UseLayoutRounding = true;
 
                 if (currentTheme == "Dark") {
                     reader.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30));
@@ -8670,21 +9846,10 @@ public class AhkWpfEngine
             var statusPageNav = win.FindName(rtbName + "_StatusPageNav") as FrameworkElement;
             if (statusPageNav != null) statusPageNav.Visibility = Visibility.Collapsed;
 
-            if (editorCanvas != null) {
-                editorCanvas.Visibility = Visibility.Visible;
-                editorCanvas.IsEnabled = true;
-                editorCanvas.IsHitTestVisible = true;
-            }
-            if (editorSv != null) {
-                editorSv.Visibility = Visibility.Visible;
-                editorSv.IsEnabled = true;
-                editorSv.IsHitTestVisible = true;
-            }
+            // Robustly restore the entire editor visual chain
+            _RestoreEditorChain(rtb, pageBorder, editorSv, editorCanvas);
 
             if (pageBorder != null) {
-                pageBorder.Visibility = Visibility.Visible;
-                pageBorder.IsEnabled = true;
-                pageBorder.IsHitTestVisible = true;
                 var settings = rtb.Document.Tag as DocLayoutSettings;
                 double pgW = 816;
                 double pgH = 1056;
@@ -8707,36 +9872,348 @@ public class AhkWpfEngine
             rtb.Document.ClearValue(FlowDocument.BackgroundProperty);
             rtb.Document.ClearValue(FlowDocument.ForegroundProperty);
 
-            rtb.Visibility = Visibility.Visible;
-            rtb.IsEnabled = true;
-            rtb.IsHitTestVisible = true;
-            rtb.IsReadOnly = false;
-            rtb.IsDocumentEnabled = false;
-
-            if (rtb.Document != null) {
-                rtb.CaretPosition = rtb.Document.ContentStart;
-            }
-
-            if (rtb.IsVisible) {
-                rtb.Focus();
-                System.Windows.Input.Keyboard.Focus(rtb);
-            }
+            // Deferred focus and scroll restore — use multiple passes at different priorities
             rtb.Dispatcher.BeginInvoke(new Action(() => {
-                rtb.IsReadOnly = false;
+                _RestoreEditorChain(rtb, pageBorder, editorSv, editorCanvas);
+                if (rtb.Document != null) {
+                    rtb.Document.IsEnabled = true;
+                    rtb.CaretPosition = rtb.Document.ContentStart;
+                }
                 rtb.Focus();
                 System.Windows.Input.Keyboard.Focus(rtb);
-            }), System.Windows.Threading.DispatcherPriority.Background);
+                rtb.Dispatcher.BeginInvoke(new Action(() => {
+                    rtb.IsReadOnly = false;
+                    rtb.Focusable = true;
+                    rtb.IsEnabled = false;
+                    rtb.IsEnabled = true;
+                    rtb.Focus();
+                    System.Windows.Input.Keyboard.Focus(rtb);
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    // Robustly restore the entire editor visual chain from RTB up through all ancestors
+    private static void _RestoreEditorChain(RichTextBox rtb, System.Windows.Controls.Border pageBorder, ScrollViewer editorSv, FrameworkElement editorCanvas) {
+        // Force every element in the chain to Visible + Enabled + HitTestVisible
+        // Walk from the innermost (RTB) outward
+        _ForceElementVisible(rtb);
+        rtb.IsReadOnly = false;
+        rtb.IsDocumentEnabled = false;
+        rtb.Focusable = true;
+        rtb.AllowDrop = true;
+        // Clear any stale UIElement properties
+        rtb.ClearValue(UIElement.IsHitTestVisibleProperty);
+        rtb.ClearValue(UIElement.FocusableProperty);
+        rtb.ClearValue(UIElement.IsEnabledProperty);
+        
+        if (pageBorder != null) _ForceElementVisible(pageBorder);
+        
+        // editorCenter (the Grid between pageBorder and ScrollViewer)
+        if (pageBorder != null) {
+            var editorCenter = LogicalTreeHelper.GetParent(pageBorder) as FrameworkElement;
+            if (editorCenter != null) _ForceElementVisible(editorCenter);
+        }
+        
+        if (editorSv != null) {
+            _ForceElementVisible(editorSv);
+            // Explicitly restore scroll bar visibility in case it was altered
+            editorSv.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+            editorSv.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            editorSv.CanContentScroll = true;
+            editorSv.ClearValue(UIElement.IsHitTestVisibleProperty);
+            // Force ScrollViewer to recalculate scroll extents
+            editorSv.InvalidateScrollInfo();
+            editorSv.InvalidateMeasure();
+            editorSv.InvalidateArrange();
+        }
+        
+        if (editorCanvas != null) {
+            _ForceElementVisible(editorCanvas);
+            // Force layout recalculation
+            editorCanvas.InvalidateMeasure();
+            editorCanvas.InvalidateArrange();
+        }
+        
+        // Walk up the entire visual tree from RTB and force everything visible + enabled
+        DependencyObject current = rtb;
+        int maxDepth = 20;
+        while (current != null && maxDepth-- > 0) {
+            if (current is FrameworkElement) {
+                var fe = (FrameworkElement)current;
+                fe.Visibility = Visibility.Visible;
+                fe.IsEnabled = true;
+                fe.IsHitTestVisible = true;
+            }
+            try { current = VisualTreeHelper.GetParent(current); } catch { break; }
+        }
+    }
+    
+    private static void _ForceElementVisible(FrameworkElement el) {
+        if (el == null) return;
+        el.Visibility = Visibility.Visible;
+        el.IsEnabled = true;
+        el.IsHitTestVisible = true;
+        el.ClearValue(UIElement.IsEnabledProperty);
+    }
+
+    // Walk the logical tree from the caret to find the enclosing TableCell
+    private static System.Windows.Documents.TableCell FindTableCellAtCaret(RichTextBox rtb) {
+        try {
+            var pos = rtb.CaretPosition;
+            if (pos == null) return null;
+            DependencyObject parent = pos.Parent;
+            int maxDepth = 20;
+            while (parent != null && maxDepth-- > 0) {
+                if (parent is System.Windows.Documents.TableCell)
+                    return (System.Windows.Documents.TableCell)parent;
+                parent = LogicalTreeHelper.GetParent(parent);
+            }
+        } catch { }
+        return null;
+    }
+
+    // WPF-native color picker dialog — shows a grid of preset colors + custom RGB sliders
+    private static System.Windows.Media.Color? ShowColorPickerDialog(Window owner) {
+        System.Windows.Media.Color? result = null;
+        var dlg = new Window();
+        dlg.Title = "Choose Color";
+        dlg.Width = 380;
+        dlg.Height = 400;
+        dlg.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        dlg.Owner = owner;
+        dlg.ResizeMode = ResizeMode.NoResize;
+        dlg.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30));
+
+        var mainPanel = new StackPanel { Margin = new Thickness(12) };
+
+        // Title
+        var title = new TextBlock { Text = "Select a Color", FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = System.Windows.Media.Brushes.White, Margin = new Thickness(0, 0, 0, 8) };
+        mainPanel.Children.Add(title);
+
+        // Preset colors grid
+        string[] presets = { "#000000", "#333333", "#555555", "#888888", "#AAAAAA", "#CCCCCC", "#EEEEEE", "#FFFFFF",
+                             "#FF0000", "#FF4500", "#FF8C00", "#FFD700", "#FFFF00", "#9ACD32", "#32CD32", "#008000",
+                             "#00CED1", "#4169E1", "#0000FF", "#8A2BE2", "#9932CC", "#FF1493", "#FF69B4", "#FFC0CB",
+                             "#800000", "#A0522D", "#DAA520", "#808000", "#006400", "#008080", "#000080", "#4B0082",
+                             "#F0E68C", "#FAEBD7", "#FFE4C4", "#FFDEAD", "#DEB887", "#D2B48C", "#BC8F8F", "#CD853F" };
+
+        var grid = new System.Windows.Controls.WrapPanel { Margin = new Thickness(0, 4, 0, 8) };
+        var preview = new System.Windows.Controls.Border {
+            Width = double.NaN, Height = 36, Margin = new Thickness(0, 8, 0, 4),
+            CornerRadius = new CornerRadius(4),
+            Background = System.Windows.Media.Brushes.White,
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(80, 80, 80)),
+            BorderThickness = new Thickness(1)
+        };
+
+        byte rVal = 0, gVal = 0, bVal = 0;
+
+        // RGB Sliders
+        var sliderPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+        var rSlider = new Slider { Minimum = 0, Maximum = 255, Value = 0, Margin = new Thickness(0, 2, 0, 2) };
+        var gSlider = new Slider { Minimum = 0, Maximum = 255, Value = 0, Margin = new Thickness(0, 2, 0, 2) };
+        var bSlider = new Slider { Minimum = 0, Maximum = 255, Value = 0, Margin = new Thickness(0, 2, 0, 2) };
+        var rLabel = new TextBlock { Text = "R: 0", Foreground = System.Windows.Media.Brushes.LightCoral, FontSize = 11 };
+        var gLabel = new TextBlock { Text = "G: 0", Foreground = System.Windows.Media.Brushes.LightGreen, FontSize = 11 };
+        var bLabel = new TextBlock { Text = "B: 0", Foreground = System.Windows.Media.Brushes.LightBlue, FontSize = 11 };
+
+        Action updatePreview = () => {
+            rVal = (byte)rSlider.Value; gVal = (byte)gSlider.Value; bVal = (byte)bSlider.Value;
+            preview.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(rVal, gVal, bVal));
+            rLabel.Text = "R: " + rVal; gLabel.Text = "G: " + gVal; bLabel.Text = "B: " + bVal;
+        };
+        rSlider.ValueChanged += (s, e) => updatePreview();
+        gSlider.ValueChanged += (s, e) => updatePreview();
+        bSlider.ValueChanged += (s, e) => updatePreview();
+
+        foreach (string hex in presets) {
+            var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex);
+            var swatch = new System.Windows.Controls.Border {
+                Width = 28, Height = 28, Margin = new Thickness(2),
+                Background = new System.Windows.Media.SolidColorBrush(color),
+                BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(60, 60, 60)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(3),
+                Cursor = System.Windows.Input.Cursors.Hand
+            };
+            var capturedColor = color;
+            swatch.MouseLeftButtonDown += (s, e) => {
+                rSlider.Value = capturedColor.R;
+                gSlider.Value = capturedColor.G;
+                bSlider.Value = capturedColor.B;
+            };
+            grid.Children.Add(swatch);
+        }
+        mainPanel.Children.Add(grid);
+        mainPanel.Children.Add(preview);
+
+        sliderPanel.Children.Add(rLabel); sliderPanel.Children.Add(rSlider);
+        sliderPanel.Children.Add(gLabel); sliderPanel.Children.Add(gSlider);
+        sliderPanel.Children.Add(bLabel); sliderPanel.Children.Add(bSlider);
+        mainPanel.Children.Add(sliderPanel);
+
+        // OK / Cancel buttons
+        var btnPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+        var okBtn = new System.Windows.Controls.Button { Content = "OK", Width = 80, Height = 30, Margin = new Thickness(4, 0, 0, 0) };
+        var cancelBtn = new System.Windows.Controls.Button { Content = "Cancel", Width = 80, Height = 30, Margin = new Thickness(4, 0, 0, 0) };
+        okBtn.Click += (s, e) => { result = System.Windows.Media.Color.FromRgb(rVal, gVal, bVal); dlg.DialogResult = true; };
+        cancelBtn.Click += (s, e) => { dlg.DialogResult = false; };
+        btnPanel.Children.Add(cancelBtn);
+        btnPanel.Children.Add(okBtn);
+        mainPanel.Children.Add(btnPanel);
+
+        dlg.Content = mainPanel;
+        dlg.ShowDialog();
+        return result;
+    }
+
+    // Sends the spell check state, active language, and custom dictionaries back to AHK via event routing
+    private void SendSpellCheckInfo(RichTextBox rtb, string winId, string ctrlName) {
+        try {
+            bool isEnabled = rtb.SpellCheck.IsEnabled;
+            string configLang = "en-US";
+            if (_spellCheckLangs.ContainsKey(rtb.Name)) {
+                configLang = _spellCheckLangs[rtb.Name];
+            } else if (rtb.Language != null) {
+                configLang = rtb.Language.ToString();
+            }
+
+            string currentLang = "Unknown";
+            try {
+                var scLang = rtb.Language;
+                if (scLang != null) {
+                    try {
+                        var ci = new System.Globalization.CultureInfo(scLang.ToString());
+                        currentLang = ci.DisplayName + " (" + ci.Name + ")";
+                    } catch {
+                        currentLang = scLang.ToString();
+                    }
+                    if (_spellCheckLangs.ContainsKey(rtb.Name) && _spellCheckLangs[rtb.Name] == "auto") {
+                        currentLang += " (Autodetected)";
+                    }
+                }
+            } catch { }
+
+            string spellingDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Microsoft", "Spelling");
+            var dicts = new System.Collections.Generic.List<string>();
+            try {
+                if (System.IO.Directory.Exists(spellingDir)) {
+                    foreach (var dir in System.IO.Directory.GetDirectories(spellingDir)) {
+                        string langName = System.IO.Path.GetFileName(dir);
+                        foreach (var f in System.IO.Directory.GetFiles(dir, "*.dic")) {
+                            dicts.Add("📘 " + langName + " - " + System.IO.Path.GetFileName(f));
+                        }
+                        foreach (var f in System.IO.Directory.GetFiles(dir, "*.lex")) {
+                            dicts.Add("📗 " + langName + " - " + System.IO.Path.GetFileName(f));
+                        }
+                    }
+                }
+            } catch { }
+            try {
+                foreach (var uriObj in rtb.SpellCheck.CustomDictionaries) {
+                    var uri = uriObj as Uri;
+                    dicts.Add("📙 Custom: " + (uri != null ? uri.LocalPath : uriObj.ToString()));
+                }
+            } catch { }
+
+            string dictsJson = string.Join("|", dicts);
+            string payload = isEnabled.ToString().ToLower() + "," + configLang + "," + currentLang + "," + dictsJson;
+            SendToAhk("EVENT|" + winId + "|" + ctrlName + "|SpellCheckInfo|" + LengthPrefix(payload) + "\n");
+        } catch { }
+    }
+
+    private FlowDocument GetActiveDocument(RichTextBox rtb) {
+        try {
+            var pageReader = win.FindName(rtb.Name + "_PageReader") as FlowDocumentReader;
+            if (pageReader != null && pageReader.Document != null && pageReader.Visibility == Visibility.Visible) {
+                return pageReader.Document;
+            }
+        } catch { }
+        return rtb.Document;
+    }
+
+    private string DetectLanguage(RichTextBox rtb) {
+        try {
+            FlowDocument activeDoc = GetActiveDocument(rtb);
+            TextRange range = new TextRange(activeDoc.ContentStart, activeDoc.ContentEnd);
+            string text = range.Text;
+            if (string.IsNullOrWhiteSpace(text)) return "en-US";
+            
+            // Check for Chinese characters first (CJK Unified Ideographs: 4E00-9FFF)
+            int cjkCount = 0;
+            int totalCheck = Math.Min(text.Length, 2000);
+            for (int i = 0; i < totalCheck; i++) {
+                char c = text[i];
+                if (c >= 0x4E00 && c <= 0x9FFF) {
+                    cjkCount++;
+                }
+            }
+            if (cjkCount > totalCheck * 0.05) {
+                return "zh-CN";
+            }
+            
+            // Check for Cyrillic (Russian) (0400-04FF)
+            int cyrillicCount = 0;
+            for (int i = 0; i < totalCheck; i++) {
+                char c = text[i];
+                if (c >= 0x0400 && c <= 0x04FF) {
+                    cyrillicCount++;
+                }
+            }
+            if (cyrillicCount > totalCheck * 0.1) {
+                return "ru-RU";
+            }
+            
+            // Check for Japanese (Hiragana/Katakana: 3040-309F / 30A0-30FF)
+            int jpCount = 0;
+            for (int i = 0; i < totalCheck; i++) {
+                char c = text[i];
+                if ((c >= 0x3040 && c <= 0x309F) || (c >= 0x30A0 && c <= 0x30FF)) {
+                    jpCount++;
+                }
+            }
+            if (jpCount > totalCheck * 0.05) {
+                return "ja-JP";
+            }
+            
+            // European languages stopwords frequency check
+            string[] words = text.ToLower().Split(new[] { ' ', '\r', '\n', '\t', '.', ',', ';', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
+            int enCount = 0;
+            int frCount = 0;
+            int deCount = 0;
+            int esCount = 0;
+            
+            int wordLimit = Math.Min(words.Length, 200);
+            for (int i = 0; i < wordLimit; i++) {
+                string w = words[i];
+                if (w == "the" || w == "and" || w == "of" || w == "to" || w == "is" || w == "that" || w == "in") enCount++;
+                else if (w == "le" || w == "la" || w == "les" || w == "et" || w == "un" || w == "une" || w == "dans") frCount++;
+                else if (w == "der" || w == "die" || w == "das" || w == "und" || w == "ist" || w == "in" || w == "zu") deCount++;
+                else if (w == "el" || w == "la" || w == "los" || w == "y" || w == "en" || w == "un" || w == "una") esCount++;
+            }
+            
+            if (frCount > enCount && frCount > deCount && frCount > esCount) return "fr-FR";
+            if (deCount > enCount && deCount > frCount && deCount > esCount) return "de-DE";
+            if (esCount > enCount && esCount > frCount && esCount > deCount) return "es-ES";
+            
+            return "en-US";
+        } catch {
+            return "en-US";
         }
     }
 
     private void _InsertPageBreakSpacers(RichTextBox rtb, string theme) {
         if (_isUpdatingSpacers) return;
         _isUpdatingSpacers = true;
+        
+        TextPointer caretPtr = null;
+        try { caretPtr = rtb.CaretPosition; } catch { }
+        
+        rtb.BeginChange();
         try {
-            string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log");
-            System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers: Start. Theme: {0}\n", theme));
-            
             _RemovePageBreakSpacers(rtb);
+            _UnsplitParagraphs(rtb); // Rejoin any previously split paragraphs
             
             // Force visual layout pass to make character bounds queryable
             rtb.UpdateLayout();
@@ -8753,44 +10230,361 @@ public class AhkWpfEngine
             }
             double pageContentHeight = pgH - (pgPad.Top + pgPad.Bottom);
             double availableWidth = pgW - (pgPad.Left + pgPad.Right);
-            double accumulated = 0;
+
+            // Get document's first content Y position as origin
+            double docOriginY = 0;
+            try {
+                var docStartRect = doc.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+                if (!docStartRect.IsEmpty && !double.IsInfinity(docStartRect.Top)) {
+                    docOriginY = docStartRect.Top;
+                }
+            } catch { }
+
+            // Gap visuals between pages
+            double gapHeight = 40;
+            double gapMargin = 10;
+            double totalGapSize = gapHeight + gapMargin * 2; // 60px total
+
+            // We need to iterate and potentially modify blocks, so we do multiple passes
+            // Each pass: find the FIRST block that overflows, split/break it, insert spacer, re-layout
+            int maxPasses = 100; // Safety limit
+            int passCount = 0;
+            double nextPageBreakY = docOriginY + pageContentHeight;
             int pageNumber = 1;
 
-            var flatList = new System.Collections.Generic.List<Block>();
-            _GetLayoutBlocks(doc.Blocks, flatList);
-            System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers: Flat list blocks count: {0}\n", flatList.Count));
+            while (passCount < maxPasses) {
+                passCount++;
+                var flatList = new System.Collections.Generic.List<Block>();
+                _GetLayoutBlocks(doc.Blocks, flatList);
 
-            int spacerCount = 0;
-            int blockIdx = 0;
-            foreach (var block in flatList) {
-                if (block is BlockUIContainer && (((BlockUIContainer)block).Tag as string) == "__PageBreakSpacer__") continue;
-                
-                double blockHeight = _GetActualBlockHeight(rtb, block, availableWidth);
-                accumulated += blockHeight;
-                
-                System.IO.File.AppendAllText(debugPath, string.Format("Block {0}: Type={1}, Height={2}, Accumulated={3}\n", 
-                    blockIdx++, block.GetType().Name, blockHeight, accumulated));
+                Block overflowBlock = null;
+                double overflowBlockTop = 0;
+                double overflowBlockBottom = 0;
+                double prevBottom = docOriginY;
 
-                if (accumulated >= pageContentHeight) {
-                    pageNumber++;
-                    var spacer = _CreatePageBreakSpacer(theme, pageNumber);
-                    if (block.SiblingBlocks != null) {
-                        block.SiblingBlocks.InsertAfter(block, spacer);
-                        _pageBreakSpacers.Add(spacer);
-                        spacerCount++;
-                    } else {
-                        System.IO.File.AppendAllText(debugPath, "InsertSpacers: SiblingBlocks is null for block!\n");
+                int startIndex = 0;
+                if (_pageBreakSpacers.Count > 0) {
+                    var lastSpacer = _pageBreakSpacers[_pageBreakSpacers.Count - 1];
+                    int foundIdx = flatList.IndexOf(lastSpacer);
+                    if (foundIdx != -1) {
+                        startIndex = foundIdx + 1;
                     }
-                    accumulated = 0; // Reset for next page
+                }
+
+                for (int idx = startIndex; idx < flatList.Count; idx++) {
+                    var block = flatList[idx];
+                    if (block is BlockUIContainer && (((BlockUIContainer)block).Tag as string) == "__PageBreakSpacer__") {
+                        // Skip spacers — they are already positioned
+                        continue;
+                    }
+
+                    double blockTop = 0;
+                    double blockBottom = 0;
+                    bool gotBounds = false;
+                    try {
+                        var rectStart = block.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+                        var rectEnd = block.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
+                        if (!rectStart.IsEmpty && !rectEnd.IsEmpty &&
+                            !double.IsInfinity(rectStart.Top) && !double.IsInfinity(rectEnd.Bottom)) {
+                            blockTop = rectStart.Top;
+                            blockBottom = rectEnd.Bottom;
+                            try {
+                                blockTop -= block.Margin.Top;
+                                blockBottom += block.Margin.Bottom;
+                            } catch { }
+                            gotBounds = true;
+                        }
+                    } catch { }
+
+                    if (!gotBounds) {
+                        double est = _EstimateBlockHeight(block, availableWidth);
+                        blockTop = prevBottom;
+                        blockBottom = blockTop + est;
+                    }
+
+                    // Case 1: Block SPANS the page boundary (starts before, ends after)
+                    if (blockBottom > nextPageBreakY && blockTop < nextPageBreakY) {
+                        overflowBlock = block;
+                        overflowBlockTop = blockTop;
+                        overflowBlockBottom = blockBottom;
+                        break;
+                    }
+                    // Case 2: Block starts AFTER the page boundary entirely
+                    // (the gap between previous content and this block crosses the boundary)
+                    if (blockTop >= nextPageBreakY) {
+                        overflowBlock = block;
+                        overflowBlockTop = blockTop;
+                        overflowBlockBottom = blockBottom;
+                        break;
+                    }
+                    prevBottom = blockBottom;
+                }
+
+                if (overflowBlock == null) break; // No more overflows — done
+
+                // We found a block that crosses the page boundary.
+                // Try to split it at the line level if it's a Paragraph.
+                pageNumber++;
+                bool didSplit = false;
+
+                if (overflowBlock is System.Windows.Documents.Paragraph) {
+                    var para = (System.Windows.Documents.Paragraph)overflowBlock;
+                    // Walk lines to find the split point
+                    TextPointer splitPoint = _FindLineSplitPoint(para, nextPageBreakY);
+
+                    if (splitPoint != null) {
+                        // Split the paragraph at this line boundary
+                        var secondHalf = _SplitParagraphAtPointer(para, splitPoint);
+                        if (secondHalf != null) {
+                            // Calculate remaining space on current page
+                            double remainingSpace = 0;
+                            try {
+                                var newEndRect = para.ContentEnd.GetCharacterRect(LogicalDirection.Backward);
+                                if (!newEndRect.IsEmpty && !double.IsInfinity(newEndRect.Bottom)) {
+                                    remainingSpace = Math.Max(0, nextPageBreakY - newEndRect.Bottom);
+                                }
+                            } catch { }
+
+                            // Insert spacer after the first half, then the second half after the spacer
+                            var spacer = _CreatePageBreakSpacer(theme, pageNumber, remainingSpace);
+                            try {
+                                var siblings = para.SiblingBlocks;
+                                if (siblings != null) {
+                                    siblings.InsertAfter(para, spacer);
+                                    siblings.InsertAfter(spacer, secondHalf);
+                                    _pageBreakSpacers.Add(spacer);
+                                    _splitParagraphs.Add(secondHalf); // Track for unsplitting later
+                                    didSplit = true;
+                                }
+                            } catch { }
+                        }
+                    }
+                }
+
+                if (!didSplit) {
+                    // Could not split (not a Paragraph, or split failed)
+                    // Fall back: insert spacer BEFORE the block
+                    double remainingSpace = Math.Max(0, nextPageBreakY - prevBottom);
+                    var spacer = _CreatePageBreakSpacer(theme, pageNumber, remainingSpace);
+                    try {
+                        var siblings = overflowBlock.SiblingBlocks;
+                        if (siblings != null) {
+                            siblings.InsertBefore(overflowBlock, spacer);
+                            _pageBreakSpacers.Add(spacer);
+                        }
+                    } catch { }
+                }
+
+                // Re-layout and recalculate next page break
+                // One UpdateLayout call ensures the newly inserted spacer and split paragraphs
+                // have valid layout information for GetCharacterRect queries
+                rtb.UpdateLayout();
+                // Find the actual Y position of the next page's start by locating
+                // the first content block after the last spacer we inserted
+                bool foundNextStart = false;
+                var lastInsertedSpacer = _pageBreakSpacers[_pageBreakSpacers.Count - 1];
+                Block nextContentBlock = lastInsertedSpacer.NextBlock;
+                // Skip any spacer blocks
+                while (nextContentBlock != null && nextContentBlock is BlockUIContainer &&
+                       (((BlockUIContainer)nextContentBlock).Tag as string) == "__PageBreakSpacer__") {
+                    nextContentBlock = nextContentBlock.NextBlock;
+                }
+                if (nextContentBlock != null) {
+                    try {
+                        var ncRect = nextContentBlock.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+                        if (!ncRect.IsEmpty && !double.IsInfinity(ncRect.Top)) {
+                            // Account for top margin
+                            double pageStartY = ncRect.Top;
+                            try { pageStartY -= nextContentBlock.Margin.Top; } catch { }
+                            nextPageBreakY = pageStartY + pageContentHeight;
+                            foundNextStart = true;
+                        }
+                    } catch { }
+                }
+                if (!foundNextStart) {
+                    // Fallback: just advance by one page from current boundary
+                    nextPageBreakY += pageContentHeight + totalGapSize;
                 }
             }
-            System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers: Inserted spacers count: {0}\n", spacerCount));
         } catch (Exception ex) {
             string debugPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ahk_editor_debug.log");
             System.IO.File.AppendAllText(debugPath, string.Format("InsertSpacers ERROR: {0}\n", ex.ToString()));
         } finally {
+            rtb.EndChange();
             _isUpdatingSpacers = false;
+            if (caretPtr != null) {
+                try { rtb.CaretPosition = caretPtr; } catch { }
+            }
         }
+    }
+
+    // Find the TextPointer at the start of the first line that overflows the page boundary
+    private TextPointer _FindLineSplitPoint(System.Windows.Documents.Paragraph para, double pageBreakY) {
+        try {
+            TextPointer lineStart = para.ContentStart.GetLineStartPosition(0);
+            if (lineStart == null) lineStart = para.ContentStart;
+            TextPointer lastGoodLine = null;
+
+            int safetyLimit = 500;
+            int lineCount = 0;
+            while (lineStart != null && lineStart.CompareTo(para.ContentEnd) < 0 && lineCount < safetyLimit) {
+                lineCount++;
+                var lineRect = lineStart.GetCharacterRect(LogicalDirection.Forward);
+                if (!lineRect.IsEmpty && !double.IsInfinity(lineRect.Top)) {
+                    if (lineRect.Top >= pageBreakY) {
+                        // This line starts at or past the page boundary — split here
+                        return lineStart;
+                    }
+                    lastGoodLine = lineStart;
+                }
+                var nextLine = lineStart.GetLineStartPosition(1);
+                if (nextLine == null || nextLine.CompareTo(lineStart) == 0) break;
+                lineStart = nextLine;
+            }
+        } catch { }
+        return null;
+    }
+
+    // Split a paragraph at a given TextPointer, returning the second half as a new Paragraph
+    private System.Windows.Documents.Paragraph _SplitParagraphAtPointer(System.Windows.Documents.Paragraph para, TextPointer splitPoint) {
+        try {
+            // Verify split point is within the paragraph
+            if (splitPoint.CompareTo(para.ContentStart) <= 0 || splitPoint.CompareTo(para.ContentEnd) >= 0)
+                return null;
+
+            var newPara = new System.Windows.Documents.Paragraph();
+            // Copy paragraph-level formatting
+            try { newPara.Margin = para.Margin; } catch { }
+            try { newPara.LineHeight = para.LineHeight; } catch { }
+            try { newPara.LineStackingStrategy = para.LineStackingStrategy; } catch { }
+            try { newPara.TextAlignment = para.TextAlignment; } catch { }
+            try { newPara.FontFamily = para.FontFamily; } catch { }
+            try { newPara.FontSize = para.FontSize; } catch { }
+            try { newPara.FontWeight = para.FontWeight; } catch { }
+            try { newPara.FontStyle = para.FontStyle; } catch { }
+            try { newPara.Foreground = para.Foreground; } catch { }
+            try { newPara.Background = para.Background; } catch { }
+            try { newPara.FlowDirection = para.FlowDirection; } catch { }
+            try { newPara.TextIndent = para.TextIndent; } catch { }
+            // Don't copy margin top for the second half (it's a continuation)
+            newPara.Margin = new Thickness(para.Margin.Left, 0, para.Margin.Right, para.Margin.Bottom);
+            // First half loses bottom margin
+            para.Margin = new Thickness(para.Margin.Left, para.Margin.Top, para.Margin.Right, 0);
+
+            // Snapshot the inlines list
+            var allInlines = new System.Collections.Generic.List<Inline>();
+            foreach (var il in para.Inlines) {
+                allInlines.Add(il);
+            }
+
+            bool foundSplit = false;
+            var inlinesToMove = new System.Collections.Generic.List<Inline>();
+
+            for (int i = 0; i < allInlines.Count; i++) {
+                var inline = allInlines[i];
+
+                if (!foundSplit) {
+                    // Check if split point is within or before this inline
+                    if (splitPoint.CompareTo(inline.ElementEnd) <= 0) {
+                        foundSplit = true;
+
+                        if (inline is System.Windows.Documents.Run && splitPoint.CompareTo(inline.ContentStart) > 0) {
+                            // Split point is INSIDE this Run
+                            var run = (System.Windows.Documents.Run)inline;
+                            string textBefore = new TextRange(run.ContentStart, splitPoint).Text;
+                            string fullText = run.Text;
+                            string textAfter = "";
+                            if (textBefore.Length < fullText.Length) {
+                                textAfter = fullText.Substring(textBefore.Length);
+                            }
+
+                            if (textAfter.Length > 0) {
+                                run.Text = textBefore;
+                                var newRun = new System.Windows.Documents.Run(textAfter);
+                                _CopyRunFormatting(run, newRun);
+                                newPara.Inlines.Add(newRun);
+                            }
+                        } else {
+                            // Split point is at or before this inline — move entire inline
+                            inlinesToMove.Add(inline);
+                        }
+                    }
+                    // else: this inline is entirely before the split point — keep it
+                } else {
+                    // This inline is after the split — move it
+                    inlinesToMove.Add(inline);
+                }
+            }
+
+            // Move inlines to new paragraph
+            foreach (var il in inlinesToMove) {
+                try {
+                    para.Inlines.Remove(il);
+                    newPara.Inlines.Add(il);
+                } catch { }
+            }
+
+            if (newPara.Inlines.Count == 0 && new TextRange(newPara.ContentStart, newPara.ContentEnd).Text.Length == 0) {
+                return null; // Nothing to split
+            }
+
+            return newPara;
+        } catch {
+            return null;
+        }
+    }
+
+    private void _CopyRunFormatting(System.Windows.Documents.Run source, System.Windows.Documents.Run target) {
+        try { target.FontFamily = source.FontFamily; } catch { }
+        try { target.FontSize = source.FontSize; } catch { }
+        try { target.FontWeight = source.FontWeight; } catch { }
+        try { target.FontStyle = source.FontStyle; } catch { }
+        try { target.Foreground = source.Foreground; } catch { }
+        try { target.Background = source.Background; } catch { }
+        try { target.TextDecorations = source.TextDecorations; } catch { }
+        try { target.FlowDirection = source.FlowDirection; } catch { }
+    }
+
+    // Track split paragraphs for unsplitting when re-paginating
+    private System.Collections.Generic.List<Block> _splitParagraphs = new System.Collections.Generic.List<Block>();
+
+    private void _UnsplitParagraphs(RichTextBox rtb) {
+        // Re-join previously split paragraphs: merge second half back into first half
+        foreach (var block in _splitParagraphs) {
+            try {
+                if (block is System.Windows.Documents.Paragraph) {
+                    var secondHalf = (System.Windows.Documents.Paragraph)block;
+                    // Find the paragraph before the spacer before this one
+                    var prevBlock = secondHalf.PreviousBlock;
+                    if (prevBlock != null && prevBlock is BlockUIContainer && 
+                        (((BlockUIContainer)prevBlock).Tag as string) == "__PageBreakSpacer__") {
+                        var spacer = prevBlock;
+                        var firstHalf = spacer.PreviousBlock as System.Windows.Documents.Paragraph;
+                        if (firstHalf != null) {
+                            // Move all inlines from secondHalf back to firstHalf
+                            var inlines = new System.Collections.Generic.List<Inline>();
+                            foreach (var il in secondHalf.Inlines) {
+                                inlines.Add(il);
+                            }
+                            foreach (var il in inlines) {
+                                try {
+                                    secondHalf.Inlines.Remove(il);
+                                    firstHalf.Inlines.Add(il);
+                                } catch { }
+                            }
+                            // Restore margins
+                            firstHalf.Margin = new Thickness(firstHalf.Margin.Left, firstHalf.Margin.Top, firstHalf.Margin.Right, secondHalf.Margin.Bottom);
+                            // Remove the empty second half
+                            try {
+                                if (secondHalf.SiblingBlocks != null) secondHalf.SiblingBlocks.Remove(secondHalf);
+                                else rtb.Document.Blocks.Remove(secondHalf);
+                            } catch { }
+                        }
+                    }
+                }
+            } catch { }
+        }
+        _splitParagraphs.Clear();
     }
 
     private void _RemovePageBreakSpacers(RichTextBox rtb) {
@@ -8829,12 +10623,28 @@ public class AhkWpfEngine
         }
     }
 
-    private BlockUIContainer _CreatePageBreakSpacer(string theme, int pageNum) {
+    private BlockUIContainer _CreatePageBreakSpacer(string theme, int pageNum, double fillHeight = 0) {
         bool isDark = (theme == "Dark");
+        
+        var spacerPanel = new StackPanel();
+        spacerPanel.Orientation = Orientation.Vertical;
+        spacerPanel.Margin = new Thickness(-150, 0, -150, 0);
+        spacerPanel.Focusable = false;
+        spacerPanel.IsHitTestVisible = false;
+
+        // Part 1: Fill remaining page space (transparent — looks like part of the page)
+        if (fillHeight > 2) {
+            var fillArea = new System.Windows.Controls.Border();
+            fillArea.Height = fillHeight;
+            fillArea.Background = System.Windows.Media.Brushes.Transparent;
+            fillArea.IsHitTestVisible = false;
+            spacerPanel.Children.Add(fillArea);
+        }
+
+        // Part 2: Visual gap between pages
         var spacerGrid = new Grid();
         spacerGrid.Height = 40;
-        // Extend margin to -150 left/right to completely cover the page from edge to edge ignoring margins/padding
-        spacerGrid.Margin = new Thickness(-150, 10, -150, 10);
+        spacerGrid.Margin = new Thickness(0, 10, 0, 10);
         spacerGrid.Focusable = false;
         spacerGrid.IsHitTestVisible = false;
 
@@ -8849,68 +10659,20 @@ public class AhkWpfEngine
         } else if (theme == "Theme") {
             bgBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DropdownBg");
             bgBorder.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "ControlBorder");
-        } else { // Normal mode (white page, light borders)
+        } else {
             bgBorder.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "DropdownBg");
-            bgBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224)); // matching #E0E0E0 page border
+            bgBorder.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(224, 224, 224));
         }
 
         spacerGrid.Children.Add(bgBorder);
 
-        // Dashed border representation in the center
-        var doubleColl = new System.Windows.Media.DoubleCollection(new double[] { 4, 4 });
-        var dashedLine = new System.Windows.Shapes.Line();
-        dashedLine.X1 = 0;
-        dashedLine.X2 = 1;
-        dashedLine.Stretch = System.Windows.Media.Stretch.Fill;
-        dashedLine.StrokeThickness = 1;
-        dashedLine.Stroke = isDark ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(60, 60, 60))
-                                   : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
-        dashedLine.StrokeDashArray = doubleColl;
-        dashedLine.VerticalAlignment = VerticalAlignment.Center;
-        dashedLine.IsHitTestVisible = false;
-        //spacerGrid.Children.Add(dashedLine);
+        spacerPanel.Children.Add(spacerGrid);
 
-        // A little badge in the center displaying "Page X"
-        var badge = new System.Windows.Controls.Border();
-        badge.HorizontalAlignment = HorizontalAlignment.Center;
-        badge.VerticalAlignment = VerticalAlignment.Center;
-        badge.CornerRadius = new CornerRadius(4);
-        badge.BorderThickness = new Thickness(1);
-        badge.Padding = new Thickness(8, 3, 8, 3);
-        badge.IsHitTestVisible = false;
-
-        if (theme == "Dark") {
-            badge.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(30, 30, 30));
-            badge.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(60, 60, 60));
-        } else if (theme == "Theme") {
-            badge.SetResourceReference(System.Windows.Controls.Border.BackgroundProperty, "ControlBg");
-            badge.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, "ControlBorder");
-        } else {
-            badge.Background = System.Windows.Media.Brushes.White;
-            badge.BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(200, 200, 200));
-        }
-
-        var tb = new System.Windows.Controls.TextBlock();
-        tb.Text = "Page " + pageNum;
-        tb.FontSize = 10;
-        tb.FontWeight = FontWeights.Medium;
-        tb.VerticalAlignment = VerticalAlignment.Center;
-        tb.IsHitTestVisible = false;
-        
-        if (theme == "Dark") {
-            tb.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(150, 150, 150));
-        } else if (theme == "Theme") {
-            tb.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, "TextSub");
-        } else {
-            tb.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(120, 120, 120));
-        }
-        
-        //badge.Child = tb;
-        //spacerGrid.Children.Add(badge);
-
-        var container = new BlockUIContainer(spacerGrid);
+        var container = new BlockUIContainer(spacerPanel);
         container.Tag = "__PageBreakSpacer__";
         container.Focusable = false;
+        container.Margin = new Thickness(0);
+        container.Padding = new Thickness(0);
         return container;
     }
 

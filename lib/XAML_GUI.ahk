@@ -30,6 +30,7 @@ class XAML_GUI {
         this.width := hasOpt("Width") ? getOpt("Width") : 940
         this.height := hasOpt("Height") ? getOpt("Height") : 700
         this.forceDynamic := hasOpt("ForceDynamic") ? getOpt("ForceDynamic") : false
+        this.disableBurgerShortcut := hasOpt("DisableBurgerShortcut") ? getOpt("DisableBurgerShortcut") : false
 
         ; Expose the root generator for customization
         this.X := XAML_Generator("Grid").Name("AppGrid").Background("{DynamicResource BgColor}").Focusable("True")
@@ -653,7 +654,12 @@ class XAML_GUI {
         this.host.Update("Window", "DWM", "2,1")
         this.host.Update("Window", "Title", this.title)
 
-        hIcon := LoadPicture("shell32.dll", "Icon26", &ImageType := 1)
+        if (XAMLHost.LastIcon != 0) {
+            hIcon := XAMLHost.LastIcon
+        } else {
+            hIcon := LoadPicture("shell32.dll", "Icon26", &ImageType := 1)
+            XAMLHost.LastIcon := hIcon
+        }
         this.host.Update("Window", "Icon", "HICON:" hIcon)
         TraySetIcon("shell32.dll", 26)
 
@@ -671,8 +677,6 @@ class XAML_GUI {
         if (this.HasProp("lightweightEvents") && this.lightweightEvents)
             this.host.SetLightweightEvents(true)
 
-        ; In lightweight mode, Window.Loaded state won't have sidebar combo values.
-        ; Query them explicitly so theme/scale/radius handlers still work on startup.
         if (!state.Has("ComboTheme") || !state.Has("ComboScale") || !state.Has("ComboRadius")) {
             sidebarState := this.host.Query("ComboTheme", "ComboScale", "ComboRadius")
             for k, v in sidebarState {
@@ -681,23 +685,37 @@ class XAML_GUI {
             }
             
             if !state.Has("ComboTheme") {
-                try {
-                    iniPath := FindThemesIni()
-                    sections := IniRead(iniPath)
-                    Loop Parse, sections, "`n", "`r" {
-                        if (A_LoopField != "") {
-                            state["ComboTheme"] := A_LoopField
-                            break
+                if (XAMLHost.LastTheme != "") {
+                    state["ComboTheme"] := XAMLHost.LastTheme
+                } else {
+                    try {
+                        iniPath := FindThemesIni()
+                        sections := IniRead(iniPath)
+                        Loop Parse, sections, "`n", "`r" {
+                            if (A_LoopField != "") {
+                                state["ComboTheme"] := A_LoopField
+                                break
+                            }
                         }
+                    } catch {
+                        state["ComboTheme"] := "Dark Mica (Win 11)"
                     }
-                } catch {
-                    state["ComboTheme"] := "Dark Mica (Win 11)"
                 }
             }
-            if !state.Has("ComboScale")
-                state["ComboScale"] := "Balanced"
-            if !state.Has("ComboRadius")
-                state["ComboRadius"] := "Smooth (8)"
+            if !state.Has("ComboScale") {
+                if (XAMLHost.LastScale != "") {
+                    state["ComboScale"] := XAMLHost.LastScale
+                } else {
+                    state["ComboScale"] := "Balanced"
+                }
+            }
+            if !state.Has("ComboRadius") {
+                if (XAMLHost.LastRadius != "") {
+                    state["ComboRadius"] := XAMLHost.LastRadius
+                } else {
+                    state["ComboRadius"] := "Smooth (8)"
+                }
+            }
         }
 
         this.ThemeChanged(state, ctrl, event)
@@ -768,6 +786,7 @@ class XAML_GUI {
         if !state.Has("ComboScale")
             return
         scale := state["ComboScale"]
+        XAMLHost.LastScale := scale
         if (scale == "Thin") {
             this.host.Update("AppScale", "ScaleX", "0.9")
             this.host.Update("AppScale", "ScaleY", "0.9")
@@ -782,6 +801,7 @@ class XAML_GUI {
 
     RadiusChanged(state, ctrl, event) {
         radText := state.Has("ComboRadius") ? state["ComboRadius"] : "Smooth (8)"
+        XAMLHost.LastRadius := radText
         RegExMatch(radText, "\((\d+)\)", &match)
         radius := match ? match[1] : "8"
 
@@ -990,7 +1010,7 @@ class XAML_GUI {
         HotIf
 
         HotIf (*) => WinActive("ahk_id " this.host.wpfHwnd)
-        if (this.showBurger)
+        if (this.showBurger && !this.disableBurgerShortcut)
             Hotkey "^b", (*) => this.host.Update("BtnToggleSidebar", "Invoke", "1"), "On"
         if (IsSet(XAML_ENABLE_DEVTOOLS) && XAML_ENABLE_DEVTOOLS)
             Hotkey "F12", (*) => XAML_DevTools.ShowFor(this), "On"

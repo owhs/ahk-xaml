@@ -91,6 +91,9 @@ class CodeBox {
 class XAMLHost {
     static LastTheme := "Dark Mica (Win 11)"
     static LastThemeIni := ""
+    static LastScale := "Balanced"
+    static LastRadius := "Smooth (8)"
+    static LastIcon := 0
     static _instances := Map()
     static _msgHooked := false
     static daemonHwnd := 0
@@ -102,6 +105,7 @@ class XAMLHost {
     static CLR_BridgeClass := ""
 
     static GetEngineDllName() {
+        global CUSTOM_DLL_BUNDLE_NAME, XAML_ENABLE_WEBVIEW, XAML_ENABLE_AVALONEDIT, XAML_ENABLE_DOCUMENT, XAML_ENABLE_SHADERS
         if (IsSet(CUSTOM_DLL_BUNDLE_NAME) && CUSTOM_DLL_BUNDLE_NAME != "")
             return CUSTOM_DLL_BUNDLE_NAME
         if (A_Args.Length > 0 && A_Args[1] == "/build") {
@@ -715,6 +719,7 @@ class XAMLHost {
     }
 
     static CompileEngine(libDir, sharedExe, extraResources := [], embedDeps := false) {
+        global XAML_ENABLE_WEBVIEW, XAML_ENABLE_AVALONEDIT, XAML_ENABLE_DOCUMENT, XAML_ENABLE_SHADERS
         if (A_IsCompiled) {
             MsgBox("AHK-XAML: Dynamic compilation is not available when the script is compiled. Please compile the engine separately.")
             return

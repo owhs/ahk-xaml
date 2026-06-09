@@ -28,13 +28,14 @@ global XAML_ENABLE_DOCUMENT := true
 
 #Include "..\..\lib\XAML_GUI.ahk"
 #Include "..\..\lib\XAML_Adv_Components.ahk"
+XMenuPopup.Prototype.DefineProp("AddSubMenu", { Call: (thisObj, label) => XMenuPopup(thisObj.container.Add("MenuItem").Header(label)) })
 
 global menuBarCollapsed := false
 global menuTempShown := false
 global currentDocTheme := "Normal"
 
 ; --- Build the UI ---
-options := Map("Sidebar", true, "BurgerMenu", true, "TitleBarHeight", 36, "MinMaxButtons", true, "AppIcon", true, "WindowState", "Maximized")
+options := Map("Sidebar", true, "BurgerMenu", true, "TitleBarHeight", 36, "MinMaxButtons", true, "AppIcon", true, "WindowState", "Maximized", "DisableBurgerShortcut", true)
 global app := XAML_GUI("Untitled document", options)
 app.tabs.Visibility("Collapsed")
 
@@ -50,6 +51,8 @@ docMenu := docMenuBar.MenuBar("MainMenuBar")
 fileMenu := docMenu.AddMenu("File")
 fileMenu.AddItem("New", Chr(0xE8A5), "MenuFileNew", "Ctrl+N")
 fileMenu.AddItem("Open...", Chr(0xE8E5), "MenuFileOpen", "Ctrl+O")
+global recentMenu := fileMenu.AddSubMenu("Recent Files")
+recentMenu.container.Name("RecentMenu")
 fileMenu.AddSeparator()
 fileMenu.AddItem("Save", Chr(0xE74E), "MenuFileSave", "Ctrl+S")
 fileMenu.AddItem("Save As...", Chr(0xE792), "MenuFileSaveAs", "Ctrl+Shift+S")
@@ -80,6 +83,11 @@ viewMenu.AddSeparator()
 viewMenu.AddItem("Zoom 100%", "", "MenuViewZoom100", "Ctrl+0")
 viewMenu.AddItem("Zoom In", Chr(0xE8A3), "MenuViewZoomIn", "Ctrl++")
 viewMenu.AddItem("Zoom Out", Chr(0xE71F), "MenuViewZoomOut", "Ctrl+-")
+viewMenu.AddSeparator()
+viewMenu.AddItem("Single Spacing (1.0)", "", "MenuViewSpacing10", "").SetProp("IsCheckable", "True")
+viewMenu.AddItem("Spacing 1.15", "", "MenuViewSpacing115", "").SetProp("IsCheckable", "True")
+viewMenu.AddItem("1.5 Spacing", "", "MenuViewSpacing15", "").SetProp("IsCheckable", "True")
+viewMenu.AddItem("Double Spacing (2.0)", "", "MenuViewSpacing20", "").SetProp("IsCheckable", "True")
 
 ; --- Insert Menu ---
 insertMenu := docMenu.AddMenu("Insert")
@@ -89,21 +97,55 @@ insertMenu.AddItem("Hyperlink...", Chr(0xE71B), "MenuInsertLink", "Ctrl+K")
 insertMenu.AddSeparator()
 insertMenu.AddItem("Horizontal Rule", Chr(0xE738), "MenuInsertHR", "")
 
+; --- Table Menu ---
+tableMenu := docMenu.AddMenu("Table")
+tableMenu.AddItem("Insert Table...", Chr(0xE8A4), "MenuTableInsert", "")
+tableMenu.AddSeparator()
+tableMenu.AddItem("Insert Row Above", Chr(0xE74A), "MenuTableInsertRowAbove", "")
+tableMenu.AddItem("Insert Row Below", Chr(0xE74B), "MenuTableInsertRowBelow", "")
+tableMenu.AddItem("Insert Column Left", Chr(0xE76B), "MenuTableInsertColLeft", "")
+tableMenu.AddItem("Insert Column Right", Chr(0xE76C), "MenuTableInsertColRight", "")
+tableMenu.AddSeparator()
+tableMenu.AddItem("Delete Row", Chr(0xE74D), "MenuTableDeleteRow", "")
+tableMenu.AddItem("Delete Column", Chr(0xE74D), "MenuTableDeleteCol", "")
+tableMenu.AddSeparator()
+tableMenu.AddItem("Cell Background...", Chr(0xE790), "MenuTableCellBg", "")
+tableMenu.AddItem("Table Borders...", Chr(0xE8A4), "MenuTableBorders", "")
+tableMenu.AddSeparator()
+tableMenu.AddItem("Merge Cells", Chr(0xE8C8), "MenuTableMergeCells", "")
+tableMenu.AddItem("Split Cell", Chr(0xE8C9), "MenuTableSplitCell", "")
+
 ; --- Format Menu ---
 formatMenu := docMenu.AddMenu("Format")
 formatMenu.AddItem("Bold", Chr(0xE8DD), "MenuFormatBold", "Ctrl+B")
 formatMenu.AddItem("Italic", Chr(0xE8DB), "MenuFormatItalic", "Ctrl+I")
 formatMenu.AddItem("Underline", Chr(0xE8DC), "MenuFormatUnderline", "Ctrl+U")
 formatMenu.AddItem("Strikethrough", Chr(0xEDE0), "MenuFormatStrike", "")
+formatMenu.AddItem("Superscript", Chr(0xF5ED), "MenuFormatSuperscript", "Ctrl+Shift+=")
+formatMenu.AddItem("Subscript", Chr(0xF5EE), "MenuFormatSubscript", "Ctrl+=")
 formatMenu.AddSeparator()
 formatMenu.AddItem("Align Left", Chr(0xE8E4), "MenuFormatAlignLeft", "Ctrl+L")
 formatMenu.AddItem("Align Center", Chr(0xE8E3), "MenuFormatAlignCenter", "Ctrl+E")
 formatMenu.AddItem("Align Right", Chr(0xE8E2), "MenuFormatAlignRight", "Ctrl+R")
 formatMenu.AddItem("Justify", Chr(0xF57E), "MenuFormatJustify", "Ctrl+J")
+formatMenu.AddSeparator()
+formatMenu.AddItem("Increase Font Size", Chr(0xE8E8), "MenuFormatFontUp", "Ctrl+Shift+>")
+formatMenu.AddItem("Decrease Font Size", Chr(0xE8E7), "MenuFormatFontDown", "Ctrl+Shift+<")
+formatMenu.AddSeparator()
+formatMenu.AddItem("Text Color...", Chr(0xE790), "MenuFormatTextColor", "")
+formatMenu.AddItem("Highlight Color...", Chr(0xE7E6), "MenuFormatHighlight", "")
+formatMenu.AddSeparator()
+formatMenu.AddItem("Clear Formatting", Chr(0xED62), "MenuFormatClear", "Ctrl+Space")
 
 ; --- Tools Menu ---
 toolsMenu := docMenu.AddMenu("Tools")
 toolsMenu.AddItem("Word Count", Chr(0xE82B), "MenuToolsWordCount", "")
+toolsMenu.AddSeparator()
+toolsMenu.AddItem("Spell Check Settings...", Chr(0xF87B), "MenuToolsSpellCheck", "F7")
+toolsMenu.AddItem("Enable Spell Check", Chr(0xE73E), "MenuToolsSpellOn", "")
+toolsMenu.AddItem("Disable Spell Check", Chr(0xE711), "MenuToolsSpellOff", "")
+toolsMenu.AddSeparator()
+toolsMenu.AddItem("Load Dictionary...", Chr(0xE838), "MenuToolsLoadDict", "")
 
 ; --- Power Tools Menu ---
 powerToolsMenu := docMenu.AddMenu("Power Tools")
@@ -276,6 +318,10 @@ ui.OnEvent("MenuViewTwoUp", "Click", (*) => TogglePageView("TwoUp"))
 ui.OnEvent("MenuViewZoom100", "Click", (*) => docEditor._SetZoom(100))
 ui.OnEvent("MenuViewZoomIn", "Click", (*) => docEditor._SetZoom(docEditor.zoom + 10))
 ui.OnEvent("MenuViewZoomOut", "Click", (*) => docEditor._SetZoom(docEditor.zoom - 10))
+ui.OnEvent("MenuViewSpacing10", "Click", (*) => SetLineSpacing("1.0"))
+ui.OnEvent("MenuViewSpacing115", "Click", (*) => SetLineSpacing("1.15"))
+ui.OnEvent("MenuViewSpacing15", "Click", (*) => SetLineSpacing("1.5"))
+ui.OnEvent("MenuViewSpacing20", "Click", (*) => SetLineSpacing("2.0"))
 
 ; --- Insert ---
 ui.OnEvent("MenuInsertImage", "Click", (*) => docEditor._InsertImage())
@@ -283,18 +329,42 @@ ui.OnEvent("MenuInsertTable", "Click", (*) => docEditor._InsertTableDialog())
 ui.OnEvent("MenuInsertLink", "Click", (*) => docEditor._InsertLinkDialog())
 ui.OnEvent("MenuInsertHR", "Click", (*) => docEditor._Cmd("InsertHR"))
 
+; --- Table ---
+ui.OnEvent("MenuTableInsert", "Click", (*) => docEditor._InsertTableDialog())
+ui.OnEvent("MenuTableInsertRowAbove", "Click", (*) => docEditor._Cmd("InsertRowAbove"))
+ui.OnEvent("MenuTableInsertRowBelow", "Click", (*) => docEditor._Cmd("InsertRowBelow"))
+ui.OnEvent("MenuTableInsertColLeft", "Click", (*) => docEditor._Cmd("InsertColumnLeft"))
+ui.OnEvent("MenuTableInsertColRight", "Click", (*) => docEditor._Cmd("InsertColumnRight"))
+ui.OnEvent("MenuTableDeleteRow", "Click", (*) => docEditor._Cmd("DeleteRow"))
+ui.OnEvent("MenuTableDeleteCol", "Click", (*) => docEditor._Cmd("DeleteColumn"))
+ui.OnEvent("MenuTableCellBg", "Click", (*) => docEditor._Cmd("CellBackground"))
+ui.OnEvent("MenuTableBorders", "Click", (*) => docEditor._Cmd("TableBorders"))
+ui.OnEvent("MenuTableMergeCells", "Click", (*) => docEditor._Cmd("MergeCells"))
+ui.OnEvent("MenuTableSplitCell", "Click", (*) => docEditor._Cmd("SplitCell"))
+
 ; --- Format ---
 ui.OnEvent("MenuFormatBold", "Click", (*) => docEditor._Cmd("Bold"))
 ui.OnEvent("MenuFormatItalic", "Click", (*) => docEditor._Cmd("Italic"))
 ui.OnEvent("MenuFormatUnderline", "Click", (*) => docEditor._Cmd("Underline"))
 ui.OnEvent("MenuFormatStrike", "Click", (*) => docEditor._Cmd("Strikethrough"))
+ui.OnEvent("MenuFormatSuperscript", "Click", (*) => docEditor._Cmd("Superscript"))
+ui.OnEvent("MenuFormatSubscript", "Click", (*) => docEditor._Cmd("Subscript"))
 ui.OnEvent("MenuFormatAlignLeft", "Click", (*) => docEditor._Cmd("JustifyLeft"))
 ui.OnEvent("MenuFormatAlignCenter", "Click", (*) => docEditor._Cmd("JustifyCenter"))
 ui.OnEvent("MenuFormatAlignRight", "Click", (*) => docEditor._Cmd("JustifyRight"))
 ui.OnEvent("MenuFormatJustify", "Click", (*) => docEditor._Cmd("JustifyFull"))
+ui.OnEvent("MenuFormatFontUp", "Click", (*) => docEditor._Cmd("IncreaseFontSize"))
+ui.OnEvent("MenuFormatFontDown", "Click", (*) => docEditor._Cmd("DecreaseFontSize"))
+ui.OnEvent("MenuFormatTextColor", "Click", (*) => docEditor._Cmd("TextColor"))
+ui.OnEvent("MenuFormatHighlight", "Click", (*) => docEditor._Cmd("Highlight"))
+ui.OnEvent("MenuFormatClear", "Click", (*) => docEditor._Cmd("ClearFormatting"))
 
 ; --- Tools ---
 ui.OnEvent("MenuToolsWordCount", "Click", (*) => DoWordCount())
+ui.OnEvent("MenuToolsSpellCheck", "Click", (*) => ShowSpellCheckSettings())
+ui.OnEvent("MenuToolsSpellOn", "Click", (*) => docEditor._Cmd("SpellCheck", "on"))
+ui.OnEvent("MenuToolsSpellOff", "Click", (*) => docEditor._Cmd("SpellCheck", "off"))
+ui.OnEvent("MenuToolsLoadDict", "Click", (*) => AddCustomDictionaryFile())
 
 ; --- Help ---
 ui.OnEvent("MenuHelpAbout", "Click", (*) => ShowAbout())
@@ -328,6 +398,7 @@ ui.OnEvent("BtnPowerStandardizeFont", "Click", (state, *) => RunStandardizeFont(
 ui.OnEvent("DocEdit", "PowerQueryDone", PowerQueryReceived)
 ui.OnEvent("DocEdit", "PowerAuditDone", PowerAuditReceived)
 ui.OnEvent("DocEdit", "PowerToolsError", PowerToolsErrorReceived)
+ui.OnEvent("DocEdit", "SpellCheckInfo", SpellCheckInfoReceived)
 
 ; ============================================================================
 ; KEYBOARD SHORTCUTS
@@ -380,6 +451,14 @@ TogglePageView(mode) {
     docEditor.SetPageView(mode)
 }
 
+SetLineSpacing(multiplier) {
+    docEditor._Cmd("SetLineSpacing", multiplier)
+    ui.Update("MenuViewSpacing10", "IsChecked", multiplier == "1.0" ? "True" : "False")
+    ui.Update("MenuViewSpacing115", "IsChecked", multiplier == "1.15" ? "True" : "False")
+    ui.Update("MenuViewSpacing15", "IsChecked", multiplier == "1.5" ? "True" : "False")
+    ui.Update("MenuViewSpacing20", "IsChecked", multiplier == "2.0" ? "True" : "False")
+}
+
 ToggleMenuBar() {
     global menuBarCollapsed, menuTempShown
     menuBarCollapsed := !menuBarCollapsed
@@ -410,6 +489,8 @@ DoOpen() {
         SplitPath(docEditor.filePath, , , , &fn)
         UpdateTitle(fn)
         SetStatus("Opened")
+        AddRecentFile(docEditor.filePath)
+        UpdateRecentFilesMenu()
         SetTimer(() => docEditor.GetWordCount(), -500)
     }
 }
@@ -429,6 +510,8 @@ DoSaveAs() {
         SplitPath(docEditor.filePath, , , , &fn)
         UpdateTitle(fn)
         SetStatus("Saved as " fn)
+        AddRecentFile(docEditor.filePath)
+        UpdateRecentFilesMenu()
     }
 }
 
@@ -520,6 +603,8 @@ OnDocumentLoaded(state, ctrl, event) {
     if (docEditor.filePath != "") {
         SplitPath(docEditor.filePath, , , , &fn)
         UpdateTitle(fn)
+        AddRecentFile(docEditor.filePath)
+        UpdateRecentFilesMenu()
     } else {
         UpdateTitle("Untitled document")
     }
@@ -530,8 +615,437 @@ OnDocumentSaved(state, ctrl, event) {
     if (docEditor.filePath != "") {
         SplitPath(docEditor.filePath, , , , &fn)
         UpdateTitle(fn)
+        AddRecentFile(docEditor.filePath)
+        UpdateRecentFilesMenu()
     }
 }
+
+global spellCheckPopup := ""
+global globalSpellCheckEnabled := true
+global globalSpellCheckLanguage := "en-US"
+global historyEnabled := true
+global settingsIni := ""
+global globalCustomDictionaries := []
+
+ShowSpellCheckSettings() {
+    global spellCheckPopup, ui, docEditor, historyEnabled
+    if (spellCheckPopup != "") {
+        try {
+            WinActivate("ahk_id " spellCheckPopup.host.wpfHwnd)
+            return
+        } catch {
+            spellCheckPopup := ""
+        }
+    }
+    
+    options := Map(
+        "Sidebar", false,
+        "BurgerMenu", false,
+        "MinMaxButtons", false,
+        "Resize", false,
+        "Width", 460,
+        "Height", 550,
+        "AppIcon", true,
+        "CloseAction", (*) => CloseSpellCheckSettings()
+    )
+    spellCheckPopup := XAML_GUI("Spell Check Settings", options)
+    
+    grid := spellCheckPopup.main
+    
+    contentPanel := grid.Add("StackPanel").Grid_Row(1).Margin("20,10,20,15")
+    contentPanel.Add("TextBlock").Text("Spell Check Settings").FontSize(16).FontWeight("SemiBold").Foreground("{DynamicResource TextMain}").Margin("0,0,0,14")
+    
+    statusGrid := contentPanel.Add("Grid").Margin("0,0,0,14")
+    statusGrid.Cols("Auto", "*", "Auto")
+    statusGrid.Add("TextBlock").Text("Status: ").Foreground("{DynamicResource TextMain}").FontSize(13).VerticalAlignment("Center").Grid_Column(0)
+    statusGrid.Add("TextBlock").Name("SpellStatusVal").Text("Checking...").Foreground("{DynamicResource TextSub}").FontSize(13).FontWeight("Bold").VerticalAlignment("Center").Margin("4,0,16,0").Grid_Column(1)
+    statusGrid.Add("Button").Name("SpellToggleBtn").Content("Turn On").Width(110).Height(28).Grid_Column(2)
+    
+    contentPanel.Add("Border").Height(1).Background("{DynamicResource ControlBorder}").Margin("0,4,0,12")
+    
+    contentPanel.Add("TextBlock").Text("CURRENT LANGUAGE").FontWeight("Bold").FontSize(10).Foreground("{DynamicResource TextSub}").Margin("0,0,0,4")
+    global curLangVal := contentPanel.Add("TextBlock").Name("SpellCurLangVal").Text("Loading...").Foreground("{DynamicResource Accent}").FontSize(13).Margin("0,0,0,8")
+    
+    setLangGrid := contentPanel.Add("Grid").Margin("0,4,0,12")
+    setLangGrid.Cols("Auto", "*", "Auto")
+    setLangGrid.Add("TextBlock").Text("Set Language: ").Foreground("{DynamicResource TextMain}").FontSize(12).VerticalAlignment("Center").Grid_Column(0).Margin("0,0,8,0")
+    
+    langCombo := setLangGrid.Add("ComboBox").Name("SpellLangCombo").Height(28).Grid_Column(1)
+    commonLangs := [
+        { Tag: "auto", Label: "Autodetect Language" },
+        { Tag: "en-US", Label: "English (United States)" },
+        { Tag: "en-GB", Label: "English (United Kingdom)" },
+        { Tag: "en-AU", Label: "English (Australia)" },
+        { Tag: "en-CA", Label: "English (Canada)" },
+        { Tag: "fr-FR", Label: "French (France)" },
+        { Tag: "de-DE", Label: "German (Germany)" },
+        { Tag: "es-ES", Label: "Spanish (Spain)" },
+        { Tag: "it-IT", Label: "Italian (Italy)" },
+        { Tag: "pt-BR", Label: "Portuguese (Brazil)" },
+        { Tag: "nl-NL", Label: "Dutch (Netherlands)" },
+        { Tag: "pl-PL", Label: "Polish (Poland)" },
+        { Tag: "ru-RU", Label: "Russian (Russia)" },
+        { Tag: "ja-JP", Label: "Japanese (Japan)" },
+        { Tag: "zh-CN", Label: "Chinese (Simplified)" },
+        { Tag: "ko-KR", Label: "Korean (Korea)" }
+    ]
+    for lang in commonLangs {
+        langCombo.Add("ComboBoxItem").Content(lang.Label " (" lang.Tag ")").Tag(lang.Tag)
+    }
+    langCombo.SelectedIndex(0)
+    
+    setLangGrid.Add("Button").Name("SpellApplyBtn").Content("Apply").Width(90).Height(28).Margin("8,0,0,0").Grid_Column(2)
+    
+    contentPanel.Add("Border").Height(1).Background("{DynamicResource ControlBorder}").Margin("0,4,0,12")
+    
+    contentPanel.Add("TextBlock").Text("INSTALLED DICTIONARIES").FontWeight("Bold").FontSize(10).Foreground("{DynamicResource TextSub}").Margin("0,0,0,6")
+    contentPanel.Add("ListBox").Name("SpellDictList").Height(100).Background("{DynamicResource ControlBg}").Foreground("{DynamicResource TextMain}").BorderBrush("{DynamicResource ControlBorder}").BorderThickness(1).Margin("0,0,0,8")
+    contentPanel.Add("Button").Name("SpellAddDictBtn").Content("📂 Add Dictionary File...").Width(200).Height(28).HorizontalAlignment("Left")
+    
+    contentPanel.Add("Border").Height(1).Background("{DynamicResource ControlBorder}").Margin("0,10,0,10")
+    
+    contentPanel.Add("TextBlock").Text("GENERAL SETTINGS").FontWeight("Bold").FontSize(10).Foreground("{DynamicResource TextSub}").Margin("0,0,0,6")
+    contentPanel.Add("CheckBox").Name("SpellHistoryCheck").Content("Enable File History (Recent Files)").IsChecked(historyEnabled ? "True" : "False").Margin("0,0,0,4")
+    
+    footerBorder := grid.Add("Border").Grid_Row(2).Background("{DynamicResource ControlBg}").BorderBrush("{DynamicResource ControlBorder}").BorderThickness("0,1,0,0").Padding("15,10").CornerRadius("0,0,8,8")
+    footerGrid := footerBorder.Add("Grid")
+    footerGrid.Cols("*", "Auto")
+    footerGrid.Add("Button").Name("SpellCloseBtn").Content("Close").Width(95).Height(28).Grid_Column(1)
+    
+    popupHost := spellCheckPopup.Compile("", ui.wpfHwnd)
+    
+    popupHost.OnEvent("SpellToggleBtn", "Click", (*) => ToggleSpellCheckState())
+    popupHost.OnEvent("SpellApplyBtn", "Click", (*) => ApplySpellCheckLanguage())
+    popupHost.OnEvent("SpellAddDictBtn", "Click", (*) => AddCustomDictionaryFile())
+    popupHost.OnEvent("SpellHistoryCheck", "Click", (*) => ToggleHistoryState())
+    popupHost.OnEvent("SpellCloseBtn", "Click", (*) => CloseSpellCheckSettings())
+    popupHost.Track("SpellLangCombo")
+    popupHost.Track("SpellHistoryCheck")
+    
+    spellCheckPopup.Show()
+    docEditor._Cmd("QuerySpellCheck")
+}
+
+CloseSpellCheckSettings() {
+    global spellCheckPopup
+    if (spellCheckPopup != "") {
+        try spellCheckPopup.host.Update("Window", "Close", "")
+        spellCheckPopup := ""
+    }
+}
+
+ToggleSpellCheckState() {
+    global docEditor
+    docEditor._Cmd("SpellCheck", "toggle")
+}
+
+ApplySpellCheckLanguage() {
+    global docEditor, spellCheckPopup
+    if (spellCheckPopup == "")
+        return
+    val := spellCheckPopup.host.Query("SpellLangCombo")
+    if (val != "") {
+        langTag := val
+        if (RegExMatch(val, "\(([^)]+)\)$", &match)) {
+            langTag := match[1]
+        }
+        docEditor._Cmd("SpellCheck", "setlang:" langTag)
+    }
+}
+
+AddCustomDictionaryFile() {
+    global docEditor
+    filePath := FileSelect(1, , "Select Dictionary File (.dic / .lex)", "Dictionary Files (*.dic;*.lex)|All Files (*.*)")
+    if (filePath != "") {
+        docEditor._Cmd("AddDictionary", filePath)
+    }
+}
+
+ToggleHistoryState() {
+    global historyEnabled, spellCheckPopup
+    if (spellCheckPopup == "")
+        return
+    val := spellCheckPopup.host.Query("SpellHistoryCheck")
+    historyEnabled := (val == "True")
+    UpdateRecentFilesMenu()
+    SaveSettings()
+}
+
+SpellCheckInfoReceived(state, ctrl, event) {
+    global spellCheckPopup, globalSpellCheckEnabled, globalSpellCheckLanguage, globalCustomDictionaries
+    
+    payload := state.Has("SpellCheckInfo") ? state["SpellCheckInfo"] : ""
+    if (payload == "")
+        return
+        
+    parts := StrSplit(payload, ",", , 4)
+    if (parts.Length < 4)
+        return
+        
+    isEnabled := (parts[1] == "true")
+    rtbLang := parts[2]
+    currentLang := parts[3]
+    dictsStr := parts[4]
+    
+    globalSpellCheckEnabled := isEnabled
+    global globalSpellCheckLanguage := rtbLang
+    
+    ; Auto-save state
+    SaveSettings()
+    
+    if (spellCheckPopup == "")
+        return
+        
+    spellCheckPopup.host.Update("SpellStatusVal", "Text", isEnabled ? "✅ Enabled" : "❌ Disabled")
+    spellCheckPopup.host.Update("SpellStatusVal", "Foreground", isEnabled ? "LightGreen" : "Salmon")
+    spellCheckPopup.host.Update("SpellToggleBtn", "Content", isEnabled ? "Turn Off" : "Turn On")
+    
+    spellCheckPopup.host.Update("SpellCurLangVal", "Text", currentLang)
+    
+    commonLangs := ["auto", "en-US", "en-GB", "en-AU", "en-CA", "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "nl-NL", "pl-PL", "ru-RU", "ja-JP", "zh-CN", "ko-KR"]
+    selIdx := 0
+    for idx, lang in commonLangs {
+        if (lang == rtbLang) {
+            selIdx := idx - 1
+            break
+        }
+    }
+    spellCheckPopup.host.Update("SpellLangCombo", "SelectedIndex", String(selIdx))
+    
+    spellCheckPopup.host.Update("SpellDictList", "ClearItems", "")
+    dictLines := StrSplit(dictsStr, "|")
+    hasDicts := false
+    globalCustomDictionaries := []
+    for d in dictLines {
+        if (d != "") {
+            spellCheckPopup.host.Update("SpellDictList", "AddItem", d)
+            hasDicts := true
+            if (SubStr(d, 1, 10) == "📙 Custom: ") {
+                dictPath := SubStr(d, 11)
+                globalCustomDictionaries.Push(dictPath)
+            }
+        }
+    }
+    if (!hasDicts) {
+        spellCheckPopup.host.Update("SpellDictList", "AddItem", "(No custom dictionaries found)")
+    }
+}
+
+UpdateRecentFilesMenu() {
+    global recentMenu, ui, historyEnabled, settingsIni
+    static isUpdating := false
+    if (isUpdating)
+        return
+    isUpdating := true
+    
+    if (!IsSet(recentMenu) || !recentMenu) {
+        isUpdating := false
+        return
+    }
+        
+    if (!historyEnabled) {
+        ui.Update("RecentMenu", "Visibility", "Collapsed")
+        isUpdating := false
+        return
+    }
+    ui.Update("RecentMenu", "Visibility", "Visible")
+    ui.Update("RecentMenu", "ClearItems", "")
+    
+    if (!IsSet(settingsIni) || settingsIni == "")
+        settingsIni := A_ScriptDir "\settings.ini"
+        
+    hasItems := false
+    Loop 5 {
+        filePath := IniRead(settingsIni, "RecentFiles", "File" A_Index, "")
+        if (filePath != "") {
+            SplitPath(filePath, &fileName)
+            idx := A_Index
+            xaml := '<MenuItem xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Name="RecentItem_' idx '" Header="' fileName '" ToolTip="' filePath '"/>'
+            ui.Update("RecentMenu", "AddXamlItem", xaml)
+            ui.Update("RecentItem_" idx, "BindEvent", "Click")
+            ui.OnEvent("RecentItem_" idx, "Click", ((path, *) => OpenRecentFile(path)).Bind(filePath))
+            hasItems := true
+        }
+    }
+    if (!hasItems) {
+        xaml := '<MenuItem xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Header="(No recent files)" IsEnabled="False"/>'
+        ui.Update("RecentMenu", "AddXamlItem", xaml)
+    }
+    isUpdating := false
+}
+
+OpenRecentFile(filePath) {
+    global docEditor
+    if (filePath == "")
+        return
+    if (!FileExist(filePath)) {
+        MsgBox("The file no longer exists: " filePath, "Recent Files", "Iconx")
+        RemoveRecentFile(filePath)
+        UpdateRecentFilesMenu()
+        return
+    }
+    docEditor.Open(filePath)
+    SplitPath(filePath, , , , &fn)
+    UpdateTitle(fn)
+    SetStatus("Opened recent file")
+    SetTimer(() => docEditor.GetWordCount(), -500)
+    AddRecentFile(filePath)
+    UpdateRecentFilesMenu()
+}
+
+AddRecentFile(filePath) {
+    global settingsIni, historyEnabled
+    if (!historyEnabled || filePath == "")
+        return
+        
+    if (!IsSet(settingsIni) || settingsIni == "")
+        settingsIni := A_ScriptDir "\settings.ini"
+        
+    files := []
+    Loop 5 {
+        f := IniRead(settingsIni, "RecentFiles", "File" A_Index, "")
+        if (f != "" && f != filePath)
+            files.Push(f)
+    }
+    
+    files.InsertAt(1, filePath)
+    
+    Loop 5 {
+        if (A_Index <= files.Length)
+            IniWrite(files[A_Index], settingsIni, "RecentFiles", "File" A_Index)
+        else
+            IniDelete(settingsIni, "RecentFiles", "File" A_Index)
+    }
+}
+
+RemoveRecentFile(filePath) {
+    global settingsIni
+    if (!IsSet(settingsIni) || settingsIni == "")
+        settingsIni := A_ScriptDir "\settings.ini"
+        
+    files := []
+    Loop 5 {
+        f := IniRead(settingsIni, "RecentFiles", "File" A_Index, "")
+        if (f != "" && f != filePath)
+            files.Push(f)
+    }
+    Loop 5 {
+        if (A_Index <= files.Length)
+            IniWrite(files[A_Index], settingsIni, "RecentFiles", "File" A_Index)
+        else
+            IniDelete(settingsIni, "RecentFiles", "File" A_Index)
+    }
+}
+
+LoadAndApplySettings() {
+    global settingsIni, historyEnabled, currentDocTheme, menuBarCollapsed, powerSidebarVisible, docEditor, ui, globalSpellCheckEnabled, globalSpellCheckLanguage, globalCustomDictionaries
+    settingsIni := A_ScriptDir "\settings.ini"
+    
+    historyEnabled := IniRead(settingsIni, "General", "HistoryEnabled", "1") == "1"
+    currentDocTheme := IniRead(settingsIni, "General", "ThemeDoc", "Normal")
+    pageView := IniRead(settingsIni, "General", "PageView", "Paper")
+    lineSpacing := IniRead(settingsIni, "General", "LineSpacing", "1.15")
+    menuBarCollapsed := IniRead(settingsIni, "General", "MenuBarCollapsed", "0") == "1"
+    powerSidebarVisible := IniRead(settingsIni, "General", "PowerSidebarVisible", "0") == "1"
+    zoomVal := IniRead(settingsIni, "General", "Zoom", "100")
+    spellCheckEnabled := IniRead(settingsIni, "General", "SpellCheckEnabled", "1") == "1"
+    spellCheckLanguage := IniRead(settingsIni, "General", "SpellCheckLanguage", "en-US")
+    
+    ; Apply to document theme
+    if (currentDocTheme != "Normal") {
+        docEditor.SetDocumentTheme(currentDocTheme)
+        ui.Update("MenuViewThemeDoc", "IsChecked", currentDocTheme == "Theme" ? "True" : "False")
+        ui.Update("MenuViewDarkDoc", "IsChecked", currentDocTheme == "Dark" ? "True" : "False")
+    }
+    
+    ; Apply to page view
+    TogglePageView(pageView)
+    
+    ; Apply to line spacing
+    SetLineSpacing(lineSpacing)
+    
+    ; Apply to menu bar collapse state
+    if (menuBarCollapsed) {
+        menuBarCollapsed := false
+        ToggleMenuBar()
+    }
+    
+    ; Apply to power tools sidebar
+    if (powerSidebarVisible) {
+        powerSidebarVisible := false
+        TogglePowerSidebar()
+    }
+    
+    ; Apply zoom
+    try docEditor._SetZoom(Integer(zoomVal))
+    
+    ; Apply spelling settings
+    globalSpellCheckEnabled := spellCheckEnabled
+    global globalSpellCheckLanguage := spellCheckLanguage
+    docEditor._Cmd("SpellCheck", spellCheckEnabled ? "on" : "off")
+    docEditor._Cmd("SpellCheck", "setlang:" spellCheckLanguage)
+    
+    ; Load custom dictionaries
+    globalCustomDictionaries := []
+    customDictsStr := IniRead(settingsIni, "General", "CustomDictionaries", "")
+    if (customDictsStr != "") {
+        Loop Parse, customDictsStr, "|"
+        {
+            if (A_LoopField != "") {
+                docEditor._Cmd("AddDictionary", A_LoopField)
+                globalCustomDictionaries.Push(A_LoopField)
+            }
+        }
+    }
+    
+    ; Update recent files
+    UpdateRecentFilesMenu()
+}
+
+SaveSettings() {
+    global settingsIni, historyEnabled, currentDocTheme, menuBarCollapsed, powerSidebarVisible, docEditor, ui, globalSpellCheckEnabled, globalSpellCheckLanguage, globalCustomDictionaries
+    if (!IsSet(settingsIni) || settingsIni == "")
+        settingsIni := A_ScriptDir "\settings.ini"
+        
+    IniWrite(historyEnabled ? "1" : "0", settingsIni, "General", "HistoryEnabled")
+    IniWrite(currentDocTheme, settingsIni, "General", "ThemeDoc")
+    
+    try {
+        pageView := ui.Query("MenuViewFeed") == "True" ? "Feed" : (ui.Query("MenuViewTwoUp") == "True" ? "TwoUp" : "Paper")
+        IniWrite(pageView, settingsIni, "General", "PageView")
+    }
+    
+    try {
+        lineSpacing := "1.15"
+        if (ui.Query("MenuViewSpacing10") == "True")
+            lineSpacing := "1.0"
+        else if (ui.Query("MenuViewSpacing15") == "True")
+            lineSpacing := "1.5"
+        else if (ui.Query("MenuViewSpacing20") == "True")
+            lineSpacing := "2.0"
+        IniWrite(lineSpacing, settingsIni, "General", "LineSpacing")
+    }
+    
+    IniWrite(menuBarCollapsed ? "1" : "0", settingsIni, "General", "MenuBarCollapsed")
+    IniWrite(powerSidebarVisible ? "1" : "0", settingsIni, "General", "PowerSidebarVisible")
+    IniWrite(String(docEditor.zoom), settingsIni, "General", "Zoom")
+    
+    IniWrite(globalSpellCheckEnabled ? "1" : "0", settingsIni, "General", "SpellCheckEnabled")
+    IniWrite(globalSpellCheckLanguage, settingsIni, "General", "SpellCheckLanguage")
+    
+    customDictsStr := ""
+    for dictPath in globalCustomDictionaries {
+        if (customDictsStr != "")
+            customDictsStr .= "|"
+        customDictsStr .= dictPath
+    }
+    IniWrite(customDictsStr, settingsIni, "General", "CustomDictionaries")
+}
+
+SaveOnExit(ExitReason, ExitCode) {
+    try SaveSettings()
+}
+OnExit(SaveOnExit)
 
 SetStatus(text) {
     ui.Update("InfoStatus", "Text", text)
@@ -955,7 +1469,7 @@ CleanXmlString(str) {
 ; ============================================================================
 ; INITIALIZATION & COMMAND LINE
 ; ============================================================================
-TogglePageView("Paper")
+LoadAndApplySettings()
 
 if (A_Args.Length > 0 && FileExist(A_Args[1])) {
     docEditor.Open(A_Args[1])

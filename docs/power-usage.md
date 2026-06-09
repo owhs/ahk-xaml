@@ -640,3 +640,55 @@ panel.Add("Button").Name("BtnReset")
 | `"Focus"` | Focuses the element |
 | `"Blur"` | Removes focus from the element |
 | Callback function | Runs the custom callback |
+
+---
+
+## 17. Dynamic Elements & Event Re-Binding
+
+When building dynamic UI elements like Recent Files menus, list items, or dynamic tabs, elements are created and destroyed at runtime. AHK-XAML handles this dynamically using a clean unregistration and re-binding cycle.
+
+### Hooking Events to Dynamic Elements
+Because dynamic elements are added after compile, you must explicitly bind their event handlers:
+1. Parse and add the new element via `AddXamlItem`. Ensure the element has a `Name` (e.g., `RecentItem_1`).
+2. Call `ui.Update("ControlName", "BindEvent", "Click")` to register the event with the WPF bridge.
+3. Map the AHK callback using `ui.OnEvent("ControlName", "Click", Callback)`.
+
+```ahk
+; 1. Add the item dynamically
+xaml := '<MenuItem xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Name="RecentItem_1" Header="MyFile.txt"/>'
+ui.Update("RecentMenu", "AddXamlItem", xaml)
+
+; 2. Bind the click event on the WPF side
+ui.Update("RecentItem_1", "BindEvent", "Click")
+
+; 3. Hook the event to an AHK handler
+ui.OnEvent("RecentItem_1", "Click", OpenRecentFile)
+```
+
+### Destruction & Clean Re-Binding
+When calling `ClearItems` or `RemoveItem` on a container (e.g., `RecentMenu`), the engine automatically performs a deep cleanup:
+* Unregisters all child names from the WPF `NameScope`.
+* Removes all bound events for those child elements from the engine's internal `_boundEvents` registry.
+
+This allows you to safely **reuse element names** (e.g., clearing the menu and adding a new set of items with names `RecentItem_1`, `RecentItem_2`, etc.) without encountering "Control not found" or "Name already registered" errors.
+
+### Reentrancy Guards in AHK
+Dynamic menus that are refreshed upon user interaction or file loading (like the recent files menu) can easily trigger infinite event loops if the file load itself fires a `DocumentLoaded` event that triggers another menu rebuild.
+
+Always protect such update functions with a static boolean reentrancy guard in AHK:
+
+```ahk
+UpdateRecentFilesMenu() {
+    static isUpdating := false
+    if (isUpdating)
+        return
+    isUpdating := true
+
+    ; Clear and rebuild menu items here...
+    ui.Update("RecentMenu", "ClearItems", "")
+    
+    ; Rebuild items...
+    
+    isUpdating := false
+}
+```

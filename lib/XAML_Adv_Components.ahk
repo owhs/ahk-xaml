@@ -3850,6 +3850,11 @@ class XDocumentEditor {
                 <Setter Property="BorderThickness" Value="0"/>
                 <Setter Property="Padding" Value="0"/>
                 <Setter Property="Margin" Value="-1,0"/>
+                <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+                <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+                <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+                <Setter Property="RenderOptions.ClearTypeHint" Value="Enabled"/>
+                <Setter Property="UseLayoutRounding" Value="True"/>
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding Tag, ElementName=[[ID]]_Container}" Value="Theme">
                         <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
@@ -3897,7 +3902,7 @@ class XDocumentEditor {
         styleCb.SelectedIndex(0)
 
         ; Font family combo (IsEditable allows displaying fonts not in the list, IsReadOnly prevents arbitrary typing)
-        fontCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontFamily").Width(220).Height(30).VerticalAlignment("Center").Margin("4,0").IsEditable("True")
+        fontCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontFamily").Width(220).Height(30).VerticalAlignment("Center").Margin("4,0").IsEditable("True").MaxDropDownHeight(500)
         
         fallbackItem := fontCb.Add("ComboBoxItem").Name(this.id "_FallbackFont").Visibility("Collapsed").Tag("Unknown")
         fbSp := fallbackItem.Add("StackPanel").Orientation("Horizontal")
@@ -4311,7 +4316,32 @@ class XDocumentEditor {
     Open(filePath) {
         if (!this.ui)
             return
-        this.filePath := filePath
+        
+        originalPath := filePath
+        isDoc := (LTrim(String(SubStr(filePath, -3)), ".") = "doc")
+        
+        if (isDoc) {
+            try {
+                wordApp := ComObject("Word.Application")
+                wordApp.Visible := false
+                wordDoc := wordApp.Documents.Open(filePath)
+                
+                tempDir := A_Temp "\AhkDocEditor"
+                if !DirExist(tempDir)
+                    DirCreate(tempDir)
+                
+                tempPath := tempDir "\temp_converted_" A_TickCount ".docx"
+                wordDoc.SaveAs2(tempPath, 12) ; 12 = wdFormatXMLDocument (docx)
+                wordDoc.Close(false)
+                wordApp.Quit()
+                
+                filePath := tempPath
+            } catch {
+                ; Fallback to bridge
+            }
+        }
+
+        this.filePath := originalPath
         this.ui.Update(this.id, "Doc_Import", filePath)
         ; Re-apply dark mode if it was active (new document replaces all elements)
         if (this.currentTheme == "Dark") {
@@ -4326,14 +4356,47 @@ class XDocumentEditor {
             filePath := this.filePath
         if (filePath == "")
             return this._SaveFileAs()
-        this.filePath := filePath
-        ; Save protection: temporarily restore colors if in dark mode
-        wasDark := this.currentTheme == "Dark"
-        if (wasDark)
-            this.ui.Update(this.id, "Doc_RestoreColors", "")
-        this.ui.Update(this.id, "Doc_Export", filePath)
-        if (wasDark)
-            this.ui.Update(this.id, "Doc_ApplyDarkMode", "")
+
+        originalPath := filePath
+        isDoc := (LTrim(String(SubStr(filePath, -3)), ".") = "doc")
+
+        if (isDoc) {
+            tempDir := A_Temp "\AhkDocEditor"
+            if !DirExist(tempDir)
+                DirCreate(tempDir)
+            tempPath := tempDir "\temp_save_" A_TickCount ".docx"
+            
+            this.filePath := tempPath
+            wasDark := this.currentTheme == "Dark"
+            if (wasDark)
+                this.ui.Update(this.id, "Doc_RestoreColors", "")
+            this.ui.Update(this.id, "Doc_Export", tempPath)
+            if (wasDark)
+                this.ui.Update(this.id, "Doc_ApplyDarkMode", "")
+                
+            try {
+                wordApp := ComObject("Word.Application")
+                wordApp.Visible := false
+                wordDoc := wordApp.Documents.Open(tempPath)
+                wordDoc.SaveAs2(originalPath, 0) ; 0 = wdFormatDocument (.doc)
+                wordDoc.Close(false)
+                wordApp.Quit()
+                
+                try FileDelete(tempPath)
+            } catch as err {
+                MsgBox("Failed to save as .doc: " err.Message, "Document Editor")
+            }
+            
+            this.filePath := originalPath
+        } else {
+            this.filePath := filePath
+            wasDark := this.currentTheme == "Dark"
+            if (wasDark)
+                this.ui.Update(this.id, "Doc_RestoreColors", "")
+            this.ui.Update(this.id, "Doc_Export", filePath)
+            if (wasDark)
+                this.ui.Update(this.id, "Doc_ApplyDarkMode", "")
+        }
     }
 
     NewDocument() {
@@ -4718,7 +4781,18 @@ class XDocumentEditor {
     }
 
     _OnDocError(state, ctrl, event) {
-        ; Could show an error dialog
+        errMsg := state.Has("DocumentError") ? state["DocumentError"] : "Unknown document loading error."
+        opts := {
+            Title: "Document Load Error",
+            Message: "Failed to open document:`n`n" errMsg,
+            Icon: Chr(0xE783),
+            Buttons: ["OK"],
+            Owner: this.ui ? this.ui.wpfHwnd : 0,
+            Modal: true
+        }
+        if (this.ui && this.ui.HasOwnProp("currentThemeName") && this.ui.currentThemeName != "")
+            opts.Theme := this.ui.currentThemeName
+        XDialog.Show(opts)
     }
 
     _OnWordCount(state, ctrl, event) {
@@ -4942,8 +5016,17 @@ class XDocumentEditor {
                 name := RegExReplace(name, "\s*\((TrueType|OpenType|PostScript|Type 1|Vector|Stroke)\)$", "")
                 name := RegExReplace(name, "\s+(Bold|Italic|Regular|Semibold|Semi-Bold|Light|Extra\s*Light|Medium|Black|Condensed|Oblique|Bold\s+Italic|Italic\s+Bold|Demibold|Heavy|Nord)\b", "")
                 name := Trim(name)
-                if (name != "")
-                    fonts[name] := true
+                if (name != "") {
+                    if InStr(name, "&") {
+                        for subName in StrSplit(name, "&") {
+                            trimmedSub := Trim(subName)
+                            if (trimmedSub != "")
+                                fonts[trimmedSub] := true
+                        }
+                    } else {
+                        fonts[name] := true
+                    }
+                }
             }
         }
         common := ["Segoe UI", "Arial", "Calibri", "Cambria", "Consolas", "Courier New", "Georgia", "Impact", "Lucida Console", "Segoe Fluent Icons", "Segoe MDL2 Assets", "Times New Roman", "Trebuchet MS", "Verdana", "Webdings", "Wingdings"]
