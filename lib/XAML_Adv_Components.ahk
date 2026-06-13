@@ -1713,7 +1713,7 @@ class XClock {
                 return
             }
         }
-        
+
         if (this.isVisible && !this.IsWindowMinimized() && WinActive("ahk_id " this.ui.wpfHwnd)) {
             this.Start()
         } else {
@@ -3903,7 +3903,7 @@ class XDocumentEditor {
 
         ; Font family combo (IsEditable allows displaying fonts not in the list, IsReadOnly prevents arbitrary typing)
         fontCb := toolbarWrap.Add("ComboBox").Name(this.id "_FontFamily").Width(220).Height(30).VerticalAlignment("Center").Margin("4,0").IsEditable("True").MaxDropDownHeight(500)
-        
+
         fallbackItem := fontCb.Add("ComboBoxItem").Name(this.id "_FallbackFont").Visibility("Collapsed").Tag("Unknown")
         fbSp := fallbackItem.Add("StackPanel").Orientation("Horizontal")
         fbSp.Add("TextBlock").Text(Chr(0xE7BA)).FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets").Foreground("Red").Margin("0,0,4,0").VerticalAlignment("Center").ToolTip("Font not installed locally")
@@ -4056,9 +4056,9 @@ class XDocumentEditor {
         ; === EDITOR AREA (Google Docs-style centered page on canvas) ===
         editorWrapper := this.container.Add("Grid").Name(this.id "_EditorWrapper").Grid_Row(1).Background("{DynamicResource DropdownBg}")
         editorWrapper.Cols("Auto", "*")
-        
+
         this.outlinePane := editorWrapper.Add("Border").Name(this.id "_OutlinePane").Grid_Column(0).Width(280).Background("{DynamicResource SidebarColor}").BorderBrush("{DynamicResource ControlBorder}").BorderThickness("0,0,1,0").Visibility("Collapsed")
-        
+
         outlinePanel := this.outlinePane.Add("StackPanel").Margin("16")
         outlinePanel.Add("TextBlock").Text("DOCUMENT OUTLINE").FontWeight("Bold").FontSize(11).Foreground("{DynamicResource TextSub}").Margin("0,0,0,16")
         outlineSv := outlinePanel.Add("ScrollViewer").VerticalScrollBarVisibility("Auto")
@@ -4316,25 +4316,25 @@ class XDocumentEditor {
     Open(filePath) {
         if (!this.ui)
             return
-        
+
         originalPath := filePath
         isDoc := (LTrim(String(SubStr(filePath, -3)), ".") = "doc")
-        
+
         if (isDoc) {
             try {
                 wordApp := ComObject("Word.Application")
                 wordApp.Visible := false
                 wordDoc := wordApp.Documents.Open(filePath)
-                
+
                 tempDir := A_Temp "\AhkDocEditor"
                 if !DirExist(tempDir)
                     DirCreate(tempDir)
-                
+
                 tempPath := tempDir "\temp_converted_" A_TickCount ".docx"
                 wordDoc.SaveAs2(tempPath, 12) ; 12 = wdFormatXMLDocument (docx)
                 wordDoc.Close(false)
                 wordApp.Quit()
-                
+
                 filePath := tempPath
             } catch {
                 ; Fallback to bridge
@@ -4365,7 +4365,7 @@ class XDocumentEditor {
             if !DirExist(tempDir)
                 DirCreate(tempDir)
             tempPath := tempDir "\temp_save_" A_TickCount ".docx"
-            
+
             this.filePath := tempPath
             wasDark := this.currentTheme == "Dark"
             if (wasDark)
@@ -4373,7 +4373,7 @@ class XDocumentEditor {
             this.ui.Update(this.id, "Doc_Export", tempPath)
             if (wasDark)
                 this.ui.Update(this.id, "Doc_ApplyDarkMode", "")
-                
+
             try {
                 wordApp := ComObject("Word.Application")
                 wordApp.Visible := false
@@ -4381,12 +4381,12 @@ class XDocumentEditor {
                 wordDoc.SaveAs2(originalPath, 0) ; 0 = wdFormatDocument (.doc)
                 wordDoc.Close(false)
                 wordApp.Quit()
-                
+
                 try FileDelete(tempPath)
             } catch as err {
                 MsgBox("Failed to save as .doc: " err.Message, "Document Editor")
             }
-            
+
             this.filePath := originalPath
         } else {
             this.filePath := filePath
@@ -4816,24 +4816,24 @@ class XDocumentEditor {
         }
         this.currentTheme := mode
         this.ui.Update(this.id "_Container", "Tag", mode)
-        
+
         ; Explicitly update PageBorder and all background elements to match the selected theme
         if (mode == "Dark") {
             this.ui.Update(this.id "_EditorWrapper", "Background", "#121212")
             this.ui.Update(this.id "_PageBorder", "Background", "#1E1E1E")
             this.ui.Update(this.id "_PageBorder", "BorderBrush", "#333333")
-            
+
             ; Status Bar theme matching
             this.ui.Update(this.id "_StatusBg", "Background", "#252526")
             this.ui.Update(this.id "_StatusBg", "BorderBrush", "#3F3F46")
             this.ui.Update(this.id "_WordCount", "Foreground", "#999999")
             this.ui.Update(this.id "_ZoomLevel", "Foreground", "#999999")
-            
+
             ; Toolbar theme matching
             this.ui.Update(this.id "_ToolbarBg", "Background", "#1E1E1E")
             this.ui.Update(this.id "_ToolbarInner", "Background", "#2D2D2D")
             this.ui.Update(this.id "_ToolbarInner", "BorderBrush", "#3F3F46")
-            
+
             ; ComboBox theming
             this.ui.Update(this.id "_StyleSelect", "Background", "#3F3F46")
             this.ui.Update(this.id "_StyleSelect", "Foreground", "#E0E0E0")
@@ -4844,32 +4844,32 @@ class XDocumentEditor {
             this.ui.Update(this.id "_FontSize", "Background", "#3F3F46")
             this.ui.Update(this.id "_FontSize", "Foreground", "#E0E0E0")
             this.ui.Update(this.id "_FontSize", "BorderBrush", "#555555")
-            
+
             ; Outline pane
             this.ui.Update(this.id "_OutlinePane", "Background", "#252526")
             this.ui.Update(this.id "_OutlinePane", "BorderBrush", "#3F3F46")
-            
+
             ; Find & Replace panel
             this.ui.Update(this.id "_FindPanel", "Background", "#252526")
             this.ui.Update(this.id "_FindPanel", "BorderBrush", "#3F3F46")
-            
+
             this.ui.Update(this.id, "Doc_ApplyDarkMode", "")
         } else if (mode == "Theme") {
             this.ui.Update(this.id "_EditorWrapper", "Background", "{DynamicResource DropdownBg}")
             this.ui.Update(this.id "_PageBorder", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_PageBorder", "BorderBrush", "{DynamicResource ControlBorder}")
-            
+
             ; Status Bar theme matching
             this.ui.Update(this.id "_StatusBg", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_StatusBg", "BorderBrush", "{DynamicResource ControlBorder}")
             this.ui.Update(this.id "_WordCount", "Foreground", "{DynamicResource TextSub}")
             this.ui.Update(this.id "_ZoomLevel", "Foreground", "{DynamicResource TextSub}")
-            
+
             ; Toolbar theme matching
             this.ui.Update(this.id "_ToolbarBg", "Background", "{DynamicResource BgColor}")
             this.ui.Update(this.id "_ToolbarInner", "Background", "{DynamicResource SidebarColor}")
             this.ui.Update(this.id "_ToolbarInner", "BorderBrush", "{DynamicResource ControlBorder}")
-            
+
             ; ComboBox theming
             this.ui.Update(this.id "_StyleSelect", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_StyleSelect", "Foreground", "{DynamicResource TextMain}")
@@ -4880,11 +4880,11 @@ class XDocumentEditor {
             this.ui.Update(this.id "_FontSize", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_FontSize", "Foreground", "{DynamicResource TextMain}")
             this.ui.Update(this.id "_FontSize", "BorderBrush", "{DynamicResource ControlBorder}")
-            
+
             ; Outline pane
             this.ui.Update(this.id "_OutlinePane", "Background", "{DynamicResource SidebarColor}")
             this.ui.Update(this.id "_OutlinePane", "BorderBrush", "{DynamicResource ControlBorder}")
-            
+
             ; Find & Replace panel
             this.ui.Update(this.id "_FindPanel", "Background", "{DynamicResource DropdownBg}")
             this.ui.Update(this.id "_FindPanel", "BorderBrush", "{DynamicResource ControlBorder}")
@@ -4892,18 +4892,18 @@ class XDocumentEditor {
             this.ui.Update(this.id "_EditorWrapper", "Background", "{DynamicResource DropdownBg}")
             this.ui.Update(this.id "_PageBorder", "Background", "White")
             this.ui.Update(this.id "_PageBorder", "BorderBrush", "#E0E0E0")
-            
+
             ; Status Bar theme matching
             this.ui.Update(this.id "_StatusBg", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_StatusBg", "BorderBrush", "{DynamicResource ControlBorder}")
             this.ui.Update(this.id "_WordCount", "Foreground", "{DynamicResource TextSub}")
             this.ui.Update(this.id "_ZoomLevel", "Foreground", "{DynamicResource TextSub}")
-            
+
             ; Toolbar theme matching
             this.ui.Update(this.id "_ToolbarBg", "Background", "{DynamicResource BgColor}")
             this.ui.Update(this.id "_ToolbarInner", "Background", "{DynamicResource SidebarColor}")
             this.ui.Update(this.id "_ToolbarInner", "BorderBrush", "{DynamicResource ControlBorder}")
-            
+
             ; ComboBox theming
             this.ui.Update(this.id "_StyleSelect", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_StyleSelect", "Foreground", "{DynamicResource TextMain}")
@@ -4914,16 +4914,16 @@ class XDocumentEditor {
             this.ui.Update(this.id "_FontSize", "Background", "{DynamicResource ControlBg}")
             this.ui.Update(this.id "_FontSize", "Foreground", "{DynamicResource TextMain}")
             this.ui.Update(this.id "_FontSize", "BorderBrush", "{DynamicResource ControlBorder}")
-            
+
             ; Outline pane
             this.ui.Update(this.id "_OutlinePane", "Background", "{DynamicResource SidebarColor}")
             this.ui.Update(this.id "_OutlinePane", "BorderBrush", "{DynamicResource ControlBorder}")
-            
+
             ; Find & Replace panel
             this.ui.Update(this.id "_FindPanel", "Background", "{DynamicResource DropdownBg}")
             this.ui.Update(this.id "_FindPanel", "BorderBrush", "{DynamicResource ControlBorder}")
         }
-        
+
         ; Force spacers to redraw in Paper mode using the new theme colors
         this.ui.Update(this.id, "Doc_UpdateSpacers", mode)
     }
@@ -4953,7 +4953,7 @@ class XDocumentEditor {
         if (!state.Has("SelectionFormat"))
             return
         fmt := state["SelectionFormat"]
-        
+
         if (!this.HasProp("expectedFormatState"))
             this.expectedFormatState := Map()
 
@@ -4993,7 +4993,7 @@ class XDocumentEditor {
                     isInstalled := false
                 }
                 this.expectedFormatState["Font"] := val
-                
+
                 if (isInstalled) {
                     this.ui.Update(this.id "_FontFamily", "Text", val)
                     this.ui.Update(this.id "_FallbackFont", "Visibility", "Collapsed")
@@ -5119,7 +5119,7 @@ class XColorPickerLive {
         mask := alphaFill.Add("Rectangle.OpacityMask").Add("LinearGradientBrush").StartPoint("0,0").EndPoint("1,0")
         mask.Add("GradientStop").SetProp('Color', "Transparent").Offset("0")
         mask.Add("GradientStop").SetProp('Color', "White").Offset("1")
-        
+
         sliders.Add("Slider").Name(this.id "_AlphaSlider").Minimum("0").Maximum("255").Value("255").Margin("0,-20,0,0")
             .ThumbShape("Line").ThumbWidth(8).ThumbHeight(20).ThumbColor("#FFFFFF").ThumbBorderColor("#FF222222").ThumbBorderThickness(1.5).ThumbCornerRadius(1.5).ThumbShadow(true)
             .TrackHeight(32).TrackColor("Transparent").TrackBg("Transparent")
