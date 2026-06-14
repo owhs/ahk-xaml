@@ -1473,6 +1473,8 @@ _AddRichPopover(this) {
     elementName := ""
     if (this._Props.Has("Name") && this._Props["Name"] != "") {
         elementName := this._Props["Name"]
+    } else if (this._Props.Has("x:Name") && this._Props["x:Name"] != "") {
+        elementName := this._Props["x:Name"]
     } else {
         elementName := "PopoverAnchor_" A_TickCount "_" popoverCounter
         this.Name(elementName)
