@@ -464,6 +464,14 @@ class XAMLHost {
         }
     }
 
+    static _StdErr(msg) {
+        hStderr := DllCall("GetStdHandle", "Int", -12, "Ptr")
+        if (hStderr && hStderr != -1) {
+            msg .= "`n"
+            DllCall("WriteConsoleW", "Ptr", hStderr, "Str", msg, "UInt", StrLen(msg), "Ptr", 0, "UInt", 0)
+        }
+    }
+
     static ShowErrorDialog(title, header, snippet, details, hasRetryOptions := false, reason := "") {
         ; Pre-format the error text for better readability
         details := StrReplace(details, " ---> ", "`r`n`r`n---> ")
@@ -721,7 +729,7 @@ class XAMLHost {
     static CompileEngine(libDir, sharedExe, extraResources := [], embedDeps := false) {
         global XAML_ENABLE_WEBVIEW, XAML_ENABLE_AVALONEDIT, XAML_ENABLE_DOCUMENT, XAML_ENABLE_SHADERS
         if (A_IsCompiled) {
-            MsgBox("AHK-XAML: Dynamic compilation is not available when the script is compiled. Please compile the engine separately.")
+            XAMLHost._StdErr("AHK-XAML: Dynamic compilation is not available when the script is compiled. Please compile the engine separately.")
             return
         }
 
@@ -729,7 +737,7 @@ class XAMLHost {
         errLog := A_Temp "\AhkWpf\AhkWpfError.log"
         sourceCs := libDir "\dep\XAML_AHK_Bridge.cs"
         if !FileExist(sourceCs) {
-            MsgBox("XAML_AHK_Bridge.cs not found in lib\dep directory!`nCannot compile shared engine.", "AHK-XAML", "Iconx")
+            XAMLHost._StdErr("XAML_AHK_Bridge.cs not found in lib\dep directory!`nCannot compile shared engine.")
             return false
         }
 
@@ -752,8 +760,7 @@ class XAMLHost {
                 }
                 wvDef := ' /define:ENABLE_WEBVIEW'
             } else {
-                ToolTip("WebView2 DLLs not found in lib\dep\WebView2. Compiling without WebView2 support.")
-                SetTimer(() => ToolTip(), -4000)
+                XAMLHost._StdErr("WebView2 DLLs not found in lib\dep\WebView2. Compiling without WebView2 support.")
             }
         }
 
@@ -769,8 +776,7 @@ class XAMLHost {
                 }
                 aeDef := ' /define:ENABLE_AVALONEDIT'
             } else {
-                ToolTip("AvalonEdit DLL not found in lib\dep\AvalonEdit. Compiling without IDE support.")
-                SetTimer(() => ToolTip(), -4000)
+                XAMLHost._StdErr("AvalonEdit DLL not found in lib\dep\AvalonEdit. Compiling without IDE support.")
             }
         }
 
@@ -808,8 +814,7 @@ class XAMLHost {
                 }
                 docDef := ' /define:ENABLE_DOCUMENT'
             } else {
-                ToolTip("OpenXml DLL not found in lib\dep\OpenXml. Compiling without Document Editor support.")
-                SetTimer(() => ToolTip(), -4000)
+                XAMLHost._StdErr("OpenXml DLL not found in lib\dep\OpenXml. Compiling without Document Editor support.")
             }
         }
 
@@ -838,7 +843,7 @@ class XAMLHost {
         try FileDelete(sharedExe)
         if FileExist(sharedExe) {
             SplitPath(sharedExe, &sharedName)
-            MsgBox("Error: The target DLL '" sharedName "' is locked by a running process.`n`nPlease close all running instances of your application and try compiling again.", "Build Error", "Iconx")
+            XAMLHost._StdErr("Error: The target DLL '" sharedName "' is locked by a running process.`n`nPlease close all running instances of your application and try compiling again.")
             return false
         }
 
@@ -885,7 +890,13 @@ class XAMLHost {
                 }
             }
 
-            XAMLHost.ShowErrorDialog("Engine Compile Error", "Failed to compile background engine.", snippet, errOut, false, reason)
+            errMsg := "Engine Compile Error: Failed to compile background engine."
+            if (reason != "")
+                errMsg .= "`nRoot Cause: " reason
+            if (snippet != "")
+                errMsg .= "`n" snippet
+            errMsg .= "`n" errOut
+            XAMLHost._StdErr(errMsg)
             return false
         }
         try FileDelete(errLog)
