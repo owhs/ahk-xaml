@@ -859,7 +859,7 @@ class XAML_GUI {
     }
 
     RegisterHotKeyChange(element, callback, oneKeyCatch := false) {
-        id := element._Props["Name"]
+        id := element._Props.Has("Name") ? element._Props["Name"] : element._Props["x:Name"]
         isOneKey := oneKeyCatch
         if (element._Props.Has("OneKeyCatch")) {
             val := element._Props["OneKeyCatch"]
